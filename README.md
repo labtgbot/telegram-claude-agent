@@ -1,5 +1,7 @@
 # Telegram Claude Agent
 
+**Repository:** https://github.com/labtgbot/telegram-claude-agent
+
 A professional Telegram bot agent that integrates with [free-claude-code](https://github.com/labtgbot/free-claude-code), providing access to Claude Code capabilities via the Telegram Bot API.
 
 ## Features
@@ -34,7 +36,7 @@ A professional Telegram bot agent that integrates with [free-claude-code](https:
 ### From source
 
 ```bash
-git clone https://github.com/your-org/telegram-claude-agent.git
+git clone https://github.com/labtgbot/telegram-claude-agent.git
 cd telegram-claude-agent
 python -m venv venv
 source venv/bin/activate  # on Windows: venv\Scripts\activate
@@ -217,6 +219,10 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - Advanced Telegram Bot API 10.0 features (Polls 2.0, Message Effects, Custom AI Styles, Scheduled Messages) are not yet implemented.
 - Bot-to-Bot communication is not supported.
 - The transcription service requires the optional `openai-whisper` package and may be slow for longer audio; consider using a faster service like NVIDIA NIM.
+
+## Claude Code Development
+
+For developers using the Claude Code CLI, see [CLAUDE.md](CLAUDE.md) for setup, commands, and environment details.
 
 Contributions are welcome!
 
