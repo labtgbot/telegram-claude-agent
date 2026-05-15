@@ -1,5 +1,7 @@
 # Telegram Claude Agent
 
+**Repository:** https://github.com/labtgbot/telegram-claude-agent
+
 A professional Telegram bot agent that integrates with [free-claude-code](https://github.com/labtgbot/free-claude-code), providing access to Claude Code capabilities via the Telegram Bot API.
 
 ## Features
@@ -34,7 +36,7 @@ A professional Telegram bot agent that integrates with [free-claude-code](https:
 ### From source
 
 ```bash
-git clone https://github.com/your-org/telegram-claude-agent.git
+git clone https://github.com/labtgbot/telegram-claude-agent.git
 cd telegram-claude-agent
 python -m venv venv
 source venv/bin/activate  # on Windows: venv\Scripts\activate
