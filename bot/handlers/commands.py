@@ -74,6 +74,5 @@ async def cmd_settings(message: Message):
 
 @router.message(Command("clear"))
 async def cmd_clear(message: Message):
-    user_id = message.from_user.id
-    storage.clear_history(user_id)
+    storage.clear_history(message.chat.id, message.from_user.id)
     await message.answer("Conversation history cleared.")
