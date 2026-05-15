@@ -218,6 +218,10 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - Bot-to-Bot communication is not supported.
 - The transcription service requires the optional `openai-whisper` package and may be slow for longer audio; consider using a faster service like NVIDIA NIM.
 
+## Claude Code Development
+
+For developers using the Claude Code CLI, see [CLAUDE.md](CLAUDE.md) for setup, commands, and environment details.
+
 Contributions are welcome!
 
 ## License
