@@ -1,6 +1,6 @@
 import json
 import httpx
-from typing import List, Dict, Any, AsyncIterator, Optional
+from typing import List, Dict, Any, AsyncIterator, Optional, Union
 
 class ClaudeProxyError(Exception):
     pass
@@ -90,6 +90,9 @@ class ClaudeProxyClient:
                 if data == "[DONE]":
                     break
                 try:
-                    yield json.loads(data)
+                    event = json.loads(data)
                 except json.JSONDecodeError:
                     continue
+                if event.get("type") == "message_stop":
+                    break
+                yield event

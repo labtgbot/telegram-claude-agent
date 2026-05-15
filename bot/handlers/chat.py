@@ -22,7 +22,7 @@ async def handle_streaming(message: Message, client: ClaudeProxyClient, messages
     sent_msg = await message.answer("...")
     full_text = ""
     try:
-        stream = client.send_message(
+        stream = await client.send_message(
             messages=messages,
             model=settings.free_claude_default_model,
             stream=True
@@ -37,10 +37,8 @@ async def handle_streaming(message: Message, client: ClaudeProxyClient, messages
                         await sent_msg.edit_text(full_text[:4096])
                     except Exception:
                         pass
-            elif chunk.get("type") == "message_stop":
-                break
     except Exception as e:
-        await sent_msg.edit_text(f"❌ Error: {str(e)}")
+        await sent_msg.edit_text(f"Error: {str(e)}")
         raise
     return full_text
 
@@ -49,6 +47,11 @@ async def handle_chat_message(message: Message):
     user_id = message.from_user.id
     chat = message.chat
     bot_username = message.bot.username
+
+    # Enforce whitelist if configured
+    allowed_ids = settings.allowed_chat_ids
+    if allowed_ids and chat.id not in allowed_ids:
+        return
 
     # Determine guest mode
     is_guest = False
