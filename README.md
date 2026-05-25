@@ -8,7 +8,7 @@ A professional Telegram bot agent that integrates with [free-claude-code](https:
 
 - Connect to a locally or remotely deployed free-claude-code instance
 - Support for streaming responses with real-time updates
-- Guest Mode for temporary interactions in group chats without adding the bot
+- Group privacy mode for mention/reply interactions without shared history
 - Handle media: images, documents (PDF, TXT, DOCX), voice messages (with Whisper transcription)
 - Core commands: /start, /help, /model, /settings, /clear
 - Built-in rate limiting and security (webhook secret token)
@@ -18,7 +18,7 @@ A professional Telegram bot agent that integrates with [free-claude-code](https:
 
 ## Tech Stack
 
-- **Bot framework**: aiogram 3.x (asynchronous, supports Telegram Bot API 10.0)
+- **Bot framework**: aiogram 3.3.0 (asynchronous Telegram Bot API framework)
 - **HTTP client**: httpx with streaming support
 - **Server**: FastAPI + uvicorn
 - **Config**: pydantic-settings
@@ -79,7 +79,7 @@ LOG_LEVEL=INFO
 - `FREE_CLAUDE_STREAMING_ENABLED` – whether to stream responses (`true`/`false`).
 - `TELEGRAM_BOT_TOKEN` – your bot token from BotFather.
 - `TELEGRAM_WEBHOOK_URL` – if set, the bot will use webhook mode; otherwise, it uses long polling.
-- `TELEGRAM_GUEST_MODE_ENABLED` – enable guest mode restrictions in group chats (`true`/`false`).
+- `TELEGRAM_GUEST_MODE_ENABLED` – enable no-history group privacy mode for mentioned/replied messages (`true`/`false`).
 - `TELEGRAM_ALLOWED_CHAT_IDS` – optional comma-separated list of chat IDs to restrict operation.
 - `API_SECRET_TOKEN` – secret token for verifying webhook requests (highly recommended for webhook mode).
 - `RATE_LIMIT_REQUESTS_PER_MINUTE` – maximum requests per user per minute.
@@ -137,9 +137,9 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/settings` – Display your current settings.
 - `/clear` – Clear your conversation history.
 
-### Guest Mode
+### Group privacy mode
 
-When the bot is mentioned in a group chat (e.g., `@YourBot hello`), it automatically activates Guest Mode. In this mode:
+When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
 - The bot only sees the message where it was mentioned.
 - No prior conversation history is used.
 - The bot responds only to that message, ensuring privacy.
@@ -161,6 +161,16 @@ pytest tests/unit
 ```
 
 Integration tests (requires running bot and proxy) are in `tests/integration`.
+
+## Functionality Analysis
+
+See [docs/functionality-analysis.md](docs/functionality-analysis.md) for the
+current feature inventory, architecture notes, test coverage, known gaps, and
+recommended next steps, including Telegram Bot API method coverage.
+For the per-method issue-style implementation backlog, see
+[docs/telegram-bot-api-implementation-guide.md](docs/telegram-bot-api-implementation-guide.md).
+The generated GitHub issue index is available in
+[docs/telegram-bot-api-issue-index.md](docs/telegram-bot-api-issue-index.md).
 
 ## Project Structure
 
@@ -216,7 +226,12 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - Storage is in-memory; restarting the bot clears conversation history. For persistence, consider Redis or a database.
 - Inline query results are minimal; can be expanded.
 - No built-in admin panel or metrics.
-- Advanced Telegram Bot API 10.0 features (Polls 2.0, Message Effects, Custom AI Styles, Scheduled Messages) are not yet implemented.
+- Most Telegram Bot API methods are not yet implemented; see the functionality analysis for the current method matrix.
+- The Telegram Bot API implementation guide breaks the missing methods into
+  per-method issue drafts with labels, stages, scope, and acceptance criteria.
+- The Telegram Bot API issue index links those method drafts to the actual
+  GitHub issues created in this repository.
+- Official Telegram Guest Mode (`guest_message`/`answerGuestQuery`) is not yet implemented.
 - Bot-to-Bot communication is not supported.
 - The transcription service requires the optional `openai-whisper` package and may be slow for longer audio; consider using a faster service like NVIDIA NIM.
 
