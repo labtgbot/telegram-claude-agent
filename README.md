@@ -143,6 +143,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/forward` – Forward a message from another chat into this chat for support/moderation review (admin only).
 - `/forwards` – Forward several messages from another chat into this chat, preserving album grouping (admin only).
 - `/copy` – Copy a message from another chat into this chat without a link to the original sender (admin only).
+- `/copies` – Copy several messages from another chat into this chat without a link to the original sender, preserving album grouping (admin only).
 - `/photo` – Send an image into this chat as a real Telegram photo via a URL or file_id (admin only).
 - `/clear` – Clear your conversation history.
 
@@ -296,7 +297,42 @@ admin commands:
 - the global rate-limit middleware still applies.
 
 `copyMessage` copies a single message; copying a whole album as a group is the
-job of `copyMessages`, which is tracked separately.
+job of `copyMessages`, exposed as `/copies`.
+
+### Copy several messages for moderation
+
+The restricted `/copies` command calls Telegram Bot API `copyMessages` through
+aiogram's typed `Bot.copy_messages()` wrapper. It serves the same
+support/moderation scenario as `/copy`, but moves a batch of messages at once.
+Like `/copy` the copies have **no link to the original sender** (there is no
+"forwarded from" header), and like `/forwards` it **preserves album grouping**:
+messages that originally belonged to one album are re-sent together as an album.
+
+Usage: `/copies <from_chat_id> <message_id> [<message_id> ...] [share] [nocaption]`
+
+- the messages are always copied into the chat where the command was issued;
+- provide 1-100 message ids in strictly increasing order, as Telegram requires;
+  the command validates both bounds before calling Telegram;
+- the copied messages are protected from further forwarding and saving by
+  default (`protect_content=true`), so moderated content is not leaked further;
+  append `share` to drop that protection;
+- append `nocaption` to copy the messages without their original captions
+  (`remove_caption=true`); unlike `/copy`, `copyMessages` cannot set a new
+  caption, it can only drop the existing ones. Both keywords may be combined at
+  the end in any order;
+- Telegram skips messages it cannot copy (service, giveaway/giveaway-winners and
+  invoice messages) instead of failing the whole batch, so the success message
+  reports how many of the requested messages were actually copied;
+- the bot must be able to access `from_chat_id` (it must be a member of that
+  chat); otherwise Telegram returns an error that the command reports back.
+
+Because the command relays content between chats, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
 
 ### Send a photo
 
@@ -371,7 +407,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /photo, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -382,6 +418,7 @@ telegram-claude-agent/
 │   │   ├── forward_message.py  # Telegram forwardMessage relay helper
 │   │   ├── forward_messages.py # Telegram forwardMessages batch relay helper
 │   │   ├── copy_message.py     # Telegram copyMessage relay helper
+│   │   ├── copy_messages.py    # Telegram copyMessages batch relay helper
 │   │   └── send_photo.py       # Telegram sendPhoto outbound helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
@@ -419,6 +456,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/forward` command relays a message from another chat into the admin chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and protects the forwarded copy from re-forwarding by default.
 - The `/forwards` command relays a batch of messages from another chat into the admin chat (preserving album grouping), so it requires `TELEGRAM_ADMIN_CHAT_IDS` and protects the forwarded copies from re-forwarding by default.
 - The `/copy` command relays a message from another chat into the admin chat without a link to the original sender, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and protects the copied message from re-forwarding by default.
+- The `/copies` command relays a batch of messages from another chat into the admin chat without a link to the original sender (preserving album grouping), so it requires `TELEGRAM_ADMIN_CHAT_IDS` and protects the copied messages from re-forwarding by default.
 - The `/photo` command makes the bot post an arbitrary image into the chat as a photo, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - Rate limiting helps prevent abuse.
 
