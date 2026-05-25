@@ -55,8 +55,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 [telegram-bot-api-implementation-guide.md](telegram-bot-api-implementation-guide.md):
 в нем 169 карточек методов с labels, stages, scope и acceptance criteria;
 после внедрения `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
-`copyMessage`, `forwardMessages` и `sendPhoto` остается 162 пока не
-интегрированных метода.
+`copyMessage`, `forwardMessages`, `sendPhoto` и `copyMessages` остается 161
+пока не интегрированный метод.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -74,6 +74,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `forwardMessage` | `bot/services/forward_message.py`, `/forward` в `bot/handlers/commands.py` | Admin-flow пересылки одного сообщения из другого чата в текущий admin-чат для поддержки/модерации, с `protect_content` по умолчанию. |
 | `forwardMessages` | `bot/services/forward_messages.py`, `/forwards` в `bot/handlers/commands.py` | Admin-flow пакетной пересылки 1-100 сообщений из другого чата в текущий admin-чат с сохранением album grouping, с `protect_content` по умолчанию. |
 | `copyMessage` | `bot/services/copy_message.py`, `/copy` в `bot/handlers/commands.py` | Admin-flow копирования одного сообщения из другого чата в текущий admin-чат как нового сообщения без ссылки на исходного отправителя, с `protect_content` по умолчанию. |
+| `copyMessages` | `bot/services/copy_messages.py`, `/copies` в `bot/handlers/commands.py` | Admin-flow пакетного копирования 1-100 сообщений из другого чата в текущий admin-чат как новых сообщений без ссылки на исходного отправителя, с сохранением album grouping, `protect_content` по умолчанию и опциональным `remove_caption`. |
 | `sendPhoto` | `bot/services/send_photo.py`, `/photo` в `bot/handlers/commands.py` | Admin-flow отправки изображения в текущий чат как настоящего Telegram-фото по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
@@ -118,8 +119,7 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `sendVideoNote`, `sendMediaGroup`, `sendLivePhoto`, `sendPaidMedia`,
    `sendLocation`, `sendVenue`, `sendContact`, `sendPoll`, `sendChecklist`,
    `sendDice`, `sendMessageDraft`, `setMessageReaction`.
-4. Управление сообщениями: `copyMessages`, `editMessageCaption`,
-   `editMessageMedia`,
+4. Управление сообщениями: `editMessageCaption`, `editMessageMedia`,
    `editMessageLiveLocation`, `stopMessageLiveLocation`,
    `editMessageChecklist`, `editMessageReplyMarkup`, `stopPoll`,
    `approveSuggestedPost`, `declineSuggestedPost`, `deleteMessage`,
@@ -188,6 +188,9 @@ issue-карточек в
 - `/copy <from_chat_id> <message_id> [share]` копирует одно сообщение из другого
   чата в текущий admin-чат как новое сообщение без ссылки на исходного
   отправителя;
+- `/copies <from_chat_id> <message_id> [<message_id> ...] [share] [nocaption]`
+  пакетно копирует 1-100 сообщений из другого чата в текущий admin-чат как новые
+  сообщения без ссылки на исходного отправителя, с сохранением album grouping;
 - `/photo <url_or_file_id> [caption]` отправляет изображение в текущий чат как
   настоящее Telegram-фото по URL или `file_id`, а не только как текст;
 - `/clear` очищает историю разговора для пары `(chat_id, user_id)`.
@@ -361,7 +364,8 @@ invoice-сообщения скопировать нельзя, а бот дол
 По умолчанию скопированное сообщение защищается `protect_content=True`, чтобы
 модерируемый контент нельзя было переслать или сохранить дальше; необязательное
 ключевое слово `share` отключает защиту. Метод обрабатывает одиночное
-сообщение; группировка альбома — задача `copyMessages`.
+сообщение; пакетное копирование с сохранением группировки альбома — задача
+`copyMessages`, доступного как `/copies`.
 
 `/copy` относится к message-relay и закрыт строгим admin allowlist:
 
@@ -375,6 +379,49 @@ invoice-сообщения скопировать нельзя, а бот дол
 
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/copy` так же, как к другим командам.
+
+### copyMessages
+
+Команда `/copies` вызывает typed aiogram API `Bot.copy_messages()` для метода
+Telegram `copyMessages`. По официальной документации метод требует `chat_id`,
+`from_chat_id` и `message_ids` (1-100 идентификаторов в строго возрастающем
+порядке) и возвращает массив `MessageId` отправленных сообщений. Как и
+`copyMessage` и в отличие от `forwardMessages`, скопированные сообщения **не
+имеют ссылки на оригинал** (нет заголовка «forwarded from»), поэтому оператор
+может переразместить модерируемый контент, не раскрывая источник. Как и
+`forwardMessages`, метод сохраняет album grouping: сообщения, изначально
+входившие в один альбом, пересоздаются альбомом. Сообщения, которые скопировать
+нельзя (service, giveaway/giveaway-winners и invoice-сообщения), пропускаются,
+поэтому возвращённый список может быть короче запрошенного; бот должен иметь
+доступ к `from_chat_id`, то есть быть участником исходного чата.
+
+Выбран тот же admin-сценарий поддержки/модерации, что и для `/copy`, но для
+переноса сразу нескольких сообщений (например, целого альбома) одним вызовом.
+Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/copies <from_chat_id> <message_id> [<message_id> ...] [share] [nocaption]`.
+
+По умолчанию скопированные сообщения защищаются `protect_content=True`;
+необязательное ключевое слово `share` отключает защиту. В отличие от
+`copyMessage`, у `copyMessages` нет переопределения `caption`, поэтому
+необязательное ключевое слово `nocaption` включает `remove_caption=True` и
+копирует сообщения без их исходных подписей; оба ключевых слова можно
+комбинировать в конце в любом порядке. Команда сообщает, сколько из запрошенных
+сообщений было фактически скопировано, так как часть могла быть пропущена
+Telegram.
+
+`/copies` относится к message-relay и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующих, нечисловых, нарушающих строгий порядок или выходящих за
+  пределы 1-100 идентификаторах команда показывает usage и не обращается к
+  Telegram;
+- ошибки Telegram (например, недоступный чат) возвращаются пользователю, а
+  копирование не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/copies` так же, как к другим командам.
 
 ### sendPhoto
 
@@ -529,9 +576,9 @@ fallback'ится на plain text.
 admin-командам. Для диагностики `/webhook` при пустом списке используется
 fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пустые, диагностика
 недоступна. Для деструктивных `/logout`, `/close`, для message-relay
-`/forward`, `/forwards`, `/copy` и для исходящего медиа `/photo` fallback не
-применяется: команды требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они
-отключены.
+`/forward`, `/forwards`, `/copy`, `/copies` и для исходящего медиа `/photo`
+fallback не применяется: команды требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`,
+иначе они отключены.
 
 ## Безопасность и ограничения доступа
 
@@ -553,6 +600,9 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 - строгий admin allowlist без fallback для `/copy` и `protect_content` по
   умолчанию, чтобы скопированный контент нельзя было переслать или сохранить
   дальше;
+- строгий admin allowlist без fallback для `/copies` и `protect_content` по
+  умолчанию для пакетного копирования без ссылки на источник с сохранением
+  album grouping;
 - строгий admin allowlist без fallback для `/photo`, чтобы только операторы
   могли заставить бота публиковать произвольные изображения как фото;
 - per-user rate limit в sliding window на 60 секунд;
@@ -580,6 +630,10 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 - `/copy` переносит чужой контент между чатами без ссылки на источник, поэтому
   требует явного admin allowlist и по умолчанию защищает скопированное сообщение
   `protect_content`; его нельзя открывать публично;
+- `/copies` переносит пакет чужих сообщений между чатами без ссылки на источник
+  с сохранением album grouping, поэтому требует явного admin allowlist и по
+  умолчанию защищает скопированные сообщения `protect_content`; его нельзя
+  открывать публично;
 - `/photo` заставляет бота публиковать произвольное изображение по URL или
   `file_id`, поэтому требует явного admin allowlist; его нельзя открывать
   публично;
@@ -615,6 +669,11 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 `message_id`, флагом `protect_content` и id новой копии; при ошибке Telegram API
 логируется `copy_message_failed` с типом исключения, `from_chat_id` и
 `message_id`.
+
+`perform_copy_messages()` логирует `messages_copied` с `chat_id`, `from_chat_id`,
+`message_ids`, флагами `protect_content`, `remove_caption` и `copied_count`; при
+ошибке Telegram API логируется `copy_messages_failed` с типом исключения,
+`from_chat_id` и `message_ids`.
 
 `perform_send_photo()` логирует `photo_sent` с `chat_id`, флагами `has_caption`,
 `has_spoiler`, `protect_content` и id отправленного сообщения; при ошибке
@@ -674,6 +733,12 @@ logging. Фактическая детализация логов зависит
   (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
   аргументов, `protect_content` по умолчанию и переключение через `share` для
   `/copy`;
+- вызов typed aiogram `copy_messages()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
+  списка message ids (нечисловые, нарушение строгого порядка, дубли, лимит
+  1-100), `protect_content` по умолчанию, переключение через `share`,
+  `remove_caption` через `nocaption` и отчет о числе фактически скопированных
+  сообщений для `/copies`;
 - вызов typed aiogram `send_photo()`, обработку Telegram API ошибок
   (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
   photo-аргумента и caption с пробелами, validation path для слишком длинного
@@ -689,7 +754,7 @@ module-level `pytestmark`.
 
 ```text
 python -m pytest -v
-89 passed, 2 skipped
+104 passed, 2 skipped
 ```
 
 На более старых рантаймах (например, Python 3.12) дополнительно появляются
@@ -717,7 +782,7 @@ python -m pytest -v
 9. Нет тестов обработчиков команд `/model`, `/settings`, `/clear` с моками
    Telegram message objects.
 10. Нет теста webhook secret validation и `/health`.
-11. Покрытие Telegram Bot API ограничено тринадцатью методами; official Guest
+11. Покрытие Telegram Bot API ограничено четырнадцатью методами; official Guest
     Mode, callback flows, rich outbound media, bot profile/commands management,
     moderation, payments/Stars/gifts, business и managed-bot методы не
     реализованы.

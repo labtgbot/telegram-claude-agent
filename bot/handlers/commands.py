@@ -5,6 +5,7 @@ from aiogram.types import Message
 from bot.config import settings
 from bot.services.close import perform_close
 from bot.services.copy_message import perform_copy_message
+from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
 from bot.services.forward_messages import perform_forward_messages
 from bot.services.log_out import perform_log_out
@@ -80,6 +81,26 @@ COPY_USAGE = (
     "saving. Append <code>share</code> to allow re-forwarding it."
 )
 
+COPIES_SHARE_KEYWORD = "share"
+
+COPIES_NOCAPTION_KEYWORD = "nocaption"
+
+COPIES_MAX_MESSAGE_IDS = 100
+
+COPIES_USAGE = (
+    "<b>copies usage</b>\n"
+    "Copies several messages from another chat into this chat as new messages "
+    "without a link to the original sender, preserving album grouping, for "
+    "support/moderation review. The bot must be a member of the source chat; "
+    "service, giveaway and invoice messages cannot be copied and are skipped.\n"
+    "Usage: <code>/copies &lt;from_chat_id&gt; &lt;message_id&gt; "
+    "[&lt;message_id&gt; ...] [share] [nocaption]</code>\n"
+    "Provide 1-100 message ids in strictly increasing order. By default the "
+    "copied messages are protected from further forwarding and saving. Append "
+    "<code>share</code> to allow re-forwarding them and <code>nocaption</code> "
+    "to drop their original captions."
+)
+
 PHOTO_CAPTION_LIMIT = 1024
 
 PHOTO_USAGE = (
@@ -115,6 +136,7 @@ async def cmd_help(message: Message):
         "/forward - Forward a message into this chat for review (admin only)\n"
         "/forwards - Forward several messages into this chat for review (admin only)\n"
         "/copy - Copy a message into this chat without source link (admin only)\n"
+        "/copies - Copy several messages into this chat without source link (admin only)\n"
         "/photo - Send an image into this chat as a photo (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
@@ -322,6 +344,41 @@ async def cmd_copy(message: Message):
         f"({protection} copy)."
     )
 
+@router.message(Command("copies"))
+async def cmd_copies(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    args = (message.text or "").split()
+    parsed = _parse_copy_messages_args(args[1:])
+    if parsed is None:
+        await message.answer(COPIES_USAGE, parse_mode="HTML")
+        return
+
+    from_chat_id, message_ids, protect_content, remove_caption = parsed
+
+    try:
+        result = await perform_copy_messages(
+            message.bot,
+            chat_id=message.chat.id,
+            from_chat_id=from_chat_id,
+            message_ids=message_ids,
+            protect_content=protect_content,
+            remove_caption=remove_caption,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not copy the messages: {exc}")
+        return
+
+    copied_count = len(result) if hasattr(result, "__len__") else len(message_ids)
+    protection = "protected" if protect_content else "shareable"
+    captions = "without captions" if remove_caption else "with captions"
+    await message.answer(
+        f"Copied {copied_count} of {len(message_ids)} messages from chat "
+        f"{from_chat_id} ({protection} copy, {captions})."
+    )
+
 @router.message(Command("photo"))
 async def cmd_photo(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -456,6 +513,48 @@ def _parse_copy_args(args: list[str]):
         protect_content = False
 
     return from_chat_id, message_id, protect_content
+
+
+def _parse_copy_messages_args(args: list[str]):
+    """Parse ``/copies`` args into ``(from_chat_id, ids, protect, remove_caption)``.
+
+    Returns ``None`` when the arguments are missing or invalid so the caller can
+    show usage. ``protect`` defaults to ``True`` and is disabled by the optional
+    trailing ``share`` keyword; ``remove_caption`` defaults to ``False`` and is
+    enabled by the optional trailing ``nocaption`` keyword. Both keywords may
+    appear together at the end in any order. Telegram requires 1-100 message ids
+    specified in a strictly increasing order, so both bounds are validated here
+    before the call instead of relying on a Telegram error.
+    """
+    protect_content = True
+    remove_caption = False
+    while args and args[-1].strip().lower() in (
+        COPIES_SHARE_KEYWORD,
+        COPIES_NOCAPTION_KEYWORD,
+    ):
+        keyword = args[-1].strip().lower()
+        if keyword == COPIES_SHARE_KEYWORD:
+            protect_content = False
+        else:
+            remove_caption = True
+        args = args[:-1]
+
+    if len(args) < 2:
+        return None
+
+    try:
+        from_chat_id = int(args[0])
+        message_ids = [int(x) for x in args[1:]]
+    except ValueError:
+        return None
+
+    if not 1 <= len(message_ids) <= COPIES_MAX_MESSAGE_IDS:
+        return None
+
+    if any(later <= earlier for earlier, later in zip(message_ids, message_ids[1:])):
+        return None
+
+    return from_chat_id, message_ids, protect_content, remove_caption
 
 
 def _parse_photo_args(text: str):
