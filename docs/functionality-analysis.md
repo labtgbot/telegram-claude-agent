@@ -55,8 +55,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 [telegram-bot-api-implementation-guide.md](telegram-bot-api-implementation-guide.md):
 в нем 169 карточек методов с labels, stages, scope и acceptance criteria;
 после внедрения `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
-`copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio` и
-`sendLivePhoto` остается 159 пока не интегрированный метод.
+`copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
+`sendLivePhoto` и `sendDocument` остается 158 пока не интегрированный метод.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -78,6 +78,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendPhoto` | `bot/services/send_photo.py`, `/photo` в `bot/handlers/commands.py` | Admin-flow отправки изображения в текущий чат как настоящего Telegram-фото по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendAudio` | `bot/services/send_audio.py`, `/audio` в `bot/handlers/commands.py` | Admin-flow отправки аудиофайла в текущий чат как проигрываемого музыкального трека по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendLivePhoto` | `bot/services/send_live_photo.py`, `/livephoto` в `bot/handlers/commands.py` | Admin-flow отправки live photo (короткое видео + статичная обложка) в текущий чат по `file_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0. |
+| `sendDocument` | `bot/services/send_document.py`, `/document` в `bot/handlers/commands.py` | Admin-flow отправки файла в текущий чат как Telegram-документа по URL или `file_id` — для больших текстовых, PDF или исходных артефактов, когда текстовый ответ не подходит. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -117,7 +118,7 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `getChatMenuButton`, `setMyDefaultAdministratorRights`,
    `getMyDefaultAdministratorRights`.
 3. Более богатые ответы пользователю: `sendChatAction`,
-   `sendDocument`, `sendVoice`, `sendVideo`, `sendAnimation`,
+   `sendVoice`, `sendVideo`, `sendAnimation`,
    `sendVideoNote`, `sendMediaGroup`, `sendPaidMedia`,
    `sendLocation`, `sendVenue`, `sendContact`, `sendPoll`, `sendChecklist`,
    `sendDice`, `sendMessageDraft`, `setMessageReaction`.
@@ -200,6 +201,9 @@ issue-карточек в
 - `/livephoto <live_photo_file_id> <photo_file_id> [caption]` отправляет live
   photo (короткое видео + статичная обложка) в текущий чат по `file_id`, а не
   только как текст;
+- `/document <url_or_file_id> [caption]` отправляет файл в текущий чат как
+  Telegram-документ по URL или `file_id` — для больших текстовых, PDF или
+  исходных артефактов, когда текстовый ответ не подходит;
 - `/clear` очищает историю разговора для пары `(chat_id, user_id)`.
 
 Важная деталь: выбранная через `/model <model_id>` модель сохраняется в
@@ -541,6 +545,43 @@ Caption необязателен, может содержать пробелы �
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/livephoto` так же, как к другим командам.
 
+### sendDocument
+
+Команда `/document` вызывает typed aiogram API `Bot.send_document()` для метода
+Telegram `sendDocument`. По официальной документации метод требует `chat_id` и
+`document` и возвращает отправленное `Message`. `document` может быть HTTP(S)-URL,
+который Telegram скачивает сам, `file_id` уже существующего на серверах Telegram
+файла или загружаемым файлом; helper принимает строковую форму URL/`file_id`.
+Telegram ограничивает файл, отправляемый по URL, 20 MB, а `caption` — 1024
+символами после парсинга entities. Опциональные `disable_content_type_detection`
+отключает серверное автоопределение типа контента, а `thumbnail` задает кастомную
+обложку-превью.
+
+Выбран admin-сценарий исходящего медиа: оператор возвращает большой текстовый,
+PDF или исходный артефакт как настоящий документ, когда текстовый ответ не
+подходит, а не только текстовую интерпретацию. Целевой чат всегда тот, где
+вызвана команда. Синтаксис: `/document <url_or_file_id> [caption]`.
+
+Caption необязателен, может содержать пробелы и проверяется на лимит 1024
+символа до обращения к Telegram, чтобы validation path не зависел от ошибки
+Telegram. Метод обрабатывает одиночный файл общего назначения; голосовое
+сообщение — задача `sendVoice`, аудиотрек — `sendAudio`, а отправка альбома —
+`sendMediaGroup`.
+
+`/document` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующем document-аргументе команда показывает usage, а при слишком
+  длинном caption — сообщение о превышении лимита, и в обоих случаях не
+  обращается к Telegram;
+- ошибки Telegram (например, недоступный URL или неверный `file_id`)
+  возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/document` так же, как к другим командам.
+
 ### Текстовые сообщения
 
 Личные чаты используют историю сообщений пользователя в конкретном чате.
@@ -661,8 +702,8 @@ admin-командам. Для диагностики `/webhook` при пуст
 fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пустые, диагностика
 недоступна. Для деструктивных `/logout`, `/close`, для message-relay
 `/forward`, `/forwards`, `/copy`, `/copies` и для исходящего медиа `/photo`,
-`/audio` и `/livephoto` fallback не применяется: команды требуют непустой
-`TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
+`/audio`, `/livephoto` и `/document` fallback не применяется: команды требуют
+непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
 
 ## Безопасность и ограничения доступа
 
@@ -694,6 +735,8 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
   треки;
 - строгий admin allowlist без fallback для `/livephoto`, чтобы только операторы
   могли заставить бота публиковать произвольные live photo как видео с обложкой;
+- строгий admin allowlist без fallback для `/document`, чтобы только операторы
+  могли заставить бота публиковать произвольные файлы как документы;
 - per-user rate limit в sliding window на 60 секунд;
 - guest mode для групп;
 - экранирование HTML в LLM-ответах перед Telegram HTML.
@@ -730,6 +773,8 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
   `file_id`, поэтому требует явного admin allowlist; его нельзя открывать
   публично;
 - `/livephoto` заставляет бота публиковать произвольное live photo по `file_id`,
+  поэтому требует явного admin allowlist; его нельзя открывать публично;
+- `/document` заставляет бота публиковать произвольный файл по URL или `file_id`,
   поэтому требует явного admin allowlist; его нельзя открывать публично;
 - нет persistent audit log, admin panel или метрик;
 - нет отдельной проверки размера входных файлов перед скачиванием и обработкой.
@@ -784,6 +829,12 @@ Telegram API логируется `send_photo_failed` с типом исключ
 при ошибке транспорта или ответе Telegram с `ok: false` логируется
 `send_live_photo_failed` с типом исключения либо `error_code`/описанием и
 `chat_id`. `file_id` live photo и обложки в логи не попадают.
+
+`perform_send_document()` логирует `document_sent` с `chat_id`, флагами
+`has_caption`, `has_thumbnail`, `disable_content_type_detection`,
+`protect_content` и id отправленного сообщения; при ошибке Telegram API
+логируется `send_document_failed` с типом исключения и `chat_id`. URL или
+`file_id` документа в логи не попадают.
 
 `LOG_LEVEL` присутствует в настройках, но сейчас не применяется к конфигурации
 logging. Фактическая детализация логов зависит от дефолтного окружения.
@@ -857,6 +908,10 @@ logging. Фактическая детализация логов зависит
   allowlist, парсинг двух `file_id`-аргументов и caption с пробелами, validation
   path для слишком длинного caption и отправку с caption и без него для
   `/livephoto`;
+- вызов typed aiogram `send_document()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
+  document-аргумента и caption с пробелами, validation path для слишком длинного
+  caption и отправку с caption и без него для `/document`;
 - извлечение текста из plain text и поведение на неизвестном MIME;
 - rate limit middleware;
 - Markdown/HTML форматирование, удаление mention и разбивку Telegram сообщений.
@@ -868,7 +923,7 @@ module-level `pytestmark`.
 
 ```text
 python -m pytest -v
-124 passed, 2 skipped
+133 passed, 2 skipped
 ```
 
 На более старых рантаймах (например, Python 3.12) дополнительно появляются

@@ -147,6 +147,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/photo` – Send an image into this chat as a real Telegram photo via a URL or file_id (admin only).
 - `/audio` – Send an audio file into this chat as a playable music track via a URL or file_id (admin only).
 - `/livephoto` – Send a live photo (a short video paired with its static cover) into this chat via file_ids (admin only).
+- `/document` – Send a file into this chat as a document via a URL or file_id (admin only).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics
@@ -418,6 +419,31 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Send a file as a document
+
+The restricted `/document` command calls Telegram Bot API `sendDocument`
+through aiogram's typed `Bot.send_document()` wrapper. It lets an operator
+return large text, PDF or source artifacts as a **downloadable document** when
+a plain message does not fit instead of only a textual interpretation.
+
+Usage: `/document <url_or_file_id> [caption]`
+
+- the document is always sent into the chat where the command was issued;
+- the document reference is either an HTTP(S) URL that Telegram fetches itself
+  or a `file_id` of a file that already exists on Telegram servers;
+- the caption is optional, may contain spaces, and is limited to 1024
+  characters (the command validates this bound before calling Telegram);
+- Telegram limits a file sent by URL to 20 MB; an invalid reference returns a
+  Telegram error that the command reports back instead of sending.
+
+Because the command makes the bot post content, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Group privacy mode
 
 When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
@@ -465,7 +491,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -479,7 +505,8 @@ telegram-claude-agent/
 │   │   ├── copy_messages.py    # Telegram copyMessages batch relay helper
 │   │   ├── send_photo.py       # Telegram sendPhoto outbound helper
 │   │   ├── send_audio.py       # Telegram sendAudio outbound helper
-│   │   └── send_live_photo.py  # Telegram sendLivePhoto raw Bot API helper
+│   │   ├── send_live_photo.py  # Telegram sendLivePhoto raw Bot API helper
+│   │   └── send_document.py    # Telegram sendDocument outbound helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
 │       └── media.py            # Transcription, document extraction
@@ -520,6 +547,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/photo` command makes the bot post an arbitrary image into the chat as a photo, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/audio` command makes the bot post an arbitrary audio file into the chat as a music track, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/livephoto` command makes the bot post an arbitrary live photo (video + cover) into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
+- The `/document` command makes the bot post an arbitrary file into the chat as a document, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work
