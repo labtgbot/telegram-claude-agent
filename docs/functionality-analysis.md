@@ -55,6 +55,9 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 [telegram-bot-api-implementation-guide.md](telegram-bot-api-implementation-guide.md):
 в нем 169 карточек для пока не интегрированных методов с labels, stages,
 scope и acceptance criteria.
+Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
+соответствия `BOTAPI-###` -> issue описан в
+[telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
 
 ### Уже используемые методы Bot API
 

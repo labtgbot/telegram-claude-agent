@@ -169,6 +169,8 @@ current feature inventory, architecture notes, test coverage, known gaps, and
 recommended next steps, including Telegram Bot API method coverage.
 For the per-method issue-style implementation backlog, see
 [docs/telegram-bot-api-implementation-guide.md](docs/telegram-bot-api-implementation-guide.md).
+The generated GitHub issue index is available in
+[docs/telegram-bot-api-issue-index.md](docs/telegram-bot-api-issue-index.md).
 
 ## Project Structure
 
@@ -227,6 +229,8 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - Most Telegram Bot API methods are not yet implemented; see the functionality analysis for the current method matrix.
 - The Telegram Bot API implementation guide breaks the missing methods into
   per-method issue drafts with labels, stages, scope, and acceptance criteria.
+- The Telegram Bot API issue index links those method drafts to the actual
+  GitHub issues created in this repository.
 - Official Telegram Guest Mode (`guest_message`/`answerGuestQuery`) is not yet implemented.
 - Bot-to-Bot communication is not supported.
 - The transcription service requires the optional `openai-whisper` package and may be slow for longer audio; consider using a faster service like NVIDIA NIM.
