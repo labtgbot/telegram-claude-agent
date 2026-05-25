@@ -146,6 +146,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/copies` – Copy several messages from another chat into this chat without a link to the original sender, preserving album grouping (admin only).
 - `/photo` – Send an image into this chat as a real Telegram photo via a URL or file_id (admin only).
 - `/audio` – Send an audio file into this chat as a playable music track via a URL or file_id (admin only).
+- `/livephoto` – Send a live photo (a short video paired with its static cover) into this chat via file_ids (admin only).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics
@@ -387,6 +388,36 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Send a live photo
+
+The restricted `/livephoto` command calls Telegram Bot API `sendLivePhoto`
+(introduced in Bot API 10.0). Because the pinned `aiogram==3.3.0` predates this
+method and ships no typed wrapper, the command goes through an **isolated raw
+Bot API helper** (`bot/services/send_live_photo.py`) that POSTs the request
+over `httpx` instead of using a typed aiogram method. It lets an operator post
+a **live photo** — a short looping video paired with its static cover photo —
+into the chat instead of only a textual interpretation.
+
+Usage: `/livephoto <live_photo_file_id> <photo_file_id> [caption]`
+
+- the live photo is always sent into the chat where the command was issued;
+- Telegram does **not** support sending live photos by URL, so both references
+  must be `file_id` values of media that already exist on Telegram servers
+  (`live_photo` is the video, `photo` is its static cover);
+- the `live_photo` video must be at most 10 seconds long and 10 MB;
+- the caption is optional, may contain spaces, and is limited to 1024
+  characters (the command validates this bound before calling Telegram);
+- an invalid reference or unsupported file returns a Telegram error that the
+  command reports back instead of sending.
+
+Because the command makes the bot post content, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Group privacy mode
 
 When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
@@ -434,7 +465,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -447,7 +478,8 @@ telegram-claude-agent/
 │   │   ├── copy_message.py     # Telegram copyMessage relay helper
 │   │   ├── copy_messages.py    # Telegram copyMessages batch relay helper
 │   │   ├── send_photo.py       # Telegram sendPhoto outbound helper
-│   │   └── send_audio.py       # Telegram sendAudio outbound helper
+│   │   ├── send_audio.py       # Telegram sendAudio outbound helper
+│   │   └── send_live_photo.py  # Telegram sendLivePhoto raw Bot API helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
 │       └── media.py            # Transcription, document extraction
@@ -487,6 +519,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/copies` command relays a batch of messages from another chat into the admin chat without a link to the original sender (preserving album grouping), so it requires `TELEGRAM_ADMIN_CHAT_IDS` and protects the copied messages from re-forwarding by default.
 - The `/photo` command makes the bot post an arbitrary image into the chat as a photo, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/audio` command makes the bot post an arbitrary audio file into the chat as a music track, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
+- The `/livephoto` command makes the bot post an arbitrary live photo (video + cover) into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work

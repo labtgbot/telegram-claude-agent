@@ -10,6 +10,7 @@ from bot.services.forward_message import perform_forward_message
 from bot.services.forward_messages import perform_forward_messages
 from bot.services.log_out import perform_log_out
 from bot.services.send_audio import perform_send_audio
+from bot.services.send_live_photo import SendLivePhotoError, perform_send_live_photo
 from bot.services.send_photo import perform_send_photo
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
 from bot.utils.storage import storage
@@ -128,6 +129,20 @@ AUDIO_USAGE = (
     "to 20 MB."
 )
 
+LIVE_PHOTO_CAPTION_LIMIT = 1024
+
+LIVE_PHOTO_USAGE = (
+    "<b>livephoto usage</b>\n"
+    "Sends a live photo into this chat: a short looping video paired with its "
+    "static cover photo, instead of plain text. Telegram does not support "
+    "sending live photos by URL, so pass file_id values of media already on "
+    "Telegram servers.\n"
+    "Usage: <code>/livephoto &lt;live_photo_file_id&gt; &lt;photo_file_id&gt; "
+    "[caption]</code>\n"
+    "The live_photo video must be at most 10 seconds long and 10 MB. The "
+    "caption is optional and limited to 1024 characters."
+)
+
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
@@ -153,6 +168,7 @@ async def cmd_help(message: Message):
         "/copies - Copy several messages into this chat without source link (admin only)\n"
         "/photo - Send an image into this chat as a photo (admin only)\n"
         "/audio - Send an audio file into this chat as a music track (admin only)\n"
+        "/livephoto - Send a live photo (video + cover) into this chat (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -462,6 +478,41 @@ async def cmd_audio(message: Message):
         "Sent audio with caption." if caption else "Sent audio."
     )
 
+@router.message(Command("livephoto"))
+async def cmd_live_photo(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_live_photo_args(message.text or "")
+    if parsed is None:
+        await message.answer(LIVE_PHOTO_USAGE, parse_mode="HTML")
+        return
+
+    live_photo, photo, caption = parsed
+    if caption is not None and len(caption) > LIVE_PHOTO_CAPTION_LIMIT:
+        await message.answer(
+            f"Caption is too long: {len(caption)} characters "
+            f"(max {LIVE_PHOTO_CAPTION_LIMIT})."
+        )
+        return
+
+    try:
+        await perform_send_live_photo(
+            message.bot,
+            chat_id=message.chat.id,
+            live_photo=live_photo,
+            photo=photo,
+            caption=caption,
+        )
+    except SendLivePhotoError as exc:
+        await message.answer(f"Could not send the live photo: {exc}")
+        return
+
+    await message.answer(
+        "Sent live photo with caption." if caption else "Sent live photo."
+    )
+
 @router.message(Command("clear"))
 async def cmd_clear(message: Message):
     storage.clear_history(message.chat.id, message.from_user.id)
@@ -652,3 +703,30 @@ def _parse_audio_args(text: str):
         caption = None
 
     return audio, caption
+
+
+def _parse_live_photo_args(text: str):
+    """Parse ``/livephoto`` arguments into ``(live_photo, photo, caption)``.
+
+    Splits the raw command text into the command, the ``live_photo`` video
+    reference (a ``file_id``), the static ``photo`` reference (a ``file_id``) and
+    an optional free-text caption that may itself contain spaces. Returns
+    ``None`` when either media reference is missing so the caller can show usage.
+    Telegram does not support sending live photos by URL, so both references are
+    expected to be ``file_id`` values. The caller validates the caption length
+    against Telegram's 1024-character limit.
+    """
+    parts = (text or "").split(maxsplit=3)
+    if len(parts) < 3:
+        return None
+
+    live_photo = parts[1].strip()
+    photo = parts[2].strip()
+    if not live_photo or not photo:
+        return None
+
+    caption = parts[3].strip() if len(parts) >= 4 else None
+    if caption == "":
+        caption = None
+
+    return live_photo, photo, caption
