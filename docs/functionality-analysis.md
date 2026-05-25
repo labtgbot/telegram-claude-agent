@@ -42,6 +42,104 @@ Endpoint `POST /webhook` принимает update JSON, валидирует е
 Endpoint `GET /health` возвращает `{"status": "ok"}` и может использоваться
 для простой проверки доступности процесса.
 
+## Покрытие Telegram Bot API
+
+Покрытие сверено с официальной документацией Telegram Bot API на 2026-05-25:
+https://core.telegram.org/bots/api. На этот момент актуальная документация уже
+описывает Bot API 10.0 от 2026-05-08, а проект закрепляет `aiogram==3.3.0`, так
+что новые методы и типы Bot API 9.x/10.x не следует считать автоматически
+поддержанными только из-за использования aiogram.
+
+### Уже используемые методы Bot API
+
+| Метод | Где используется | Фактическое назначение |
+| --- | --- | --- |
+| `getMe` | `bot/main.py`, `bot/handlers/chat.py` | Кеширование данных бота при startup и получение username для определения mention/reply в группах. |
+| `getUpdates` | `dp.start_polling()` в `bot/main.py` | Непрямое использование через aiogram long polling, когда `TELEGRAM_WEBHOOK_URL` не задан. |
+| `setWebhook` | `bot/main.py` | Регистрация webhook URL и optional `secret_token` при наличии `TELEGRAM_WEBHOOK_URL`. |
+| `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
+| `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
+| `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
+| `answerInlineQuery` | `bot/handlers/inline.py` | Минимальный inline mode: возвращается один статический `InlineQueryResultArticle`. |
+
+`message.bot.download_file()` скачивает файл по `file_path`, полученному через
+`getFile`; это важная часть file flow, но не отдельный метод Bot API из списка
+документации.
+
+### Уже обрабатываемые update-типы и объекты
+
+- `message`: частично обрабатываются text, photo, voice, document, caption и
+  reply metadata;
+- `inline_query`: обрабатывается минимально, без запроса к Claude proxy;
+- `callback_query`: распознается только middleware для логирования и rate
+  limiting, но отдельного handler нет.
+
+Текущий `TELEGRAM_GUEST_MODE_ENABLED` не является официальным Telegram Bot API
+Guest Mode из Bot API 10.0. В коде это локальная политика для групп: если бот
+уже находится в группе и к нему обратились mention/reply, история группы не
+прикладывается к запросу в proxy. Официальные `guest_message`,
+`Message.guest_query_id` и `answerGuestQuery` сейчас не интегрированы.
+
+### Что не интегрировано для максимальных возможностей
+
+Почти все остальные методы Bot API пока не используются. Для максимального
+покрытия их лучше добавлять не одним большим слоем, а по функциональным
+направлениям:
+
+1. Lifecycle и диагностика: `deleteWebhook`, `getWebhookInfo`, `logOut`,
+   `close`, явная настройка `allowed_updates`, диагностика конфликтов между
+   webhook и long polling.
+2. Профиль и команды бота: `setMyCommands`, `deleteMyCommands`,
+   `getMyCommands`, `setMyName`, `getMyName`, `setMyDescription`,
+   `getMyDescription`, `setMyShortDescription`, `getMyShortDescription`,
+   `setMyProfilePhoto`, `removeMyProfilePhoto`, `setChatMenuButton`,
+   `getChatMenuButton`, `setMyDefaultAdministratorRights`,
+   `getMyDefaultAdministratorRights`.
+3. Более богатые ответы пользователю: `sendChatAction`, `sendPhoto`,
+   `sendDocument`, `sendAudio`, `sendVoice`, `sendVideo`, `sendAnimation`,
+   `sendVideoNote`, `sendMediaGroup`, `sendLivePhoto`, `sendPaidMedia`,
+   `sendLocation`, `sendVenue`, `sendContact`, `sendPoll`, `sendChecklist`,
+   `sendDice`, `sendMessageDraft`, `setMessageReaction`.
+4. Управление сообщениями: `forwardMessage`, `forwardMessages`, `copyMessage`,
+   `copyMessages`, `editMessageCaption`, `editMessageMedia`,
+   `editMessageLiveLocation`, `stopMessageLiveLocation`,
+   `editMessageChecklist`, `editMessageReplyMarkup`, `stopPoll`,
+   `approveSuggestedPost`, `declineSuggestedPost`, `deleteMessage`,
+   `deleteMessages`, `deleteMessageReaction`, `deleteAllMessageReactions`.
+5. Интерактивность: полноценные `answerInlineQuery` ответы через Claude,
+   handler для `chosen_inline_result`, `answerCallbackQuery` и inline keyboards
+   для настроек/выбора модели, `answerGuestQuery` для официального Guest Mode,
+   `answerWebAppQuery`, `savePreparedInlineMessage`,
+   `savePreparedKeyboardButton`.
+6. Группы, модерация и форумы: `getChat`, `getChatAdministrators`,
+   `getChatMemberCount`, `getChatMember`, `banChatMember`,
+   `unbanChatMember`, `restrictChatMember`, `promoteChatMember`,
+   `setChatAdministratorCustomTitle`, `setChatMemberTag`,
+   `setChatPermissions`, invite-link методы, join-request методы,
+   `pinChatMessage`, `unpinChatMessage`, `unpinAllChatMessages`,
+   forum-topic методы и `leaveChat`.
+7. Пользовательский контекст Telegram: `getUserProfilePhotos`,
+   `getUserProfileAudios`, `getUserChatBoosts`,
+   `getUserPersonalChatMessages`, `setUserEmojiStatus`.
+8. Бизнес, managed bots и bot-to-bot: `getBusinessConnection`,
+   `readBusinessMessage`, `deleteBusinessMessages`, методы
+   `setBusinessAccount*`, `getManagedBotToken`, `replaceManagedBotToken`,
+   `getManagedBotAccessSettings`, `setManagedBotAccessSettings`.
+9. Gifts, Stars и платежи: `getAvailableGifts`, `sendGift`,
+   `giftPremiumSubscription`, `getMyStarBalance`, `getStarTransactions`,
+   `refundStarPayment`, `editUserStarSubscription`, `sendInvoice`,
+   `createInvoiceLink`, `answerShippingQuery`, `answerPreCheckoutQuery`.
+10. Нишевые платформенные возможности: stories (`postStory`, `repostStory`,
+    `editStory`, `deleteStory`), stickers/custom emoji, Telegram Passport
+    (`setPassportDataErrors`) и Games (`sendGame`, `setGameScore`,
+    `getGameHighScores`).
+
+Для этого проекта наиболее полезный следующий слой Telegram API выглядит так:
+сначала lifecycle/diagnostics, `sendChatAction`, реальные inline/callback
+flows, official Guest Mode и rich outbound media; затем group administration,
+payments/Stars/gifts, business/managed-bot возможности и остальные
+domain-specific методы.
+
 ## Пользовательские сценарии
 
 ### Команды
@@ -81,7 +179,9 @@ Endpoint `GET /health` возвращает `{"status": "ok"}` и может и�
 
 При включенном `TELEGRAM_GUEST_MODE_ENABLED` история в группах не используется:
 в proxy отправляется только текущий запрос. Это снижает риск утечки контекста
-между участниками группы.
+между участниками группы. Это не поддержка официального Telegram Guest Mode,
+где бот может отвечать через `answerGuestQuery` на `guest_message`, не являясь
+полноценным участником чата.
 
 ### Изображения
 
@@ -267,6 +367,10 @@ python -m pytest -v
 9. Нет тестов обработчиков команд `/model`, `/settings`, `/clear` с моками
    Telegram message objects.
 10. Нет теста webhook secret validation и `/health`.
+11. Покрытие Telegram Bot API ограничено семью методами; official Guest Mode,
+    callback flows, rich outbound media, bot profile/commands management,
+    moderation, payments/Stars/gifts, business и managed-bot методы не
+    реализованы.
 
 ## Рекомендуемый порядок дальнейших работ
 
@@ -283,3 +387,6 @@ python -m pytest -v
    если proxy поддерживает long-lived SSE responses.
 8. Добавить ограничения и диагностику для входных файлов и optional voice
    dependencies.
+9. Добавить следующий слой Telegram API: `deleteWebhook`, `getWebhookInfo`,
+   `sendChatAction`, `setMyCommands`, `answerCallbackQuery`, полноценный
+   `answerInlineQuery`, `answerGuestQuery` и rich outbound media методы.

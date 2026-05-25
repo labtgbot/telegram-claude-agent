@@ -8,7 +8,7 @@ A professional Telegram bot agent that integrates with [free-claude-code](https:
 
 - Connect to a locally or remotely deployed free-claude-code instance
 - Support for streaming responses with real-time updates
-- Guest Mode for temporary interactions in group chats without adding the bot
+- Group privacy mode for mention/reply interactions without shared history
 - Handle media: images, documents (PDF, TXT, DOCX), voice messages (with Whisper transcription)
 - Core commands: /start, /help, /model, /settings, /clear
 - Built-in rate limiting and security (webhook secret token)
@@ -18,7 +18,7 @@ A professional Telegram bot agent that integrates with [free-claude-code](https:
 
 ## Tech Stack
 
-- **Bot framework**: aiogram 3.x (asynchronous, supports Telegram Bot API 10.0)
+- **Bot framework**: aiogram 3.3.0 (asynchronous Telegram Bot API framework)
 - **HTTP client**: httpx with streaming support
 - **Server**: FastAPI + uvicorn
 - **Config**: pydantic-settings
@@ -137,9 +137,9 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/settings` – Display your current settings.
 - `/clear` – Clear your conversation history.
 
-### Guest Mode
+### Group privacy mode
 
-When the bot is mentioned in a group chat (e.g., `@YourBot hello`), it automatically activates Guest Mode. In this mode:
+When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
 - The bot only sees the message where it was mentioned.
 - No prior conversation history is used.
 - The bot responds only to that message, ensuring privacy.
@@ -166,7 +166,7 @@ Integration tests (requires running bot and proxy) are in `tests/integration`.
 
 See [docs/functionality-analysis.md](docs/functionality-analysis.md) for the
 current feature inventory, architecture notes, test coverage, known gaps, and
-recommended next steps.
+recommended next steps, including Telegram Bot API method coverage.
 
 ## Project Structure
 
@@ -222,7 +222,8 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - Storage is in-memory; restarting the bot clears conversation history. For persistence, consider Redis or a database.
 - Inline query results are minimal; can be expanded.
 - No built-in admin panel or metrics.
-- Advanced Telegram Bot API 10.0 features (Polls 2.0, Message Effects, Custom AI Styles, Scheduled Messages) are not yet implemented.
+- Most Telegram Bot API methods are not yet implemented; see the functionality analysis for the current method matrix.
+- Official Telegram Guest Mode (`guest_message`/`answerGuestQuery`) is not yet implemented.
 - Bot-to-Bot communication is not supported.
 - The transcription service requires the optional `openai-whisper` package and may be slow for longer audio; consider using a faster service like NVIDIA NIM.
 
