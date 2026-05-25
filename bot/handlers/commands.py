@@ -23,6 +23,7 @@ from bot.services.send_location import perform_send_location
 from bot.services.send_media_group import perform_send_media_group
 from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
 from bot.services.send_photo import perform_send_photo
+from bot.services.send_venue import perform_send_venue
 from bot.services.send_video import perform_send_video
 from bot.services.send_video_note import perform_send_video_note
 from bot.services.send_voice import perform_send_voice
@@ -253,6 +254,20 @@ LOCATION_USAGE = (
     "Locations have no caption, so any extra text is ignored."
 )
 
+VENUE_TITLE_ADDRESS_SEPARATOR = "|"
+
+VENUE_USAGE = (
+    "<b>venue usage</b>\n"
+    "Sends information about a venue into this chat as a real Telegram venue "
+    "(a named place with a title and an address pinned on the map) instead of "
+    "plain text. Pass the latitude and longitude in decimal degrees, then the "
+    "title and the address separated by a vertical bar.\n"
+    "Usage: <code>/venue &lt;latitude&gt; &lt;longitude&gt; &lt;title&gt; "
+    "| &lt;address&gt;</code>\n"
+    "Latitude must be between -90 and 90 and longitude between -180 and 180. "
+    "Both the title and the address are required and must be non-empty."
+)
+
 MEDIA_GROUP_CAPTION_LIMIT = 1024
 
 MEDIA_GROUP_MIN_ITEMS = 2
@@ -314,6 +329,7 @@ async def cmd_help(message: Message):
         "/voice - Send a voice message into this chat as a playable audio clip (admin only)\n"
         "/paidmedia - Send a paid photo into this chat priced in Telegram Stars (admin only)\n"
         "/location - Send a point on the map into this chat as a location (admin only)\n"
+        "/venue - Send a venue (named place with title and address) into this chat (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
@@ -899,6 +915,47 @@ async def cmd_location(message: Message):
 
     await message.answer("Sent location.")
 
+@router.message(Command("venue"))
+async def cmd_venue(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_venue_args(message.text or "")
+    if parsed is None:
+        await message.answer(VENUE_USAGE, parse_mode="HTML")
+        return
+
+    latitude, longitude, title, address = parsed
+    if not LOCATION_MIN_LATITUDE <= latitude <= LOCATION_MAX_LATITUDE:
+        await message.answer(
+            f"Latitude must be between {LOCATION_MIN_LATITUDE} and "
+            f"{LOCATION_MAX_LATITUDE}."
+        )
+        return
+
+    if not LOCATION_MIN_LONGITUDE <= longitude <= LOCATION_MAX_LONGITUDE:
+        await message.answer(
+            f"Longitude must be between {LOCATION_MIN_LONGITUDE} and "
+            f"{LOCATION_MAX_LONGITUDE}."
+        )
+        return
+
+    try:
+        await perform_send_venue(
+            message.bot,
+            chat_id=message.chat.id,
+            latitude=latitude,
+            longitude=longitude,
+            title=title,
+            address=address,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not send the venue: {exc}")
+        return
+
+    await message.answer("Sent venue.")
+
 @router.message(Command("mediagroup"))
 async def cmd_media_group(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -1336,6 +1393,41 @@ def _parse_location_args(text: str):
         return None
 
     return latitude, longitude
+
+
+def _parse_venue_args(text: str):
+    """Parse ``/venue`` args into ``(latitude, longitude, title, address)``.
+
+    Splits the raw command text into the command, the ``latitude`` and the
+    ``longitude`` given in decimal degrees, followed by the venue ``title`` and
+    ``address``. Both the title and the address may contain spaces, so they are
+    taken from the remainder of the message and separated by a vertical bar
+    (``|``). Returns ``None`` when a coordinate is missing or not a number, when
+    the separator is absent, or when either the title or the address is empty so
+    the caller can show usage. The caller validates the latitude/longitude
+    ranges against Telegram's accepted bounds.
+    """
+    parts = (text or "").split(maxsplit=3)
+    if len(parts) < 4:
+        return None
+
+    try:
+        latitude = float(parts[1])
+        longitude = float(parts[2])
+    except ValueError:
+        return None
+
+    remainder = parts[3]
+    if VENUE_TITLE_ADDRESS_SEPARATOR not in remainder:
+        return None
+
+    title, _, address = remainder.partition(VENUE_TITLE_ADDRESS_SEPARATOR)
+    title = title.strip()
+    address = address.strip()
+    if not title or not address:
+        return None
+
+    return latitude, longitude, title, address
 
 
 def _parse_media_group_args(text: str):
