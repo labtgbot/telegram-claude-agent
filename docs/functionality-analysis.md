@@ -54,7 +54,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 описан в
 [telegram-bot-api-implementation-guide.md](telegram-bot-api-implementation-guide.md):
 в нем 169 карточек методов с labels, stages, scope и acceptance criteria;
-после внедрения `getWebhookInfo` и `logOut` остается 167 пока не
+после внедрения `getWebhookInfo`, `logOut` и `close` остается 166 пока не
 интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
@@ -69,6 +69,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `setWebhook` | `bot/main.py` | Регистрация webhook URL и optional `secret_token` при наличии `TELEGRAM_WEBHOOK_URL`. |
 | `getWebhookInfo` | `bot/services/webhook_info.py`, `/webhook` в `bot/handlers/commands.py` | Админская диагностика статуса webhook, pending updates, `allowed_updates` и последних ошибок доставки. |
 | `logOut` | `bot/services/log_out.py`, `/logout` в `bot/handlers/commands.py` | Защищенный admin-flow выхода из cloud Bot API перед запуском local Bot API server, с обязательным подтверждением. |
+| `close` | `bot/services/close.py`, `/close` в `bot/handlers/commands.py` | Защищенный admin-flow закрытия bot instance перед миграцией между local Bot API серверами, с обязательным подтверждением. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -98,7 +99,7 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
 покрытия их лучше добавлять не одним большим слоем, а по функциональным
 направлениям:
 
-1. Lifecycle и диагностика: `deleteWebhook`, `close`,
+1. Lifecycle и диагностика: `deleteWebhook`,
    явная настройка `allowed_updates`, диагностика конфликтов между
    webhook и long polling.
 2. Профиль и команды бота: `setMyCommands`, `deleteMyCommands`,
@@ -172,6 +173,8 @@ issue-карточек в
   admin/ops чатов;
 - `/logout` выполняет защищенный выход бота из cloud Bot API сервера для
   admin-чатов и требует явного подтверждения `/logout confirm`;
+- `/close` выполняет защищенное закрытие bot instance на текущем Bot API
+  сервере для admin-чатов и требует явного подтверждения `/close confirm`;
 - `/clear` очищает историю разговора для пары `(chat_id, user_id)`.
 
 Важная деталь: выбранная через `/model <model_id>` модель сохраняется в
@@ -227,6 +230,32 @@ server.
 повторному запуску бота, который снова логинится. Команда не взаимодействует с
 `free-claude-code`. Глобальный `RateLimitMiddleware` применяется к `/logout`
 так же, как к другим командам.
+
+### close
+
+Команда `/close` вызывает typed aiogram API `Bot.close()` без параметров.
+По официальной документации Telegram метод `close` требует только валидный bot
+token, не принимает параметров и возвращает `True` при успехе. Метод закрывает
+запущенный bot instance и нужен, чтобы безопасно перенести бота с одного local
+Bot API server на другой.
+
+`close` — деструктивная lifecycle-операция, поэтому она защищена так же строго,
+как `/logout`:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- требуется явное подтверждение: `/close` без аргумента только показывает
+  предупреждение о последствиях, а само закрытие выполняется только после
+  `/close confirm`.
+
+Перед вызовом `close` нужно удалить webhook, чтобы бот не запустился снова после
+рестарта сервера. Telegram возвращает ошибку 429, если `close` вызвать в первые
+10 минут после запуска бота; в этом случае `/close` сообщает об ошибке Telegram
+и не закрывает instance. Recovery сводится к переносу бота на новый Bot API
+server и повторному запуску, после которого бот снова обрабатывает updates.
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/close` так же, как к другим командам.
 
 ### Текстовые сообщения
 
@@ -346,8 +375,8 @@ fallback'ится на plain text.
 `TELEGRAM_ADMIN_CHAT_IDS` парсится тем же способом и ограничивает доступ к
 admin-командам. Для диагностики `/webhook` при пустом списке используется
 fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пустые, диагностика
-недоступна. Для деструктивной `/logout` fallback не применяется: команда
-требует непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе она отключена.
+недоступна. Для деструктивных `/logout` и `/close` fallback не применяется:
+команды требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
 
 ## Безопасность и ограничения доступа
 
@@ -359,6 +388,8 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
   fallback на общий whitelist;
 - строгий admin allowlist без fallback и обязательное подтверждение
   `/logout confirm` для деструктивного выхода из cloud Bot API;
+- строгий admin allowlist без fallback и обязательное подтверждение
+  `/close confirm` для деструктивного закрытия bot instance;
 - per-user rate limit в sliding window на 60 секунд;
 - guest mode для групп;
 - экранирование HTML в LLM-ответах перед Telegram HTML.
@@ -372,6 +403,9 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
   нельзя оставлять доступным в публичных группах;
 - `/logout` деструктивен (выход из cloud Bot API на 10 минут), поэтому требует
   явного admin allowlist и подтверждения, и его нельзя открывать публично;
+- `/close` деструктивен (закрытие bot instance на текущем Bot API сервере),
+  поэтому требует явного admin allowlist и подтверждения, и его нельзя
+  открывать публично;
 - нет persistent audit log, admin panel или метрик;
 - нет отдельной проверки размера входных файлов перед скачиванием и обработкой.
 
@@ -386,6 +420,9 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 
 `perform_log_out()` логирует `bot_logged_out` с результатом успешного вызова;
 при ошибке Telegram API логируется `bot_log_out_failed` с типом исключения.
+
+`perform_close()` логирует `bot_closed` с результатом успешного вызова; при
+ошибке Telegram API логируется `bot_close_failed` с типом исключения.
 
 `LOG_LEVEL` присутствует в настройках, но сейчас не применяется к конфигурации
 logging. Фактическая детализация логов зависит от дефолтного окружения.
@@ -424,6 +461,9 @@ logging. Фактическая детализация логов зависит
   обработку Telegram API ошибок и allowlist для `/webhook`;
 - вызов typed aiogram `log_out()`, обработку Telegram API ошибок, admin
   allowlist и требование подтверждения для `/logout`;
+- вызов typed aiogram `close()`, обработку Telegram API ошибок (включая
+  429/`TelegramRetryAfter`), admin allowlist и требование подтверждения для
+  `/close`;
 - извлечение текста из plain text и поведение на неизвестном MIME;
 - rate limit middleware;
 - Markdown/HTML форматирование, удаление mention и разбивку Telegram сообщений.
@@ -435,7 +475,7 @@ module-level `pytestmark`.
 
 ```text
 python -m pytest -v
-42 passed, 2 skipped, 6 warnings
+49 passed, 2 skipped, 6 warnings
 ```
 
 Предупреждения связаны с pydantic deprecated `__fields__` при использовании
@@ -462,7 +502,7 @@ python -m pytest -v
 9. Нет тестов обработчиков команд `/model`, `/settings`, `/clear` с моками
    Telegram message objects.
 10. Нет теста webhook secret validation и `/health`.
-11. Покрытие Telegram Bot API ограничено девятью методами; official Guest Mode,
+11. Покрытие Telegram Bot API ограничено десятью методами; official Guest Mode,
     callback flows, rich outbound media, bot profile/commands management,
     moderation, payments/Stars/gifts, business и managed-bot методы не
     реализованы.

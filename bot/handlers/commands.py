@@ -3,6 +3,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
 from aiogram.types import Message
 from bot.config import settings
+from bot.services.close import perform_close
 from bot.services.log_out import perform_log_out
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
 from bot.utils.storage import storage
@@ -19,6 +20,18 @@ LOGOUT_WARNING = (
     "into the cloud Bot API server for 10 minutes. Use this only before "
     "switching to a local Bot API server.\n"
     "Run <code>/logout confirm</code> to proceed."
+)
+
+CLOSE_CONFIRM_KEYWORD = "confirm"
+
+CLOSE_WARNING = (
+    "<b>close confirmation required</b>\n"
+    "This closes the running bot instance on the current Bot API server. Use "
+    "it only before moving the bot from one local Bot API server to another, "
+    "and delete the webhook first so the bot is not relaunched after a server "
+    "restart. Telegram returns error 429 if it is called within 10 minutes of "
+    "the bot being launched.\n"
+    "Run <code>/close confirm</code> to proceed."
 )
 
 @router.message(Command("start"))
@@ -39,6 +52,7 @@ async def cmd_help(message: Message):
         "/settings - Show your settings\n"
         "/webhook - Show webhook diagnostics (restricted)\n"
         "/logout - Log out from the cloud Bot API (admin only)\n"
+        "/close - Close the bot instance on the current Bot API (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -123,6 +137,29 @@ async def cmd_log_out(message: Message):
         "Logged out from the cloud Bot API server. The bot will not receive "
         "updates until it logs in again, and cloud login is blocked for 10 "
         "minutes."
+    )
+
+@router.message(Command("close"))
+async def cmd_close(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    args = (message.text or "").split()
+    if len(args) < 2 or args[1].strip().lower() != CLOSE_CONFIRM_KEYWORD:
+        await message.answer(CLOSE_WARNING, parse_mode="HTML")
+        return
+
+    try:
+        await perform_close(message.bot)
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not close the bot instance: {exc}")
+        return
+
+    await message.answer(
+        "Closed the bot instance on the current Bot API server. Move the bot "
+        "to its new Bot API server and start it again to resume processing "
+        "updates."
     )
 
 @router.message(Command("clear"))
