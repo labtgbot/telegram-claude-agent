@@ -13,6 +13,7 @@ from bot.services.send_animation import perform_send_animation
 from bot.services.send_audio import perform_send_audio
 from bot.services.send_document import perform_send_document
 from bot.services.send_live_photo import SendLivePhotoError, perform_send_live_photo
+from bot.services.send_location import perform_send_location
 from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
 from bot.services.send_photo import perform_send_photo
 from bot.services.send_video import perform_send_video
@@ -227,6 +228,24 @@ PAID_MEDIA_USAGE = (
     "otherwise to the bot balance."
 )
 
+LOCATION_MIN_LATITUDE = -90.0
+
+LOCATION_MAX_LATITUDE = 90.0
+
+LOCATION_MIN_LONGITUDE = -180.0
+
+LOCATION_MAX_LONGITUDE = 180.0
+
+LOCATION_USAGE = (
+    "<b>location usage</b>\n"
+    "Sends a point on the map into this chat as a real Telegram location "
+    "instead of plain text. Pass the latitude and longitude in decimal "
+    "degrees.\n"
+    "Usage: <code>/location &lt;latitude&gt; &lt;longitude&gt;</code>\n"
+    "Latitude must be between -90 and 90 and longitude between -180 and 180. "
+    "Locations have no caption, so any extra text is ignored."
+)
+
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
@@ -259,6 +278,7 @@ async def cmd_help(message: Message):
         "/animation - Send an animation (GIF/soundless video) into this chat (admin only)\n"
         "/voice - Send a voice message into this chat as a playable audio clip (admin only)\n"
         "/paidmedia - Send a paid photo into this chat priced in Telegram Stars (admin only)\n"
+        "/location - Send a point on the map into this chat as a location (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -804,6 +824,45 @@ async def cmd_paid_media(message: Message):
         "Sent paid media with caption." if caption else "Sent paid media."
     )
 
+@router.message(Command("location"))
+async def cmd_location(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_location_args(message.text or "")
+    if parsed is None:
+        await message.answer(LOCATION_USAGE, parse_mode="HTML")
+        return
+
+    latitude, longitude = parsed
+    if not LOCATION_MIN_LATITUDE <= latitude <= LOCATION_MAX_LATITUDE:
+        await message.answer(
+            f"Latitude must be between {LOCATION_MIN_LATITUDE} and "
+            f"{LOCATION_MAX_LATITUDE}."
+        )
+        return
+
+    if not LOCATION_MIN_LONGITUDE <= longitude <= LOCATION_MAX_LONGITUDE:
+        await message.answer(
+            f"Longitude must be between {LOCATION_MIN_LONGITUDE} and "
+            f"{LOCATION_MAX_LONGITUDE}."
+        )
+        return
+
+    try:
+        await perform_send_location(
+            message.bot,
+            chat_id=message.chat.id,
+            latitude=latitude,
+            longitude=longitude,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not send the location: {exc}")
+        return
+
+    await message.answer("Sent location.")
+
 @router.message(Command("clear"))
 async def cmd_clear(message: Message):
     storage.clear_history(message.chat.id, message.from_user.id)
@@ -1167,3 +1226,25 @@ def _parse_paid_media_args(text: str):
         caption = None
 
     return star_count, media, caption
+
+
+def _parse_location_args(text: str):
+    """Parse ``/location`` arguments into ``(latitude, longitude)``.
+
+    Splits the raw command text into the command, the ``latitude`` and the
+    ``longitude`` given in decimal degrees. Locations have no caption, so any
+    extra tokens are ignored. Returns ``None`` when either coordinate is missing
+    or is not a number so the caller can show usage. The caller validates the
+    latitude/longitude ranges against Telegram's accepted bounds.
+    """
+    parts = (text or "").split()
+    if len(parts) < 3:
+        return None
+
+    try:
+        latitude = float(parts[1])
+        longitude = float(parts[2])
+    except ValueError:
+        return None
+
+    return latitude, longitude
