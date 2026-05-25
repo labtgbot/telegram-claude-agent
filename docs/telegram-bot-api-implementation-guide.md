@@ -18,14 +18,15 @@ criteria. Это не означает, что все методы нужно в
 ## Текущее покрытие
 
 Всего методов Bot API в официальной документации: 176.
-Фактически интегрировано в проекте: 8.
-Остается для backlog: 168. Карточка BOTAPI-002 сохранена ниже как
-реализованная, чтобы не менять стабильную нумерацию method backlog.
+Фактически интегрировано в проекте: 9.
+Остается для backlog: 167. Карточки BOTAPI-001 и BOTAPI-002 сохранены ниже как
+реализованные, чтобы не менять стабильную нумерацию method backlog.
 
 Интегрированные методы:
 
 - `getUpdates`
 - `setWebhook`
+- `deleteWebhook`
 - `getWebhookInfo`
 - `getMe`
 - `sendMessage`
@@ -34,7 +35,8 @@ criteria. Это не означает, что все методы нужно в
 - `answerInlineQuery`
 
 `getUpdates` используется через aiogram long polling, `setWebhook` - при
-startup webhook mode, `sendMessage`/`editMessageText`/`getFile`/
+startup webhook mode, `deleteWebhook` - через restricted admin command перед
+переходом на polling/local Bot API, `sendMessage`/`editMessageText`/`getFile`/
 `answerInlineQuery` вызываются через aiogram helpers. Остальные методы ниже
 пока не имеют отдельного сценария, handler, service wrapper или тестов.
 
@@ -97,6 +99,7 @@ Area label: `area:lifecycle`. Priority baseline: `priority:P0`
 #### BOTAPI-001: `deleteWebhook`
 
 - Title: `telegram-api: реализовать deleteWebhook`
+- Status: implemented in PR #177 as restricted `/deletewebhook` lifecycle command.
 - Official docs: https://core.telegram.org/bots/api#deletewebhook
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:lifecycle`, `priority:P0`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
