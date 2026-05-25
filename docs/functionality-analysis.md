@@ -58,7 +58,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
 `sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
 `sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup`, `sendVenue`,
-`sendPoll` и `sendContact` остается 148 пока не интегрированных методов.
+`sendPoll`, `sendContact` и `sendDice` остается 147 пока не интегрированных
+методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -91,6 +92,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendVenue` | `bot/services/send_venue.py`, `/venue` в `bot/handlers/commands.py` | Admin-flow отправки заведения (venue) — именованного места с названием и адресом, закрепленного на карте — в текущий чат по широте, долготе, title и address, через typed aiogram API; координаты валидируются по диапазонам, а сами координаты, title и address не пишутся в structured logs. |
 | `sendPoll` | `bot/services/send_poll.py`, `/poll` в `bot/handlers/commands.py` | Admin-flow отправки нативного опроса (poll) — интерактивного вопроса с 2-10 вариантами ответа — в текущий чат, через typed aiogram API; длины вопроса (до 300) и вариантов (до 100) и их количество валидируются до обращения к Telegram, а сам вопрос и варианты ответа не пишутся в structured logs. |
 | `sendContact` | `bot/services/send_contact.py`, `/contact` в `bot/handlers/commands.py` | Admin-flow отправки телефонного контакта (contact) — имени с номером телефона, который получатель может сохранить в адресную книгу — в текущий чат, через typed aiogram API; phone_number и first_name обязательны, last_name опционален, а номер телефона и имя контакта не пишутся в structured logs. |
+| `sendDice` | `bot/services/send_dice.py`, `/dice` в `bot/handlers/commands.py` | Admin-flow отправки анимированной кости (dice) — анимированного эмодзи со случайным значением, которое выбирает Telegram — в текущий чат, через typed aiogram API; опциональный emoji ограничен набором 🎲/🎯/🏀/⚽/🎳/🎰 и валидируется до обращения к Telegram, без аргумента отправляется 🎲. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -131,7 +133,7 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `getMyDefaultAdministratorRights`.
 3. Более богатые ответы пользователю: `sendChatAction`,
    `sendChecklist`,
-   `sendDice`, `sendMessageDraft`, `setMessageReaction`.
+   `sendMessageDraft`, `setMessageReaction`.
 4. Управление сообщениями: `editMessageCaption`, `editMessageMedia`,
    `editMessageLiveLocation`, `stopMessageLiveLocation`,
    `editMessageChecklist`, `editMessageReplyMarkup`, `stopPoll`,
@@ -952,6 +954,42 @@ last_name-сегмент пустой, last_name считается отсутс
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/contact` так же, как к другим командам.
 
+### sendDice
+
+Команда `/dice` вызывает typed aiogram API `Bot.send_dice()` для метода
+Telegram `sendDice`. По официальной документации метод требует только `chat_id`
+и возвращает отправленное `Message`; выпавшее значение выбирает Telegram, и оно
+доступно в `Message.dice`. Опциональный `emoji` задает анимацию и должен быть
+одним из `🎲`, `🎯`, `🏀`, `⚽`, `🎳` или `🎰` (диапазон значений зависит от
+эмодзи: 1-6 для `🎲`, `🎯` и `🎳`, 1-5 для `🏀` и `⚽`, 1-64 для `🎰`); без
+аргумента Telegram отправляет `🎲`. Параметры соответствуют typed wrapper'у
+pinned `aiogram==3.3.0` (Bot API 7.0); более новые поля
+(`business_connection_id`, `message_effect_id` и т.п.) в wrapper не входят.
+
+Выбран admin-сценарий исходящего ответа: оператор отправляет в чат настоящую
+анимированную Telegram-кость (анимированный эмодзи со случайным значением), а не
+только текстовую интерпретацию. Целевой чат всегда тот, где вызвана команда.
+Синтаксис: `/dice [emoji]`. Без аргумента отправляется 🎲; единственный
+опциональный аргумент — один из поддерживаемых эмодзи.
+
+Команда сама проверяет validation path до обращения к Telegram: при
+неподдерживаемом эмодзи или более чем одном аргументе показывается usage, и
+Telegram не вызывается. Кость не несет переданного оператором контента, поэтому
+в structured logs пишутся выбранный эмодзи, признак тихой доставки и id
+отправленного сообщения.
+
+`/dice` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при невалидном вводе команда показывает usage и не обращается к Telegram;
+- ошибки Telegram (например, отсутствие прав на отправку в чат) возвращаются
+  пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/dice` так же, как к другим командам.
+
 ### sendMediaGroup
 
 Команда `/mediagroup` вызывает typed aiogram API `Bot.send_media_group()` для
@@ -1117,9 +1155,9 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 недоступна. Для деструктивных `/logout`, `/close`, для message-relay
 `/forward`, `/forwards`, `/copy`, `/copies` и для исходящего медиа `/photo`,
 `/audio`, `/livephoto`, `/document`, `/video`, `/videonote`, `/animation`,
-`/voice`, `/paidmedia`, `/location`, `/venue`, `/poll` и `/contact` fallback не
-применяется: команды требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они
-отключены.
+`/voice`, `/paidmedia`, `/location`, `/venue`, `/poll`, `/contact` и `/dice`
+fallback не применяется: команды требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`,
+иначе они отключены.
 
 ## Безопасность и ограничения доступа
 
