@@ -156,6 +156,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/location` – Send a point on the map into this chat as a real Telegram location via latitude and longitude (admin only).
 - `/venue` – Send a venue (a named place with a title and an address pinned on the map) into this chat via latitude and longitude (admin only).
 - `/poll` – Send a native poll (an interactive question with 2-10 tappable answer options) into this chat (admin only).
+- `/contact` – Send a phone contact (a name with a phone number that can be saved to the address book) into this chat (admin only).
 - `/mediagroup` – Send 2-10 media items into this chat as a single album (media group) via URLs or file_ids (admin only).
 - `/clear` – Clear your conversation history.
 
@@ -680,6 +681,36 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Send a contact
+
+The restricted `/contact` command calls Telegram Bot API `sendContact` through
+aiogram's typed `Bot.send_contact()` wrapper. It lets an operator post a phone
+**contact** into the chat — a name with a phone number that the recipient can
+save to the address book — instead of only a textual interpretation.
+
+Usage: `/contact <phone_number> <first_name> [| <last_name>]`
+
+- the contact is always sent into the chat where the command was issued;
+- the `phone_number` comes first as a single token, followed by the contact's
+  `first_name`; an optional `last_name` follows after a vertical bar (`|`);
+- the phone number and the first name are required and must be non-empty; the
+  first name may contain spaces and the last name is optional;
+- the command shows usage when there are no arguments, when the first name is
+  missing, or when the first name is empty;
+- the phone number and the contact's name are personal data the operator chose
+  to share, so they are intentionally kept out of the structured logs;
+- an invalid request (for example an invalid phone number or a chat the bot
+  cannot post to) returns a Telegram error that the command reports back instead
+  of sending.
+
+Because the command makes the bot post a contact, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Send a media group
 
 The restricted `/mediagroup` command calls Telegram Bot API `sendMediaGroup`
@@ -759,7 +790,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /mediagroup, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /contact, /mediagroup, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -783,6 +814,7 @@ telegram-claude-agent/
 │   │   ├── send_location.py    # Telegram sendLocation outbound helper
 │   │   ├── send_venue.py       # Telegram sendVenue outbound helper
 │   │   ├── send_poll.py        # Telegram sendPoll outbound helper
+│   │   ├── send_contact.py     # Telegram sendContact outbound helper
 │   │   └── send_media_group.py # Telegram sendMediaGroup outbound helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
@@ -833,6 +865,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/location` command makes the bot post an arbitrary point on the map into the chat as a location, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; coordinates are kept out of the structured logs.
 - The `/venue` command makes the bot post an arbitrary venue (a named place with a title and an address) into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the coordinates, title and address are kept out of the structured logs.
 - The `/poll` command makes the bot post an arbitrary native poll into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the question and the answer options are kept out of the structured logs.
+- The `/contact` command makes the bot post an arbitrary phone contact into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the phone number and the contact's name are kept out of the structured logs.
 - The `/mediagroup` command makes the bot post an arbitrary album of 2-10 media items into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - Rate limiting helps prevent abuse.
 
