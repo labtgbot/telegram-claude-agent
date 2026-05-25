@@ -157,6 +157,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/venue` – Send a venue (a named place with a title and an address pinned on the map) into this chat via latitude and longitude (admin only).
 - `/poll` – Send a native poll (an interactive question with 2-10 tappable answer options) into this chat (admin only).
 - `/contact` – Send a phone contact (a name with a phone number that can be saved to the address book) into this chat (admin only).
+- `/dice` – Send an animated dice (an emoji that shows a random value) into this chat (admin only).
 - `/mediagroup` – Send 2-10 media items into this chat as a single album (media group) via URLs or file_ids (admin only).
 - `/clear` – Clear your conversation history.
 
@@ -711,6 +712,35 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Send a dice
+
+The restricted `/dice` command calls Telegram Bot API `sendDice` through
+aiogram's typed `Bot.send_dice()` wrapper. It lets an operator post an animated
+**dice** into the chat — an animated emoji that shows a random value chosen by
+Telegram — instead of only a textual interpretation.
+
+Usage: `/dice [emoji]`
+
+- the dice is always sent into the chat where the command was issued;
+- without an emoji a 🎲 die is sent (Telegram's default);
+- the optional emoji must be one of `🎲`, `🎯`, `🏀`, `⚽`, `🎳` or `🎰`; the
+  value range depends on the emoji (1-6 for `🎲`, `🎯` and `🎳`, 1-5 for `🏀`
+  and `⚽`, and 1-64 for `🎰`);
+- the command shows usage when an unsupported emoji or more than one argument is
+  supplied, and does not contact Telegram in that case;
+- the dice carries no operator-provided content, so the chosen emoji and the
+  sent message id are logged;
+- an invalid request (for example a chat the bot cannot post to) returns a
+  Telegram error that the command reports back instead of sending.
+
+Because the command makes the bot post a dice, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Send a media group
 
 The restricted `/mediagroup` command calls Telegram Bot API `sendMediaGroup`
@@ -790,7 +820,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /contact, /mediagroup, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /mediagroup, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -815,6 +845,7 @@ telegram-claude-agent/
 │   │   ├── send_venue.py       # Telegram sendVenue outbound helper
 │   │   ├── send_poll.py        # Telegram sendPoll outbound helper
 │   │   ├── send_contact.py     # Telegram sendContact outbound helper
+│   │   ├── send_dice.py        # Telegram sendDice outbound helper
 │   │   └── send_media_group.py # Telegram sendMediaGroup outbound helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
@@ -866,6 +897,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/venue` command makes the bot post an arbitrary venue (a named place with a title and an address) into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the coordinates, title and address are kept out of the structured logs.
 - The `/poll` command makes the bot post an arbitrary native poll into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the question and the answer options are kept out of the structured logs.
 - The `/contact` command makes the bot post an arbitrary phone contact into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the phone number and the contact's name are kept out of the structured logs.
+- The `/dice` command makes the bot post an animated dice into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/mediagroup` command makes the bot post an arbitrary album of 2-10 media items into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - Rate limiting helps prevent abuse.
 
