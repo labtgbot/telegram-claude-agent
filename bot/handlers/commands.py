@@ -16,6 +16,7 @@ from bot.services.send_live_photo import SendLivePhotoError, perform_send_live_p
 from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
 from bot.services.send_photo import perform_send_photo
 from bot.services.send_video import perform_send_video
+from bot.services.send_video_note import perform_send_video_note
 from bot.services.send_voice import perform_send_voice
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
 from bot.utils.storage import storage
@@ -173,6 +174,16 @@ VIDEO_USAGE = (
     "support MPEG4 videos and limit a file sent by URL to 20 MB."
 )
 
+VIDEO_NOTE_USAGE = (
+    "<b>videonote usage</b>\n"
+    "Sends a rounded square video message (video note) into this chat instead "
+    "of plain text. Pass a file_id of a video note that already exists on "
+    "Telegram servers; Telegram does not support sending video notes by URL.\n"
+    "Usage: <code>/videonote &lt;file_id&gt;</code>\n"
+    "Video notes have no caption. Telegram expects a square MPEG4 video; the "
+    "duration and side length are taken from the file."
+)
+
 ANIMATION_CAPTION_LIMIT = 1024
 
 ANIMATION_USAGE = (
@@ -244,6 +255,7 @@ async def cmd_help(message: Message):
         "/livephoto - Send a live photo (video + cover) into this chat (admin only)\n"
         "/document - Send a file into this chat as a document (admin only)\n"
         "/video - Send a video into this chat as a playable video (admin only)\n"
+        "/videonote - Send a rounded square video message (video note) into this chat (admin only)\n"
         "/animation - Send an animation (GIF/soundless video) into this chat (admin only)\n"
         "/voice - Send a voice message into this chat as a playable audio clip (admin only)\n"
         "/paidmedia - Send a paid photo into this chat priced in Telegram Stars (admin only)\n"
@@ -659,6 +671,29 @@ async def cmd_video(message: Message):
         "Sent video with caption." if caption else "Sent video."
     )
 
+@router.message(Command("videonote"))
+async def cmd_video_note(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    video_note = _parse_video_note_args(message.text or "")
+    if video_note is None:
+        await message.answer(VIDEO_NOTE_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        await perform_send_video_note(
+            message.bot,
+            chat_id=message.chat.id,
+            video_note=video_note,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not send the video note: {exc}")
+        return
+
+    await message.answer("Sent video note.")
+
 @router.message(Command("animation"))
 async def cmd_animation(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -1007,6 +1042,25 @@ def _parse_video_args(text: str):
         caption = None
 
     return video, caption
+
+
+def _parse_video_note_args(text: str):
+    """Parse ``/videonote`` arguments into the video note reference.
+
+    Splits the raw command text into the command and the video note reference
+    (a ``file_id``; Telegram does not support sending video notes by URL).
+    Video notes have no caption, so any extra tokens are ignored. Returns
+    ``None`` when no reference is provided so the caller can show usage.
+    """
+    parts = (text or "").split()
+    if len(parts) < 2:
+        return None
+
+    video_note = parts[1].strip()
+    if not video_note:
+        return None
+
+    return video_note
 
 
 def _parse_animation_args(text: str):
