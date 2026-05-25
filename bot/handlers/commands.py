@@ -17,6 +17,7 @@ from bot.services.forward_messages import perform_forward_messages
 from bot.services.log_out import perform_log_out
 from bot.services.send_animation import perform_send_animation
 from bot.services.send_audio import perform_send_audio
+from bot.services.send_contact import perform_send_contact
 from bot.services.send_document import perform_send_document
 from bot.services.send_live_photo import SendLivePhotoError, perform_send_live_photo
 from bot.services.send_location import perform_send_location
@@ -291,6 +292,20 @@ POLL_USAGE = (
     "and must be non-empty."
 )
 
+CONTACT_NAME_SEPARATOR = "|"
+
+CONTACT_USAGE = (
+    "<b>contact usage</b>\n"
+    "Sends a phone contact into this chat as a real Telegram contact (a name "
+    "with a phone number that can be saved to the address book) instead of "
+    "plain text. Pass the phone number first, then the contact's first name; an "
+    "optional last name follows after a vertical bar.\n"
+    "Usage: <code>/contact &lt;phone_number&gt; &lt;first_name&gt; "
+    "[| &lt;last_name&gt;]</code>\n"
+    "The phone number and the first name are required and must be non-empty. "
+    "The first name may contain spaces; the last name is optional."
+)
+
 MEDIA_GROUP_CAPTION_LIMIT = 1024
 
 MEDIA_GROUP_MIN_ITEMS = 2
@@ -354,6 +369,7 @@ async def cmd_help(message: Message):
         "/location - Send a point on the map into this chat as a location (admin only)\n"
         "/venue - Send a venue (named place with title and address) into this chat (admin only)\n"
         "/poll - Send a native poll (question with answer options) into this chat (admin only)\n"
+        "/contact - Send a phone contact (name and phone number) into this chat (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
@@ -1027,6 +1043,32 @@ async def cmd_poll(message: Message):
 
     await message.answer(f"Sent poll with {len(options)} options.")
 
+@router.message(Command("contact"))
+async def cmd_contact(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_contact_args(message.text or "")
+    if parsed is None:
+        await message.answer(CONTACT_USAGE, parse_mode="HTML")
+        return
+
+    phone_number, first_name, last_name = parsed
+    try:
+        await perform_send_contact(
+            message.bot,
+            chat_id=message.chat.id,
+            phone_number=phone_number,
+            first_name=first_name,
+            last_name=last_name,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not send the contact: {exc}")
+        return
+
+    await message.answer("Sent contact.")
+
 @router.message(Command("mediagroup"))
 async def cmd_media_group(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -1527,6 +1569,39 @@ def _parse_poll_args(text: str):
         return None
 
     return question, options
+
+
+def _parse_contact_args(text: str):
+    """Parse ``/contact`` args into ``(phone_number, first_name, last_name)``.
+
+    Splits the raw command text into the command, the ``phone_number`` (a single
+    whitespace-delimited token) and the remainder holding the contact's
+    ``first_name`` and an optional ``last_name``. The first name may contain
+    spaces, so the remainder is taken whole; an optional last name is split off
+    after the first vertical bar (``|``). Returns ``None`` when the phone number
+    or the first name is missing or empty so the caller can show usage. When no
+    separator is present the whole remainder is the first name and the last name
+    is ``None``; an empty last-name segment also yields ``None`` for the last
+    name.
+    """
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) < 3:
+        return None
+
+    phone_number = parts[1].strip()
+    remainder = parts[2]
+    if CONTACT_NAME_SEPARATOR in remainder:
+        first_part, _, last_part = remainder.partition(CONTACT_NAME_SEPARATOR)
+        first_name = first_part.strip()
+        last_name = last_part.strip() or None
+    else:
+        first_name = remainder.strip()
+        last_name = None
+
+    if not phone_number or not first_name:
+        return None
+
+    return phone_number, first_name, last_name
 
 
 def _parse_media_group_args(text: str):
