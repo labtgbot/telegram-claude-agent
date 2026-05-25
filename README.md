@@ -141,6 +141,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/deletewebhook [drop_pending_updates=true|false]` – Delete the webhook for
   allowed admin chats; pending updates are kept by default.
 - `/logout` – Log the bot out of the cloud Bot API server (admin only, requires confirmation).
+- `/close` – Close the bot instance on the current Bot API server (admin only, requires confirmation).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics and lifecycle
@@ -192,6 +193,27 @@ server and cannot log back into it for 10 minutes. Recovery is simply waiting
 out the 10-minute window (or finishing the migration to a local Bot API server)
 and starting the bot again so it logs back in.
 
+### Close the bot instance
+
+The restricted `/close` command calls Telegram Bot API `close` through
+aiogram's typed `Bot.close()` wrapper. The method takes no parameters and
+returns `True` on success. It closes the running bot instance and is the
+operational step required before moving the bot from one local Bot API server
+to another.
+
+Because `close` is destructive, it is guarded exactly like `/logout`:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- it requires explicit confirmation: a bare `/close` only prints a warning,
+  and the close runs only after `/close confirm`.
+
+Delete the webhook before calling `close` so the bot is not relaunched after a
+server restart. Telegram returns error 429 if `close` is called within the
+first 10 minutes after the bot was launched. Recovery is simply moving the bot
+to its new Bot API server and starting it again to resume processing updates.
+
 ### Group privacy mode
 
 When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
@@ -239,14 +261,15 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /close, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
 │   │   ├── claude_proxy.py     # Client for free-claude-code API
 │   │   ├── webhook_delete.py   # Telegram webhook lifecycle operations
 │   │   ├── webhook_info.py     # Telegram webhook diagnostics formatting
-│   │   └── log_out.py          # Telegram logOut lifecycle helper
+│   │   ├── log_out.py          # Telegram logOut lifecycle helper
+│   │   └── close.py            # Telegram close lifecycle helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
 │       └── media.py            # Transcription, document extraction
@@ -279,6 +302,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `TELEGRAM_ALLOWED_CHAT_IDS` setting can restrict operation to specific chats.
 - The `/webhook` diagnostics command can expose webhook URL and delivery errors, and `/deletewebhook` changes update delivery state, so restrict both with `TELEGRAM_ADMIN_CHAT_IDS`.
 - The `/logout` command is destructive (it logs the bot out of the cloud Bot API for 10 minutes), so it requires `TELEGRAM_ADMIN_CHAT_IDS` and explicit `/logout confirm`.
+- The `/close` command is destructive (it closes the running bot instance on the current Bot API server), so it requires `TELEGRAM_ADMIN_CHAT_IDS` and explicit `/close confirm`.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work
