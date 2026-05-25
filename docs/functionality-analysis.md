@@ -57,7 +57,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 после внедрения `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
 `sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
-`sendVoice` и `sendPaidMedia` остается 153 пока не интегрированных метода.
+`sendVoice`, `sendPaidMedia` и `sendLocation` остается 152 пока не
+интегрированных метода.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -85,6 +86,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendAnimation` | `bot/services/send_animation.py`, `/animation` в `bot/handlers/commands.py` | Admin-flow отправки анимации (GIF или видео без звука) в текущий чат как проигрываемого зацикленного клипа по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendVoice` | `bot/services/send_voice.py`, `/voice` в `bot/handlers/commands.py` | Admin-flow отправки голосового сообщения в текущий чат как проигрываемого аудиоклипа (в виде waveform) по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendPaidMedia` | `bot/services/send_paid_media.py`, `/paidmedia` в `bot/handlers/commands.py` | Admin-flow отправки платного фото в текущий чат, доступ к которому пользователи оплачивают Telegram Stars, по URL или `file_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 7.6. |
+| `sendLocation` | `bot/services/send_location.py`, `/location` в `bot/handlers/commands.py` | Admin-flow отправки точки на карте в текущий чат как настоящей Telegram-локации по широте и долготе, через typed aiogram API; у локаций нет caption, координаты валидируются по диапазонам и не пишутся в structured logs. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -125,7 +127,7 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `getMyDefaultAdministratorRights`.
 3. Более богатые ответы пользователю: `sendChatAction`,
    `sendMediaGroup`,
-   `sendLocation`, `sendVenue`, `sendContact`, `sendPoll`, `sendChecklist`,
+   `sendVenue`, `sendContact`, `sendPoll`, `sendChecklist`,
    `sendDice`, `sendMessageDraft`, `setMessageReaction`.
 4. Управление сообщениями: `editMessageCaption`, `editMessageMedia`,
    `editMessageLiveLocation`, `stopMessageLiveLocation`,
@@ -787,6 +789,44 @@ fallback на cloud-endpoint. Ошибки транспорта и ответы 
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/paidmedia` так же, как к другим командам.
 
+### sendLocation
+
+Команда `/location` вызывает typed aiogram API `Bot.send_location()` для метода
+Telegram `sendLocation`. По официальной документации метод требует `chat_id`,
+`latitude` и `longitude` и возвращает отправленное `Message`. Опциональный
+`horizontal_accuracy` (0-1500 м) задает радиус неопределенности; live-локация
+запускается через `live_period` (60-86400 с), а для live-локаций `heading`
+(1-360°) задает направление движения и `proximity_alert_radius` (1-100000 м) —
+дистанцию для proximity-уведомлений. Параметры соответствуют typed wrapper'у
+pinned `aiogram==3.3.0` (Bot API 7.0).
+
+Выбран admin-сценарий исходящего ответа: оператор отправляет точку на карте в
+чат как настоящую Telegram-локацию, а не только текстовую интерпретацию.
+Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/location <latitude> <longitude>`. Координаты передаются в десятичных градусах.
+
+У локаций нет caption, поэтому команда не принимает текст подписи: лишние токены
+после долготы игнорируются. Координаты парсятся как числа с плавающей точкой, а
+затем проверяются на диапазоны (`latitude` -90..90, `longitude` -180..180) до
+обращения к Telegram, чтобы validation path не зависел от ошибки Telegram.
+Координаты могут раскрывать местоположение человека, поэтому в structured logs
+пишутся только факт live-локации и id отправленного сообщения, без самих
+координат.
+
+`/location` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствии или нечисловых координатах команда показывает usage, при
+  координатах вне допустимых диапазонов — сообщение о допустимом диапазоне, и в
+  обоих случаях не обращается к Telegram;
+- ошибки Telegram (например, отсутствие прав на отправку в чат) возвращаются
+  пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/location` так же, как к другим командам.
+
 ### Текстовые сообщения
 
 Личные чаты используют историю сообщений пользователя в конкретном чате.
@@ -908,8 +948,8 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 недоступна. Для деструктивных `/logout`, `/close`, для message-relay
 `/forward`, `/forwards`, `/copy`, `/copies` и для исходящего медиа `/photo`,
 `/audio`, `/livephoto`, `/document`, `/video`, `/videonote`, `/animation`,
-`/voice` и `/paidmedia` fallback не применяется: команды требуют непустой
-`TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
+`/voice`, `/paidmedia` и `/location` fallback не применяется: команды требуют
+непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
 
 ## Безопасность и ограничения доступа
 

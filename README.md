@@ -153,6 +153,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/animation` – Send an animation (GIF or soundless video) into this chat as a playable looping clip via a URL or file_id (admin only).
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
 - `/paidmedia` – Send a paid photo into this chat that users must pay for with Telegram Stars to access, via a URL or file_id (admin only).
+- `/location` – Send a point on the map into this chat as a real Telegram location via latitude and longitude (admin only).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics
@@ -588,6 +589,33 @@ other admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Send a location
+
+The restricted `/location` command calls Telegram Bot API `sendLocation`
+through aiogram's typed `Bot.send_location()` wrapper. It lets an operator post
+a **point on the map** into the chat as a real Telegram location instead of only
+a textual interpretation.
+
+Usage: `/location <latitude> <longitude>`
+
+- the location is always sent into the chat where the command was issued;
+- `latitude` and `longitude` are given in decimal degrees; latitude must be
+  between -90 and 90 and longitude between -180 and 180 (the command validates
+  these bounds before calling Telegram);
+- locations have no caption, so any text after the coordinates is ignored;
+- coordinates can reveal a person's whereabouts, so they are intentionally kept
+  out of the structured logs;
+- an invalid request (for example a chat the bot cannot post to) returns a
+  Telegram error that the command reports back instead of sending.
+
+Because the command makes the bot post a location, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Group privacy mode
 
 When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
@@ -635,7 +663,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -655,7 +683,8 @@ telegram-claude-agent/
 │   │   ├── send_video_note.py  # Telegram sendVideoNote outbound helper
 │   │   ├── send_animation.py   # Telegram sendAnimation outbound helper
 │   │   ├── send_voice.py       # Telegram sendVoice outbound helper
-│   │   └── send_paid_media.py  # Telegram sendPaidMedia raw Bot API helper
+│   │   ├── send_paid_media.py  # Telegram sendPaidMedia raw Bot API helper
+│   │   └── send_location.py    # Telegram sendLocation outbound helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
 │       └── media.py            # Transcription, document extraction
@@ -702,6 +731,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/animation` command makes the bot post an arbitrary animation (GIF or soundless video) into the chat as a playable looping clip, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/voice` command makes the bot post an arbitrary voice message into the chat as a playable audio clip, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/paidmedia` command makes the bot post arbitrary monetized media priced in Telegram Stars into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
+- The `/location` command makes the bot post an arbitrary point on the map into the chat as a location, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; coordinates are kept out of the structured logs.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work
