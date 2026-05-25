@@ -50,6 +50,12 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 что новые методы и типы Bot API 9.x/10.x не следует считать автоматически
 поддержанными только из-за использования aiogram.
 
+Подробный issue-style backlog для доведения покрытия до полного Bot API
+описан в
+[telegram-bot-api-implementation-guide.md](telegram-bot-api-implementation-guide.md):
+в нем 169 карточек для пока не интегрированных методов с labels, stages,
+scope и acceptance criteria.
+
 ### Уже используемые методы Bot API
 
 | Метод | Где используется | Фактическое назначение |
@@ -139,6 +145,10 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
 flows, official Guest Mode и rich outbound media; затем group administration,
 payments/Stars/gifts, business/managed-bot возможности и остальные
 domain-specific методы.
+
+Для планирования последующих PR этот список уже разложен до отдельных
+issue-карточек в
+[telegram-bot-api-implementation-guide.md](telegram-bot-api-implementation-guide.md).
 
 ## Пользовательские сценарии
 
