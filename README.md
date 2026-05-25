@@ -138,6 +138,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/model` – Show current model and list available models. Use `/model <model_id>` to switch.
 - `/settings` – Display your current settings.
 - `/webhook` – Show webhook diagnostics for allowed admin chats.
+- `/logout` – Log the bot out of the cloud Bot API server (admin only, requires confirmation).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics
@@ -158,6 +159,26 @@ When the bot is running in long polling mode, Telegram returns webhook info with
 an empty `url`, which the command displays as disabled. This command does not
 change webhook state; rollback is simply removing the command allowlist or
 stopping use of `/webhook`.
+
+### Log out from the cloud Bot API
+
+The restricted `/logout` command calls Telegram Bot API `logOut` through
+aiogram's typed `Bot.log_out()` wrapper. The method takes no parameters and
+returns `True` on success. It is the operational step required before launching
+the bot against a local Bot API server.
+
+Because `logOut` is destructive, it is guarded more strictly than `/webhook`:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- it requires explicit confirmation: a bare `/logout` only prints a warning,
+  and the logout runs only after `/logout confirm`.
+
+After a successful call the bot stops receiving updates from the cloud Bot API
+server and cannot log back into it for 10 minutes. Recovery is simply waiting
+out the 10-minute window (or finishing the migration to a local Bot API server)
+and starting the bot again so it logs back in.
 
 ### Group privacy mode
 
@@ -206,12 +227,13 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
 │   │   ├── claude_proxy.py     # Client for free-claude-code API
-│   │   └── webhook_info.py     # Telegram webhook diagnostics formatting
+│   │   ├── webhook_info.py     # Telegram webhook diagnostics formatting
+│   │   └── log_out.py          # Telegram logOut lifecycle helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
 │       └── media.py            # Transcription, document extraction
@@ -243,6 +265,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - Keep your `FREE_CLAUDE_AUTH_TOKEN` and `TELEGRAM_BOT_TOKEN` secret; do not commit them to version control.
 - The `TELEGRAM_ALLOWED_CHAT_IDS` setting can restrict operation to specific chats.
 - The `/webhook` diagnostics command can expose webhook URL and delivery errors, so restrict it with `TELEGRAM_ADMIN_CHAT_IDS`.
+- The `/logout` command is destructive (it logs the bot out of the cloud Bot API for 10 minutes), so it requires `TELEGRAM_ADMIN_CHAT_IDS` and explicit `/logout confirm`.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work
