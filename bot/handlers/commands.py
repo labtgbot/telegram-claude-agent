@@ -9,6 +9,7 @@ from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
 from bot.services.forward_messages import perform_forward_messages
 from bot.services.log_out import perform_log_out
+from bot.services.send_audio import perform_send_audio
 from bot.services.send_photo import perform_send_photo
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
 from bot.utils.storage import storage
@@ -114,6 +115,19 @@ PHOTO_USAGE = (
     "to 20."
 )
 
+AUDIO_CAPTION_LIMIT = 1024
+
+AUDIO_USAGE = (
+    "<b>audio usage</b>\n"
+    "Sends an audio file into this chat as a playable music track instead of "
+    "plain text. Pass an HTTP(S) URL Telegram can fetch or a file_id of an "
+    "audio file already on Telegram servers.\n"
+    "Usage: <code>/audio &lt;url_or_file_id&gt; [caption]</code>\n"
+    "The caption is optional and limited to 1024 characters. Telegram expects "
+    "the audio in .MP3 or .M4A format and limits a file sent by URL or file_id "
+    "to 20 MB."
+)
+
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
@@ -138,6 +152,7 @@ async def cmd_help(message: Message):
         "/copy - Copy a message into this chat without source link (admin only)\n"
         "/copies - Copy several messages into this chat without source link (admin only)\n"
         "/photo - Send an image into this chat as a photo (admin only)\n"
+        "/audio - Send an audio file into this chat as a music track (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -413,6 +428,40 @@ async def cmd_photo(message: Message):
         "Sent photo with caption." if caption else "Sent photo."
     )
 
+@router.message(Command("audio"))
+async def cmd_audio(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_audio_args(message.text or "")
+    if parsed is None:
+        await message.answer(AUDIO_USAGE, parse_mode="HTML")
+        return
+
+    audio, caption = parsed
+    if caption is not None and len(caption) > AUDIO_CAPTION_LIMIT:
+        await message.answer(
+            f"Caption is too long: {len(caption)} characters "
+            f"(max {AUDIO_CAPTION_LIMIT})."
+        )
+        return
+
+    try:
+        await perform_send_audio(
+            message.bot,
+            chat_id=message.chat.id,
+            audio=audio,
+            caption=caption,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not send the audio: {exc}")
+        return
+
+    await message.answer(
+        "Sent audio with caption." if caption else "Sent audio."
+    )
+
 @router.message(Command("clear"))
 async def cmd_clear(message: Message):
     storage.clear_history(message.chat.id, message.from_user.id)
@@ -579,3 +628,27 @@ def _parse_photo_args(text: str):
         caption = None
 
     return photo, caption
+
+
+def _parse_audio_args(text: str):
+    """Parse ``/audio`` arguments into ``(audio, caption)``.
+
+    Splits the raw command text into the command, the audio reference (URL or
+    ``file_id``) and an optional free-text caption that may itself contain
+    spaces. Returns ``None`` when no audio reference is provided so the caller
+    can show usage. The caller validates the caption length against Telegram's
+    1024-character limit.
+    """
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) < 2:
+        return None
+
+    audio = parts[1].strip()
+    if not audio:
+        return None
+
+    caption = parts[2].strip() if len(parts) >= 3 else None
+    if caption == "":
+        caption = None
+
+    return audio, caption
