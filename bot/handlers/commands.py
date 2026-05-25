@@ -8,6 +8,7 @@ from bot.services.copy_message import perform_copy_message
 from bot.services.forward_message import perform_forward_message
 from bot.services.forward_messages import perform_forward_messages
 from bot.services.log_out import perform_log_out
+from bot.services.send_photo import perform_send_photo
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
 from bot.utils.storage import storage
 from bot.services.claude_proxy import ClaudeProxyClient
@@ -79,6 +80,19 @@ COPY_USAGE = (
     "saving. Append <code>share</code> to allow re-forwarding it."
 )
 
+PHOTO_CAPTION_LIMIT = 1024
+
+PHOTO_USAGE = (
+    "<b>photo usage</b>\n"
+    "Sends an image into this chat as a real Telegram photo instead of plain "
+    "text. Pass an HTTP(S) URL Telegram can fetch or a file_id of a photo "
+    "already on Telegram servers.\n"
+    "Usage: <code>/photo &lt;url_or_file_id&gt; [caption]</code>\n"
+    "The caption is optional and limited to 1024 characters. Telegram limits "
+    "the photo to 10 MB, its total width+height to 10000 and its aspect ratio "
+    "to 20."
+)
+
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
@@ -101,6 +115,7 @@ async def cmd_help(message: Message):
         "/forward - Forward a message into this chat for review (admin only)\n"
         "/forwards - Forward several messages into this chat for review (admin only)\n"
         "/copy - Copy a message into this chat without source link (admin only)\n"
+        "/photo - Send an image into this chat as a photo (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -307,6 +322,40 @@ async def cmd_copy(message: Message):
         f"({protection} copy)."
     )
 
+@router.message(Command("photo"))
+async def cmd_photo(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_photo_args(message.text or "")
+    if parsed is None:
+        await message.answer(PHOTO_USAGE, parse_mode="HTML")
+        return
+
+    photo, caption = parsed
+    if caption is not None and len(caption) > PHOTO_CAPTION_LIMIT:
+        await message.answer(
+            f"Caption is too long: {len(caption)} characters "
+            f"(max {PHOTO_CAPTION_LIMIT})."
+        )
+        return
+
+    try:
+        await perform_send_photo(
+            message.bot,
+            chat_id=message.chat.id,
+            photo=photo,
+            caption=caption,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not send the photo: {exc}")
+        return
+
+    await message.answer(
+        "Sent photo with caption." if caption else "Sent photo."
+    )
+
 @router.message(Command("clear"))
 async def cmd_clear(message: Message):
     storage.clear_history(message.chat.id, message.from_user.id)
@@ -407,3 +456,27 @@ def _parse_copy_args(args: list[str]):
         protect_content = False
 
     return from_chat_id, message_id, protect_content
+
+
+def _parse_photo_args(text: str):
+    """Parse ``/photo`` arguments into ``(photo, caption)``.
+
+    Splits the raw command text into the command, the photo reference (URL or
+    ``file_id``) and an optional free-text caption that may itself contain
+    spaces. Returns ``None`` when no photo reference is provided so the caller
+    can show usage. The caller validates the caption length against Telegram's
+    1024-character limit.
+    """
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) < 2:
+        return None
+
+    photo = parts[1].strip()
+    if not photo:
+        return None
+
+    caption = parts[2].strip() if len(parts) >= 3 else None
+    if caption == "":
+        caption = None
+
+    return photo, caption
