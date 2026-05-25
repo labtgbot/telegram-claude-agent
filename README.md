@@ -145,6 +145,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/copy` – Copy a message from another chat into this chat without a link to the original sender (admin only).
 - `/copies` – Copy several messages from another chat into this chat without a link to the original sender, preserving album grouping (admin only).
 - `/photo` – Send an image into this chat as a real Telegram photo via a URL or file_id (admin only).
+- `/audio` – Send an audio file into this chat as a playable music track via a URL or file_id (admin only).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics
@@ -360,6 +361,32 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Send an audio file
+
+The restricted `/audio` command calls Telegram Bot API `sendAudio` through
+aiogram's typed `Bot.send_audio()` wrapper. It lets an operator deliver a
+generated or received sound clip into the chat as a **playable music track**
+instead of only a textual interpretation.
+
+Usage: `/audio <url_or_file_id> [caption]`
+
+- the audio is always sent into the chat where the command was issued;
+- the audio reference is either an HTTP(S) URL that Telegram fetches itself or a
+  `file_id` of an audio file that already exists on Telegram servers;
+- the caption is optional, may contain spaces, and is limited to 1024
+  characters (the command validates this bound before calling Telegram);
+- Telegram expects the audio in the `.MP3` or `.M4A` format and limits a file
+  sent by URL or `file_id` to 20 MB; an invalid reference or unsupported file
+  returns a Telegram error that the command reports back instead of sending.
+
+Because the command makes the bot post content, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Group privacy mode
 
 When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
@@ -407,7 +434,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -419,7 +446,8 @@ telegram-claude-agent/
 │   │   ├── forward_messages.py # Telegram forwardMessages batch relay helper
 │   │   ├── copy_message.py     # Telegram copyMessage relay helper
 │   │   ├── copy_messages.py    # Telegram copyMessages batch relay helper
-│   │   └── send_photo.py       # Telegram sendPhoto outbound helper
+│   │   ├── send_photo.py       # Telegram sendPhoto outbound helper
+│   │   └── send_audio.py       # Telegram sendAudio outbound helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
 │       └── media.py            # Transcription, document extraction
@@ -458,6 +486,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/copy` command relays a message from another chat into the admin chat without a link to the original sender, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and protects the copied message from re-forwarding by default.
 - The `/copies` command relays a batch of messages from another chat into the admin chat without a link to the original sender (preserving album grouping), so it requires `TELEGRAM_ADMIN_CHAT_IDS` and protects the copied messages from re-forwarding by default.
 - The `/photo` command makes the bot post an arbitrary image into the chat as a photo, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
+- The `/audio` command makes the bot post an arbitrary audio file into the chat as a music track, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work
