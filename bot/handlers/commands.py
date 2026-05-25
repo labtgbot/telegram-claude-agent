@@ -4,6 +4,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from bot.config import settings
 from bot.services.close import perform_close
+from bot.services.copy_message import perform_copy_message
 from bot.services.forward_message import perform_forward_message
 from bot.services.log_out import perform_log_out
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
@@ -47,6 +48,19 @@ FORWARD_USAGE = (
     "saving. Append <code>share</code> to allow re-forwarding it."
 )
 
+COPY_SHARE_KEYWORD = "share"
+
+COPY_USAGE = (
+    "<b>copy usage</b>\n"
+    "Copies a single message into this chat as a new message without a link to "
+    "the original sender, for support/moderation review. The bot must be a "
+    "member of the source chat; service messages, paid media, giveaway and "
+    "invoice messages cannot be copied.\n"
+    "Usage: <code>/copy &lt;from_chat_id&gt; &lt;message_id&gt; [share]</code>\n"
+    "By default the copied message is protected from further forwarding and "
+    "saving. Append <code>share</code> to allow re-forwarding it."
+)
+
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
@@ -67,6 +81,7 @@ async def cmd_help(message: Message):
         "/logout - Log out from the cloud Bot API (admin only)\n"
         "/close - Close the bot instance on the current Bot API (admin only)\n"
         "/forward - Forward a message into this chat for review (admin only)\n"
+        "/copy - Copy a message into this chat without source link (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -208,6 +223,38 @@ async def cmd_forward(message: Message):
         f"({protection} copy)."
     )
 
+@router.message(Command("copy"))
+async def cmd_copy(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    args = (message.text or "").split()
+    parsed = _parse_copy_args(args[1:])
+    if parsed is None:
+        await message.answer(COPY_USAGE, parse_mode="HTML")
+        return
+
+    from_chat_id, message_id, protect_content = parsed
+
+    try:
+        await perform_copy_message(
+            message.bot,
+            chat_id=message.chat.id,
+            from_chat_id=from_chat_id,
+            message_id=message_id,
+            protect_content=protect_content,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not copy the message: {exc}")
+        return
+
+    protection = "protected" if protect_content else "shareable"
+    await message.answer(
+        f"Copied message {message_id} from chat {from_chat_id} "
+        f"({protection} copy)."
+    )
+
 @router.message(Command("clear"))
 async def cmd_clear(message: Message):
     storage.clear_history(message.chat.id, message.from_user.id)
@@ -247,6 +294,31 @@ def _parse_forward_args(args: list[str]):
     protect_content = True
     if len(args) == 3:
         if args[2].strip().lower() != FORWARD_SHARE_KEYWORD:
+            return None
+        protect_content = False
+
+    return from_chat_id, message_id, protect_content
+
+
+def _parse_copy_args(args: list[str]):
+    """Parse ``/copy`` arguments into ``(from_chat_id, message_id, protect)``.
+
+    Returns ``None`` when the arguments are missing or invalid so the caller can
+    show usage. ``protect`` defaults to ``True`` and is disabled by the optional
+    trailing ``share`` keyword.
+    """
+    if len(args) < 2 or len(args) > 3:
+        return None
+
+    try:
+        from_chat_id = int(args[0])
+        message_id = int(args[1])
+    except ValueError:
+        return None
+
+    protect_content = True
+    if len(args) == 3:
+        if args[2].strip().lower() != COPY_SHARE_KEYWORD:
             return None
         protect_content = False
 

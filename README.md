@@ -141,6 +141,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/logout` – Log the bot out of the cloud Bot API server (admin only, requires confirmation).
 - `/close` – Close the bot instance on the current Bot API server (admin only, requires confirmation).
 - `/forward` – Forward a message from another chat into this chat for support/moderation review (admin only).
+- `/copy` – Copy a message from another chat into this chat without a link to the original sender (admin only).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics
@@ -232,6 +233,38 @@ admin commands:
 `forwardMessage` forwards a single message; forwarding a whole album as a group
 is the job of `forwardMessages`, which is tracked separately.
 
+### Copy messages for moderation
+
+The restricted `/copy` command calls Telegram Bot API `copyMessage` through
+aiogram's typed `Bot.copy_message()` wrapper. Like `/forward` it serves a
+support/moderation scenario, but it differs in an important way: `copyMessage`
+re-sends the message content as a **new message with no link to the original
+sender** (there is no "forwarded from" header), so an operator can review or
+re-post moderated content without exposing the source.
+
+Usage: `/copy <from_chat_id> <message_id> [share]`
+
+- the message is always copied into the chat where the command was issued;
+- the copied message is protected from further forwarding and saving by default
+  (`protect_content=true`), so moderated content is not leaked further; append
+  `share` to drop that protection;
+- Telegram cannot copy service messages, paid media, giveaway/giveaway-winners
+  and invoice messages, and the bot must be able to access `from_chat_id` (it
+  must be a member of that chat). Such cases return a Telegram error that the
+  command reports back instead of copying;
+- on success Telegram returns only the new `MessageId`, not a full `Message`.
+
+Because the command relays content between chats, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
+`copyMessage` copies a single message; copying a whole album as a group is the
+job of `copyMessages`, which is tracked separately.
+
 ### Group privacy mode
 
 When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
@@ -279,7 +312,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /copy, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -287,7 +320,8 @@ telegram-claude-agent/
 │   │   ├── webhook_info.py     # Telegram webhook diagnostics formatting
 │   │   ├── log_out.py          # Telegram logOut lifecycle helper
 │   │   ├── close.py            # Telegram close lifecycle helper
-│   │   └── forward_message.py  # Telegram forwardMessage relay helper
+│   │   ├── forward_message.py  # Telegram forwardMessage relay helper
+│   │   └── copy_message.py     # Telegram copyMessage relay helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
 │       └── media.py            # Transcription, document extraction
@@ -322,6 +356,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/logout` command is destructive (it logs the bot out of the cloud Bot API for 10 minutes), so it requires `TELEGRAM_ADMIN_CHAT_IDS` and explicit `/logout confirm`.
 - The `/close` command is destructive (it closes the running bot instance on the current Bot API server), so it requires `TELEGRAM_ADMIN_CHAT_IDS` and explicit `/close confirm`.
 - The `/forward` command relays a message from another chat into the admin chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and protects the forwarded copy from re-forwarding by default.
+- The `/copy` command relays a message from another chat into the admin chat without a link to the original sender, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and protects the copied message from re-forwarding by default.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work
