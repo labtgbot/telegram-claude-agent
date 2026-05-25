@@ -3,11 +3,23 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
 from aiogram.types import Message
 from bot.config import settings
+from bot.services.log_out import perform_log_out
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
 from bot.utils.storage import storage
 from bot.services.claude_proxy import ClaudeProxyClient
 
 router = Router()
+
+LOGOUT_CONFIRM_KEYWORD = "confirm"
+
+LOGOUT_WARNING = (
+    "<b>logOut confirmation required</b>\n"
+    "This logs the bot out of the cloud Telegram Bot API server. After a "
+    "successful logout the bot stops receiving updates and cannot log back "
+    "into the cloud Bot API server for 10 minutes. Use this only before "
+    "switching to a local Bot API server.\n"
+    "Run <code>/logout confirm</code> to proceed."
+)
 
 @router.message(Command("start"))
 async def cmd_start(message: Message):
@@ -26,6 +38,7 @@ async def cmd_help(message: Message):
         "/model - Show or change the AI model\n"
         "/settings - Show your settings\n"
         "/webhook - Show webhook diagnostics (restricted)\n"
+        "/logout - Log out from the cloud Bot API (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -89,6 +102,29 @@ async def cmd_webhook_info(message: Message):
 
     await message.answer(format_webhook_info(info), parse_mode="HTML")
 
+@router.message(Command("logout"))
+async def cmd_log_out(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    args = (message.text or "").split()
+    if len(args) < 2 or args[1].strip().lower() != LOGOUT_CONFIRM_KEYWORD:
+        await message.answer(LOGOUT_WARNING, parse_mode="HTML")
+        return
+
+    try:
+        await perform_log_out(message.bot)
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not log out from the cloud Bot API: {exc}")
+        return
+
+    await message.answer(
+        "Logged out from the cloud Bot API server. The bot will not receive "
+        "updates until it logs in again, and cloud login is blocked for 10 "
+        "minutes."
+    )
+
 @router.message(Command("clear"))
 async def cmd_clear(message: Message):
     storage.clear_history(message.chat.id, message.from_user.id)
@@ -102,3 +138,8 @@ def _is_diagnostics_allowed(chat_id: int) -> bool:
 
     allowed_chat_ids = settings.allowed_chat_ids
     return bool(allowed_chat_ids and chat_id in allowed_chat_ids)
+
+
+def _is_admin_action_allowed(chat_id: int) -> bool:
+    admin_chat_ids = settings.admin_chat_ids
+    return bool(admin_chat_ids and chat_id in admin_chat_ids)
