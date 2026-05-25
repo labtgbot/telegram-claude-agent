@@ -56,8 +56,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 в нем 169 карточек методов с labels, stages, scope и acceptance criteria;
 после внедрения `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
-`sendLivePhoto`, `sendDocument`, `sendVideo`, `sendAnimation` и `sendVoice`
-остается 155 пока не интегрированных методов.
+`sendLivePhoto`, `sendDocument`, `sendVideo`, `sendAnimation`, `sendVoice` и
+`sendPaidMedia` остается 154 пока не интегрированных метода.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -83,6 +83,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendVideo` | `bot/services/send_video.py`, `/video` в `bot/handlers/commands.py` | Admin-flow отправки видео в текущий чат как проигрываемого Telegram-видео по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendAnimation` | `bot/services/send_animation.py`, `/animation` в `bot/handlers/commands.py` | Admin-flow отправки анимации (GIF или видео без звука) в текущий чат как проигрываемого зацикленного клипа по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendVoice` | `bot/services/send_voice.py`, `/voice` в `bot/handlers/commands.py` | Admin-flow отправки голосового сообщения в текущий чат как проигрываемого аудиоклипа (в виде waveform) по URL или `file_id`, а не только текстовой интерпретации. |
+| `sendPaidMedia` | `bot/services/send_paid_media.py`, `/paidmedia` в `bot/handlers/commands.py` | Admin-flow отправки платного фото в текущий чат, доступ к которому пользователи оплачивают Telegram Stars, по URL или `file_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 7.6. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -122,7 +123,7 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `getChatMenuButton`, `setMyDefaultAdministratorRights`,
    `getMyDefaultAdministratorRights`.
 3. Более богатые ответы пользователю: `sendChatAction`,
-   `sendVideoNote`, `sendMediaGroup`, `sendPaidMedia`,
+   `sendVideoNote`, `sendMediaGroup`,
    `sendLocation`, `sendVenue`, `sendContact`, `sendPoll`, `sendChecklist`,
    `sendDice`, `sendMessageDraft`, `setMessageReaction`.
 4. Управление сообщениями: `editMessageCaption`, `editMessageMedia`,
@@ -701,6 +702,54 @@ Telegram. Метод отправляет голосовое сообщение;
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/voice` так же, как к другим командам.
 
+### sendPaidMedia
+
+Команда `/paidmedia` отправляет платное медиа — контент, доступ к которому
+пользователи оплачивают Telegram Stars, — методом Telegram `sendPaidMedia`
+(введен в Bot API 7.6). По официальной документации метод требует `chat_id`,
+`star_count` (цена в Telegram Stars; 1-25000 по состоянию на Bot API 10.0) и
+`media` (JSON-массив до 10 элементов `InputPaidMedia`, каждый — `photo` или
+`video`) и возвращает отправленное `Message`. Если `chat_id` указывает на канал,
+все Star-поступления зачисляются на баланс канала; иначе — на баланс бота.
+Опциональный `payload` (0-128 байт) не показывается пользователю и возвращается
+в `purchased_paid_media` updates, а `caption` ограничен 1024 символами после
+парсинга entities.
+
+Ключевое отличие от `sendPhoto`/`sendVideo`: pinned `aiogram==3.3.0`
+(Bot API 7.0) не имеет typed wrapper для этого метода Bot API 7.6. Поэтому
+реализация идет через изолированный raw Bot API helper
+`bot/services/send_paid_media.py`, который сам собирает JSON-payload (с
+JSON-сериализацией массива `media`) и POST'ит его на endpoint `sendPaidMedia`
+через `httpx`, не завися от typed aiogram метода. URL endpoint берется из
+`bot.session.api.api_url(...)`, чтобы учесть кастомный local Bot API server, с
+fallback на cloud-endpoint. Ошибки транспорта и ответы Telegram с `ok: false`
+поднимаются как единое исключение `SendPaidMediaError`.
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет платное фото в чат,
+а не только текстовую интерпретацию. Целевой чат всегда тот, где вызвана команда.
+Синтаксис: `/paidmedia <star_count> <url_or_file_id> [caption]`. Команда
+отправляет одиночное фото (`media=[{"type": "photo", ...}]`), а helper принимает
+полный массив `media` для до 10 photo/video элементов.
+
+`star_count` проверяется на диапазон 1-25000, а caption необязателен, может
+содержать пробелы и проверяется на лимит 1024 символа до обращения к Telegram,
+чтобы validation path не зависел от ошибки Telegram.
+
+`/paidmedia` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствии цены или media-аргумента (или нечисловой цене) команда
+  показывает usage, при цене вне диапазона 1-25000 — сообщение о допустимом
+  диапазоне, а при слишком длинном caption — сообщение о превышении лимита, и во
+  всех случаях не обращается к Telegram;
+- ошибки Telegram (например, недостаточные права бота на отправку платного медиа
+  или неверный `file_id`) возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/paidmedia` так же, как к другим командам.
+
 ### Текстовые сообщения
 
 Личные чаты используют историю сообщений пользователя в конкретном чате.
@@ -821,8 +870,9 @@ admin-командам. Для диагностики `/webhook` при пуст
 fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пустые, диагностика
 недоступна. Для деструктивных `/logout`, `/close`, для message-relay
 `/forward`, `/forwards`, `/copy`, `/copies` и для исходящего медиа `/photo`,
-`/audio`, `/livephoto` и `/document` fallback не применяется: команды требуют
-непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
+`/audio`, `/livephoto`, `/document`, `/video`, `/animation`, `/voice` и
+`/paidmedia` fallback не применяется: команды требуют непустой
+`TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
 
 ## Безопасность и ограничения доступа
 
@@ -856,6 +906,9 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
   могли заставить бота публиковать произвольные live photo как видео с обложкой;
 - строгий admin allowlist без fallback для `/document`, чтобы только операторы
   могли заставить бота публиковать произвольные файлы как документы;
+- строгий admin allowlist без fallback для `/paidmedia`, чтобы только операторы
+  могли заставить бота публиковать произвольное платное медиа с ценой в Telegram
+  Stars;
 - per-user rate limit в sliding window на 60 секунд;
 - guest mode для групп;
 - экранирование HTML в LLM-ответах перед Telegram HTML.
@@ -895,6 +948,9 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
   поэтому требует явного admin allowlist; его нельзя открывать публично;
 - `/document` заставляет бота публиковать произвольный файл по URL или `file_id`,
   поэтому требует явного admin allowlist; его нельзя открывать публично;
+- `/paidmedia` заставляет бота публиковать произвольное платное медиа с ценой в
+  Telegram Stars по URL или `file_id`, поэтому требует явного admin allowlist;
+  его нельзя открывать публично;
 - нет persistent audit log, admin panel или метрик;
 - нет отдельной проверки размера входных файлов перед скачиванием и обработкой.
 

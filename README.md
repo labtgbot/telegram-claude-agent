@@ -151,6 +151,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/video` – Send a video into this chat as a playable Telegram video via a URL or file_id (admin only).
 - `/animation` – Send an animation (GIF or soundless video) into this chat as a playable looping clip via a URL or file_id (admin only).
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
+- `/paidmedia` – Send a paid photo into this chat that users must pay for with Telegram Stars to access, via a URL or file_id (admin only).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics
@@ -527,6 +528,40 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Send paid media
+
+The restricted `/paidmedia` command calls Telegram Bot API `sendPaidMedia`
+(introduced in Bot API 7.6). Because the pinned `aiogram==3.3.0` predates this
+method and ships no typed wrapper, the command goes through an **isolated raw
+Bot API helper** (`bot/services/send_paid_media.py`) that POSTs the request
+over `httpx` instead of using a typed aiogram method. It lets an operator post
+a **paid photo** that users must pay for with Telegram Stars before they can see
+it, instead of only a textual interpretation.
+
+Usage: `/paidmedia <star_count> <url_or_file_id> [caption]`
+
+- the paid media is always sent into the chat where the command was issued;
+- `star_count` is the price in Telegram Stars and must be between 1 and 25000
+  (the command validates this bound before calling Telegram);
+- when the chat is a channel, all Telegram Star proceeds are credited to the
+  channel's balance; otherwise they are credited to the bot's balance;
+- the media reference is either an HTTP(S) URL that Telegram fetches itself or a
+  `file_id` of a photo that already exists on Telegram servers (the command
+  sends a single photo; the helper accepts the full `media` array for up to 10
+  photo/video items);
+- the caption is optional, may contain spaces, and is limited to 1024
+  characters (the command validates this bound before calling Telegram);
+- an invalid reference, insufficient bot rights or unsupported file returns a
+  Telegram error that the command reports back instead of sending.
+
+Because the command makes the bot post monetized content, it is guarded like the
+other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Group privacy mode
 
 When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
@@ -574,7 +609,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /animation, /voice, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /animation, /voice, /paidmedia, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -592,7 +627,8 @@ telegram-claude-agent/
 │   │   ├── send_document.py    # Telegram sendDocument outbound helper
 │   │   ├── send_video.py       # Telegram sendVideo outbound helper
 │   │   ├── send_animation.py   # Telegram sendAnimation outbound helper
-│   │   └── send_voice.py       # Telegram sendVoice outbound helper
+│   │   ├── send_voice.py       # Telegram sendVoice outbound helper
+│   │   └── send_paid_media.py  # Telegram sendPaidMedia raw Bot API helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
 │       └── media.py            # Transcription, document extraction
@@ -637,6 +673,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/video` command makes the bot post an arbitrary video into the chat as a playable video, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/animation` command makes the bot post an arbitrary animation (GIF or soundless video) into the chat as a playable looping clip, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/voice` command makes the bot post an arbitrary voice message into the chat as a playable audio clip, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
+- The `/paidmedia` command makes the bot post arbitrary monetized media priced in Telegram Stars into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work
