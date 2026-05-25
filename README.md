@@ -154,6 +154,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
 - `/paidmedia` – Send a paid photo into this chat that users must pay for with Telegram Stars to access, via a URL or file_id (admin only).
 - `/location` – Send a point on the map into this chat as a real Telegram location via latitude and longitude (admin only).
+- `/venue` – Send a venue (a named place with a title and an address pinned on the map) into this chat via latitude and longitude (admin only).
 - `/mediagroup` – Send 2-10 media items into this chat as a single album (media group) via URLs or file_ids (admin only).
 - `/clear` – Clear your conversation history.
 
@@ -617,6 +618,35 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Send a venue
+
+The restricted `/venue` command calls Telegram Bot API `sendVenue` through
+aiogram's typed `Bot.send_venue()` wrapper. It lets an operator post a **venue**
+into the chat as a real Telegram venue — a named place with a title and an
+address pinned on the map — instead of only a textual interpretation.
+
+Usage: `/venue <latitude> <longitude> <title> | <address>`
+
+- the venue is always sent into the chat where the command was issued;
+- `latitude` and `longitude` are given in decimal degrees; latitude must be
+  between -90 and 90 and longitude between -180 and 180 (the command validates
+  these bounds before calling Telegram);
+- the `title` and the `address` follow the coordinates and are separated by a
+  vertical bar (`|`); both may contain spaces and both are required, so the
+  command shows usage when the separator is missing or either side is empty;
+- a venue exposes a precise place and address, so they are intentionally kept
+  out of the structured logs;
+- an invalid request (for example a chat the bot cannot post to) returns a
+  Telegram error that the command reports back instead of sending.
+
+Because the command makes the bot post a venue, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Send a media group
 
 The restricted `/mediagroup` command calls Telegram Bot API `sendMediaGroup`
@@ -696,7 +726,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /mediagroup, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /mediagroup, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -718,6 +748,7 @@ telegram-claude-agent/
 │   │   ├── send_voice.py       # Telegram sendVoice outbound helper
 │   │   ├── send_paid_media.py  # Telegram sendPaidMedia raw Bot API helper
 │   │   ├── send_location.py    # Telegram sendLocation outbound helper
+│   │   ├── send_venue.py       # Telegram sendVenue outbound helper
 │   │   └── send_media_group.py # Telegram sendMediaGroup outbound helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
@@ -766,6 +797,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/voice` command makes the bot post an arbitrary voice message into the chat as a playable audio clip, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/paidmedia` command makes the bot post arbitrary monetized media priced in Telegram Stars into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/location` command makes the bot post an arbitrary point on the map into the chat as a location, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; coordinates are kept out of the structured logs.
+- The `/venue` command makes the bot post an arbitrary venue (a named place with a title and an address) into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the coordinates, title and address are kept out of the structured logs.
 - The `/mediagroup` command makes the bot post an arbitrary album of 2-10 media items into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - Rate limiting helps prevent abuse.
 
