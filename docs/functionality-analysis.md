@@ -56,8 +56,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 в нем 169 карточек методов с labels, stages, scope и acceptance criteria;
 после внедрения `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
-`sendLivePhoto`, `sendDocument`, `sendVideo`, `sendAnimation`, `sendVoice` и
-`sendPaidMedia` остается 154 пока не интегрированных метода.
+`sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
+`sendVoice` и `sendPaidMedia` остается 153 пока не интегрированных метода.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -81,6 +81,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendLivePhoto` | `bot/services/send_live_photo.py`, `/livephoto` в `bot/handlers/commands.py` | Admin-flow отправки live photo (короткое видео + статичная обложка) в текущий чат по `file_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0. |
 | `sendDocument` | `bot/services/send_document.py`, `/document` в `bot/handlers/commands.py` | Admin-flow отправки файла в текущий чат как Telegram-документа по URL или `file_id` — для больших текстовых, PDF или исходных артефактов, когда текстовый ответ не подходит. |
 | `sendVideo` | `bot/services/send_video.py`, `/video` в `bot/handlers/commands.py` | Admin-flow отправки видео в текущий чат как проигрываемого Telegram-видео по URL или `file_id`, а не только текстовой интерпретации. |
+| `sendVideoNote` | `bot/services/send_video_note.py`, `/videonote` в `bot/handlers/commands.py` | Admin-flow отправки видеосообщения-кружка (круглого квадратного видео) в текущий чат по `file_id`, через typed aiogram API; у видеосообщений нет caption, и Telegram не поддерживает их отправку по URL. |
 | `sendAnimation` | `bot/services/send_animation.py`, `/animation` в `bot/handlers/commands.py` | Admin-flow отправки анимации (GIF или видео без звука) в текущий чат как проигрываемого зацикленного клипа по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendVoice` | `bot/services/send_voice.py`, `/voice` в `bot/handlers/commands.py` | Admin-flow отправки голосового сообщения в текущий чат как проигрываемого аудиоклипа (в виде waveform) по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendPaidMedia` | `bot/services/send_paid_media.py`, `/paidmedia` в `bot/handlers/commands.py` | Admin-flow отправки платного фото в текущий чат, доступ к которому пользователи оплачивают Telegram Stars, по URL или `file_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 7.6. |
@@ -123,7 +124,7 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `getChatMenuButton`, `setMyDefaultAdministratorRights`,
    `getMyDefaultAdministratorRights`.
 3. Более богатые ответы пользователю: `sendChatAction`,
-   `sendVideoNote`, `sendMediaGroup`,
+   `sendMediaGroup`,
    `sendLocation`, `sendVenue`, `sendContact`, `sendPoll`, `sendChecklist`,
    `sendDice`, `sendMessageDraft`, `setMessageReaction`.
 4. Управление сообщениями: `editMessageCaption`, `editMessageMedia`,
@@ -625,6 +626,42 @@ Telegram. Метод обрабатывает одиночное видео; в�
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/video` так же, как к другим командам.
 
+### sendVideoNote
+
+Команда `/videonote` вызывает typed aiogram API `Bot.send_video_note()` для
+метода Telegram `sendVideoNote`. По официальной документации метод требует
+`chat_id` и `video_note` и возвращает отправленное `Message`. В отличие от
+`sendVideo`, Telegram сейчас **не** поддерживает отправку видеосообщений-кружков
+по URL, поэтому `video_note` должен быть `file_id` уже существующего на серверах
+Telegram видеосообщения или загружаемым файлом; helper принимает строковую форму
+`file_id`. У видеосообщений-кружков нет caption и они не принимают `parse_mode`.
+Опциональные `duration` (в секундах) и `length` (диаметр квадратного
+видеосообщения) описывают клип, а `thumbnail` задает кастомную обложку-превью.
+Параметры соответствуют typed wrapper'у pinned `aiogram==3.3.0` (Bot API 7.0).
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет сгенерированный или
+полученный клип в чат как настоящее проигрываемое видеосообщение-кружок, а не
+только текстовую интерпретацию. Целевой чат всегда тот, где вызвана команда.
+Синтаксис: `/videonote <file_id>`.
+
+Caption у видеосообщений нет, поэтому команда не принимает текст подписи: лишние
+токены после `file_id` игнорируются. Метод отправляет круглое квадратное
+видеосообщение; обычное видео со звуком — задача `sendVideo`, GIF/анимация без
+звука — `sendAnimation`, а отправка альбома — `sendMediaGroup`.
+
+`/videonote` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующем video_note-аргументе команда показывает usage и не
+  обращается к Telegram;
+- ошибки Telegram (например, неверный `file_id` или попытка отправить по URL)
+  возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/videonote` так же, как к другим командам.
+
 ### sendAnimation
 
 Команда `/animation` вызывает typed aiogram API `Bot.send_animation()` для
@@ -870,8 +907,8 @@ admin-командам. Для диагностики `/webhook` при пуст
 fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пустые, диагностика
 недоступна. Для деструктивных `/logout`, `/close`, для message-relay
 `/forward`, `/forwards`, `/copy`, `/copies` и для исходящего медиа `/photo`,
-`/audio`, `/livephoto`, `/document`, `/video`, `/animation`, `/voice` и
-`/paidmedia` fallback не применяется: команды требуют непустой
+`/audio`, `/livephoto`, `/document`, `/video`, `/videonote`, `/animation`,
+`/voice` и `/paidmedia` fallback не применяется: команды требуют непустой
 `TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
 
 ## Безопасность и ограничения доступа
