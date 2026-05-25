@@ -143,6 +143,7 @@ Area label: `area:lifecycle`. Priority baseline: `priority:P0`
 #### BOTAPI-004: `close`
 
 - Title: `telegram-api: реализовать close`
+- Status: implemented in PR #179 as restricted `/close` command with confirmation.
 - Official docs: https://core.telegram.org/bots/api#close
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:lifecycle`, `priority:P0`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
