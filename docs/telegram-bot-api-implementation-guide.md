@@ -195,6 +195,7 @@ Area label: `area:message-relay`. Priority baseline: `priority:P2`
 #### BOTAPI-007: `copyMessage`
 
 - Title: `telegram-api: реализовать copyMessage`
+- Status: implemented in PR #181 as restricted admin `/copy` relay command.
 - Official docs: https://core.telegram.org/bots/api#copymessage
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:message-relay`, `priority:P2`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
