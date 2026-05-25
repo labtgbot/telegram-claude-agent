@@ -4,6 +4,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from bot.config import settings
 from bot.services.close import perform_close
+from bot.services.forward_message import perform_forward_message
 from bot.services.log_out import perform_log_out
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
 from bot.utils.storage import storage
@@ -34,6 +35,18 @@ CLOSE_WARNING = (
     "Run <code>/close confirm</code> to proceed."
 )
 
+FORWARD_SHARE_KEYWORD = "share"
+
+FORWARD_USAGE = (
+    "<b>forward usage</b>\n"
+    "Forwards a single message into this chat for support/moderation review. "
+    "The bot must be a member of the source chat and the message must not be a "
+    "service message or have protected content.\n"
+    "Usage: <code>/forward &lt;from_chat_id&gt; &lt;message_id&gt; [share]</code>\n"
+    "By default the forwarded copy is protected from further forwarding and "
+    "saving. Append <code>share</code> to allow re-forwarding it."
+)
+
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
@@ -53,6 +66,7 @@ async def cmd_help(message: Message):
         "/webhook - Show webhook diagnostics (restricted)\n"
         "/logout - Log out from the cloud Bot API (admin only)\n"
         "/close - Close the bot instance on the current Bot API (admin only)\n"
+        "/forward - Forward a message into this chat for review (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -162,6 +176,38 @@ async def cmd_close(message: Message):
         "updates."
     )
 
+@router.message(Command("forward"))
+async def cmd_forward(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    args = (message.text or "").split()
+    parsed = _parse_forward_args(args[1:])
+    if parsed is None:
+        await message.answer(FORWARD_USAGE, parse_mode="HTML")
+        return
+
+    from_chat_id, message_id, protect_content = parsed
+
+    try:
+        await perform_forward_message(
+            message.bot,
+            chat_id=message.chat.id,
+            from_chat_id=from_chat_id,
+            message_id=message_id,
+            protect_content=protect_content,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not forward the message: {exc}")
+        return
+
+    protection = "protected" if protect_content else "shareable"
+    await message.answer(
+        f"Forwarded message {message_id} from chat {from_chat_id} "
+        f"({protection} copy)."
+    )
+
 @router.message(Command("clear"))
 async def cmd_clear(message: Message):
     storage.clear_history(message.chat.id, message.from_user.id)
@@ -180,3 +226,28 @@ def _is_diagnostics_allowed(chat_id: int) -> bool:
 def _is_admin_action_allowed(chat_id: int) -> bool:
     admin_chat_ids = settings.admin_chat_ids
     return bool(admin_chat_ids and chat_id in admin_chat_ids)
+
+
+def _parse_forward_args(args: list[str]):
+    """Parse ``/forward`` arguments into ``(from_chat_id, message_id, protect)``.
+
+    Returns ``None`` when the arguments are missing or invalid so the caller can
+    show usage. ``protect`` defaults to ``True`` and is disabled by the optional
+    trailing ``share`` keyword.
+    """
+    if len(args) < 2 or len(args) > 3:
+        return None
+
+    try:
+        from_chat_id = int(args[0])
+        message_id = int(args[1])
+    except ValueError:
+        return None
+
+    protect_content = True
+    if len(args) == 3:
+        if args[2].strip().lower() != FORWARD_SHARE_KEYWORD:
+            return None
+        protect_content = False
+
+    return from_chat_id, message_id, protect_content

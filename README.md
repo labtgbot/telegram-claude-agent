@@ -140,6 +140,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/webhook` – Show webhook diagnostics for allowed admin chats.
 - `/logout` – Log the bot out of the cloud Bot API server (admin only, requires confirmation).
 - `/close` – Close the bot instance on the current Bot API server (admin only, requires confirmation).
+- `/forward` – Forward a message from another chat into this chat for support/moderation review (admin only).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics
@@ -202,6 +203,35 @@ server restart. Telegram returns error 429 if `close` is called within the
 first 10 minutes after the bot was launched. Recovery is simply moving the bot
 to its new Bot API server and starting it again to resume processing updates.
 
+### Forward messages for moderation
+
+The restricted `/forward` command calls Telegram Bot API `forwardMessage`
+through aiogram's typed `Bot.forward_message()` wrapper. It is meant for a
+support/moderation scenario: an operator pulls a specific message from a chat
+the bot is a member of into the current admin chat for review.
+
+Usage: `/forward <from_chat_id> <message_id> [share]`
+
+- the message is always forwarded into the chat where the command was issued;
+- the forwarded copy is protected from further forwarding and saving by default
+  (`protect_content=true`), so moderated content is not leaked further; append
+  `share` to drop that protection;
+- Telegram rejects forwarding of service messages and messages whose original
+  already has protected content, and the bot must be able to access
+  `from_chat_id` (it must be a member of that chat). Such cases return a
+  Telegram error that the command reports back instead of forwarding.
+
+Because the command relays content between chats, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
+`forwardMessage` forwards a single message; forwarding a whole album as a group
+is the job of `forwardMessages`, which is tracked separately.
+
 ### Group privacy mode
 
 When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
@@ -249,14 +279,15 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
 │   │   ├── claude_proxy.py     # Client for free-claude-code API
 │   │   ├── webhook_info.py     # Telegram webhook diagnostics formatting
 │   │   ├── log_out.py          # Telegram logOut lifecycle helper
-│   │   └── close.py            # Telegram close lifecycle helper
+│   │   ├── close.py            # Telegram close lifecycle helper
+│   │   └── forward_message.py  # Telegram forwardMessage relay helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
 │       └── media.py            # Transcription, document extraction
@@ -290,6 +321,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/webhook` diagnostics command can expose webhook URL and delivery errors, so restrict it with `TELEGRAM_ADMIN_CHAT_IDS`.
 - The `/logout` command is destructive (it logs the bot out of the cloud Bot API for 10 minutes), so it requires `TELEGRAM_ADMIN_CHAT_IDS` and explicit `/logout confirm`.
 - The `/close` command is destructive (it closes the running bot instance on the current Bot API server), so it requires `TELEGRAM_ADMIN_CHAT_IDS` and explicit `/close confirm`.
+- The `/forward` command relays a message from another chat into the admin chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and protects the forwarded copy from re-forwarding by default.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work
