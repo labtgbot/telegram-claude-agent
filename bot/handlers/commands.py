@@ -17,6 +17,7 @@ from bot.services.forward_messages import perform_forward_messages
 from bot.services.log_out import perform_log_out
 from bot.services.send_animation import perform_send_animation
 from bot.services.send_audio import perform_send_audio
+from bot.services.send_checklist import SendChecklistError, perform_send_checklist
 from bot.services.send_contact import perform_send_contact
 from bot.services.send_dice import perform_send_dice
 from bot.services.send_document import perform_send_document
@@ -320,6 +321,31 @@ DICE_USAGE = (
     + "."
 )
 
+CHECKLIST_TASK_SEPARATOR = "|"
+
+CHECKLIST_TITLE_MAX_LENGTH = 255
+
+CHECKLIST_TASK_MAX_LENGTH = 100
+
+CHECKLIST_MIN_TASKS = 1
+
+CHECKLIST_MAX_TASKS = 30
+
+CHECKLIST_USAGE = (
+    "<b>checklist usage</b>\n"
+    "Sends a checklist into this chat as a real Telegram checklist (a titled "
+    "list of tasks recipients can tick off) instead of plain text. This method "
+    "sends on behalf of a connected business account, so the bot must be "
+    "connected to one and you must pass that live business connection id first. "
+    "Then pass the checklist title followed by the tasks, all separated by a "
+    "vertical bar.\n"
+    "Usage: <code>/checklist &lt;business_connection_id&gt; &lt;title&gt; "
+    "| &lt;task&gt; [| &lt;task&gt; ...]</code>\n"
+    "Provide 1-30 tasks. The title is limited to 255 characters and each task "
+    "to 100 characters; the title and every task may contain spaces and must be "
+    "non-empty."
+)
+
 MEDIA_GROUP_CAPTION_LIMIT = 1024
 
 MEDIA_GROUP_MIN_ITEMS = 2
@@ -385,6 +411,7 @@ async def cmd_help(message: Message):
         "/poll - Send a native poll (question with answer options) into this chat (admin only)\n"
         "/contact - Send a phone contact (name and phone number) into this chat (admin only)\n"
         "/dice - Send an animated dice (random value) into this chat (admin only)\n"
+        "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
@@ -1108,6 +1135,59 @@ async def cmd_dice(message: Message):
 
     await message.answer("Sent dice.")
 
+@router.message(Command("checklist"))
+async def cmd_checklist(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_checklist_args(message.text or "")
+    if parsed is None:
+        await message.answer(CHECKLIST_USAGE, parse_mode="HTML")
+        return
+
+    business_connection_id, title, tasks = parsed
+    if len(title) > CHECKLIST_TITLE_MAX_LENGTH:
+        await message.answer(
+            f"Title is too long: {len(title)} characters "
+            f"(max {CHECKLIST_TITLE_MAX_LENGTH})."
+        )
+        return
+
+    if not CHECKLIST_MIN_TASKS <= len(tasks) <= CHECKLIST_MAX_TASKS:
+        await message.answer(
+            f"A checklist needs between {CHECKLIST_MIN_TASKS} and "
+            f"{CHECKLIST_MAX_TASKS} tasks."
+        )
+        return
+
+    too_long = next((task for task in tasks if len(task) > CHECKLIST_TASK_MAX_LENGTH), None)
+    if too_long is not None:
+        await message.answer(
+            f"Task is too long: {len(too_long)} characters "
+            f"(max {CHECKLIST_TASK_MAX_LENGTH})."
+        )
+        return
+
+    checklist = {
+        "title": title,
+        "tasks": [
+            {"id": index, "text": task} for index, task in enumerate(tasks, start=1)
+        ],
+    }
+    try:
+        await perform_send_checklist(
+            message.bot,
+            business_connection_id=business_connection_id,
+            chat_id=message.chat.id,
+            checklist=checklist,
+        )
+    except SendChecklistError as exc:
+        await message.answer(f"Could not send the checklist: {exc}")
+        return
+
+    await message.answer(f"Sent checklist with {len(tasks)} tasks.")
+
 @router.message(Command("mediagroup"))
 async def cmd_media_group(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -1665,6 +1745,36 @@ def _parse_dice_args(text: str):
         return None
 
     return (emoji,)
+
+
+def _parse_checklist_args(text: str):
+    """Parse ``/checklist`` args into ``(business_connection_id, title, tasks)``.
+
+    Splits the raw command text into the command, the ``business_connection_id``
+    (a single whitespace-delimited token) and the remainder, then splits the
+    remainder on the vertical bar (``|``) so the first segment is the checklist
+    ``title`` and the following segments are the task texts. Every segment is
+    trimmed of surrounding whitespace but keeps any internal spaces. Returns
+    ``None`` when the business connection id is missing, when the separator is
+    missing so no task is given, or when the title or any task is empty, so the
+    caller can show usage. The caller validates the title/task lengths and the
+    1-30 task count against Telegram's limits.
+    """
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) < 3:
+        return None
+
+    business_connection_id = parts[1].strip()
+    segments = [segment.strip() for segment in parts[2].split(CHECKLIST_TASK_SEPARATOR)]
+    title = segments[0]
+    tasks = segments[1:]
+    if not business_connection_id or not title or not tasks:
+        return None
+
+    if any(not task for task in tasks):
+        return None
+
+    return business_connection_id, title, tasks
 
 
 def _parse_media_group_args(text: str):
