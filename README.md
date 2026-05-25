@@ -150,6 +150,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/document` – Send a file into this chat as a document via a URL or file_id (admin only).
 - `/video` – Send a video into this chat as a playable Telegram video via a URL or file_id (admin only).
 - `/animation` – Send an animation (GIF or soundless video) into this chat as a playable looping clip via a URL or file_id (admin only).
+- `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics
@@ -499,6 +500,33 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Send a voice message
+
+The restricted `/voice` command calls Telegram Bot API `sendVoice` through
+aiogram's typed `Bot.send_voice()` wrapper. It lets an operator deliver a
+generated or received audio clip into the chat as a **playable voice message**
+(shown as a waveform) instead of only a textual interpretation.
+
+Usage: `/voice <url_or_file_id> [caption]`
+
+- the voice message is always sent into the chat where the command was issued;
+- the voice reference is either an HTTP(S) URL that Telegram fetches itself or a
+  `file_id` of a voice message that already exists on Telegram servers;
+- the caption is optional, may contain spaces, and is limited to 1024
+  characters (the command validates this bound before calling Telegram);
+- for playback as a voice message Telegram expects an `.OGG` file encoded with
+  OPUS, or an `.MP3` or `.M4A` file, and limits a file sent by URL to 20 MB; an
+  invalid reference or unsupported file returns a Telegram error that the
+  command reports back instead of sending.
+
+Because the command makes the bot post content, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Group privacy mode
 
 When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
@@ -546,7 +574,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /animation, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /animation, /voice, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -563,7 +591,8 @@ telegram-claude-agent/
 │   │   ├── send_live_photo.py  # Telegram sendLivePhoto raw Bot API helper
 │   │   ├── send_document.py    # Telegram sendDocument outbound helper
 │   │   ├── send_video.py       # Telegram sendVideo outbound helper
-│   │   └── send_animation.py   # Telegram sendAnimation outbound helper
+│   │   ├── send_animation.py   # Telegram sendAnimation outbound helper
+│   │   └── send_voice.py       # Telegram sendVoice outbound helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
 │       └── media.py            # Transcription, document extraction
@@ -607,6 +636,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/document` command makes the bot post an arbitrary file into the chat as a document, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/video` command makes the bot post an arbitrary video into the chat as a playable video, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/animation` command makes the bot post an arbitrary animation (GIF or soundless video) into the chat as a playable looping clip, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
+- The `/voice` command makes the bot post an arbitrary voice message into the chat as a playable audio clip, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work
