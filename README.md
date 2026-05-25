@@ -162,6 +162,12 @@ pytest tests/unit
 
 Integration tests (requires running bot and proxy) are in `tests/integration`.
 
+## Functionality Analysis
+
+See [docs/functionality-analysis.md](docs/functionality-analysis.md) for the
+current feature inventory, architecture notes, test coverage, known gaps, and
+recommended next steps.
+
 ## Project Structure
 
 ```
