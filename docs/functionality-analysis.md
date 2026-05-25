@@ -56,7 +56,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 в нем 169 карточек методов с labels, stages, scope и acceptance criteria;
 после внедрения `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
-`sendLivePhoto` и `sendDocument` остается 158 пока не интегрированный метод.
+`sendLivePhoto`, `sendDocument` и `sendVideo` остается 157 пока не
+интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -79,6 +80,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendAudio` | `bot/services/send_audio.py`, `/audio` в `bot/handlers/commands.py` | Admin-flow отправки аудиофайла в текущий чат как проигрываемого музыкального трека по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendLivePhoto` | `bot/services/send_live_photo.py`, `/livephoto` в `bot/handlers/commands.py` | Admin-flow отправки live photo (короткое видео + статичная обложка) в текущий чат по `file_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0. |
 | `sendDocument` | `bot/services/send_document.py`, `/document` в `bot/handlers/commands.py` | Admin-flow отправки файла в текущий чат как Telegram-документа по URL или `file_id` — для больших текстовых, PDF или исходных артефактов, когда текстовый ответ не подходит. |
+| `sendVideo` | `bot/services/send_video.py`, `/video` в `bot/handlers/commands.py` | Admin-flow отправки видео в текущий чат как проигрываемого Telegram-видео по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -118,7 +120,7 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `getChatMenuButton`, `setMyDefaultAdministratorRights`,
    `getMyDefaultAdministratorRights`.
 3. Более богатые ответы пользователю: `sendChatAction`,
-   `sendVoice`, `sendVideo`, `sendAnimation`,
+   `sendVoice`, `sendAnimation`,
    `sendVideoNote`, `sendMediaGroup`, `sendPaidMedia`,
    `sendLocation`, `sendVenue`, `sendContact`, `sendPoll`, `sendChecklist`,
    `sendDice`, `sendMessageDraft`, `setMessageReaction`.
@@ -581,6 +583,45 @@ Telegram. Метод обрабатывает одиночный файл общ
 
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/document` так же, как к другим командам.
+
+### sendVideo
+
+Команда `/video` вызывает typed aiogram API `Bot.send_video()` для метода
+Telegram `sendVideo`. По официальной документации метод требует `chat_id` и
+`video` и возвращает отправленное `Message`. `video` может быть HTTP(S)-URL,
+который Telegram скачивает сам, `file_id` уже существующего на серверах Telegram
+видео или загружаемым файлом; helper принимает строковую форму URL/`file_id`.
+Telegram-клиенты поддерживают видео в формате MPEG4 (другие форматы могут быть
+отправлены как `Document`), ограничивают файл, отправляемый по URL, 20 MB, а
+`caption` — 1024 символами после парсинга entities. Опциональные `duration` (в
+секундах), `width` и `height` описывают видео, `thumbnail` задает кастомную
+обложку-превью, `has_spoiler` закрывает видео spoiler-анимацией, а
+`supports_streaming` помечает файл как пригодный для стриминга.
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет сгенерированный или
+полученный клип в чат как настоящее проигрываемое видео, а не только текстовую
+интерпретацию. Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/video <url_or_file_id> [caption]`.
+
+Caption необязателен, может содержать пробелы и проверяется на лимит 1024
+символа до обращения к Telegram, чтобы validation path не зависел от ошибки
+Telegram. Метод обрабатывает одиночное видео; видеосообщение-кружок — задача
+`sendVideoNote`, GIF/анимация без звука — `sendAnimation`, а отправка альбома —
+`sendMediaGroup`.
+
+`/video` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующем video-аргументе команда показывает usage, а при слишком
+  длинном caption — сообщение о превышении лимита, и в обоих случаях не
+  обращается к Telegram;
+- ошибки Telegram (например, недоступный URL или неподдерживаемый формат файла)
+  возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/video` так же, как к другим командам.
 
 ### Текстовые сообщения
 
