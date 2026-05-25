@@ -57,8 +57,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 после внедрения `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
 `sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
-`sendVoice`, `sendPaidMedia`, `sendLocation` и `sendMediaGroup` остается 151 пока
-не интегрированный метод.
+`sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup` и `sendVenue`
+остается 150 пока не интегрированный метод.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -88,6 +88,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendPaidMedia` | `bot/services/send_paid_media.py`, `/paidmedia` в `bot/handlers/commands.py` | Admin-flow отправки платного фото в текущий чат, доступ к которому пользователи оплачивают Telegram Stars, по URL или `file_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 7.6. |
 | `sendLocation` | `bot/services/send_location.py`, `/location` в `bot/handlers/commands.py` | Admin-flow отправки точки на карте в текущий чат как настоящей Telegram-локации по широте и долготе, через typed aiogram API; у локаций нет caption, координаты валидируются по диапазонам и не пишутся в structured logs. |
 | `sendMediaGroup` | `bot/services/send_media_group.py`, `/mediagroup` в `bot/handlers/commands.py` | Admin-flow отправки 2-10 медиа в текущий чат как единого альбома (media group) по URL или `file_id`, через typed aiogram API; все элементы одного типа (photo/video/document/audio), единый caption применяется к первому элементу. |
+| `sendVenue` | `bot/services/send_venue.py`, `/venue` в `bot/handlers/commands.py` | Admin-flow отправки заведения (venue) — именованного места с названием и адресом, закрепленного на карте — в текущий чат по широте, долготе, title и address, через typed aiogram API; координаты валидируются по диапазонам, а сами координаты, title и address не пишутся в structured logs. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -127,7 +128,7 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `getChatMenuButton`, `setMyDefaultAdministratorRights`,
    `getMyDefaultAdministratorRights`.
 3. Более богатые ответы пользователю: `sendChatAction`,
-   `sendVenue`, `sendContact`, `sendPoll`, `sendChecklist`,
+   `sendContact`, `sendPoll`, `sendChecklist`,
    `sendDice`, `sendMessageDraft`, `setMessageReaction`.
 4. Управление сообщениями: `editMessageCaption`, `editMessageMedia`,
    `editMessageLiveLocation`, `stopMessageLiveLocation`,
@@ -827,6 +828,47 @@ pinned `aiogram==3.3.0` (Bot API 7.0).
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/location` так же, как к другим командам.
 
+### sendVenue
+
+Команда `/venue` вызывает typed aiogram API `Bot.send_venue()` для метода
+Telegram `sendVenue`. По официальной документации метод требует `chat_id`,
+`latitude`, `longitude`, `title` и `address` и возвращает отправленное
+`Message`. Заведение можно опционально связать с местом в Foursquare через
+`foursquare_id` и `foursquare_type` (например `arts_entertainment/aquarium`)
+или с местом в Google Places через `google_place_id` и `google_place_type`.
+Параметры соответствуют typed wrapper'у pinned `aiogram==3.3.0` (Bot API 7.0);
+`business_connection_id` и более новые поля появились в последующих версиях Bot
+API и в этот wrapper не входят.
+
+Выбран admin-сценарий исходящего ответа: оператор отправляет заведение в чат как
+настоящий Telegram venue (именованное место с названием и адресом, закрепленное
+на карте), а не только текстовую интерпретацию. Целевой чат всегда тот, где
+вызвана команда. Синтаксис: `/venue <latitude> <longitude> <title> | <address>`.
+Координаты передаются в десятичных градусах.
+
+`title` и `address` следуют за координатами и разделяются вертикальной чертой
+(`|`); оба могут содержать пробелы и оба обязательны. Координаты парсятся как
+числа с плавающей точкой, а затем проверяются на диапазоны (`latitude` -90..90,
+`longitude` -180..180) до обращения к Telegram, чтобы validation path не зависел
+от ошибки Telegram. Заведение раскрывает конкретное место и адрес, поэтому в
+structured logs пишутся только факт наличия Foursquare/Google Places metadata и
+id отправленного сообщения, без самих координат, названия и адреса.
+
+`/venue` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствии или нечисловых координатах, отсутствии разделителя или пустых
+  title/address команда показывает usage, при координатах вне допустимых
+  диапазонов — сообщение о допустимом диапазоне, и в обоих случаях не обращается
+  к Telegram;
+- ошибки Telegram (например, отсутствие прав на отправку в чат) возвращаются
+  пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/venue` так же, как к другим командам.
+
 ### sendMediaGroup
 
 Команда `/mediagroup` вызывает typed aiogram API `Bot.send_media_group()` для
@@ -992,8 +1034,8 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 недоступна. Для деструктивных `/logout`, `/close`, для message-relay
 `/forward`, `/forwards`, `/copy`, `/copies` и для исходящего медиа `/photo`,
 `/audio`, `/livephoto`, `/document`, `/video`, `/videonote`, `/animation`,
-`/voice`, `/paidmedia` и `/location` fallback не применяется: команды требуют
-непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
+`/voice`, `/paidmedia`, `/location` и `/venue` fallback не применяется: команды
+требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
 
 ## Безопасность и ограничения доступа
 
