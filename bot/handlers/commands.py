@@ -1,4 +1,5 @@
-from aiogram import Router, F
+from aiogram import Router
+from aiogram.filters import Command
 from aiogram.types import Message
 from bot.config import settings
 from bot.utils.storage import storage
@@ -6,15 +7,15 @@ from bot.services.claude_proxy import ClaudeProxyClient
 
 router = Router()
 
-@router.message(F.command == "start")
+@router.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
-        "Welcome to the Telegram Claude Agent! 🤖\n"
+        "Welcome to the Telegram Claude Agent!\n"
         "I'm connected to free-claude-code and ready to help.\n"
         "Use /help to see available commands."
     )
 
-@router.message(F.command == "help")
+@router.message(Command("help"))
 async def cmd_help(message: Message):
     help_text = (
         "Available commands:\n"
@@ -31,7 +32,7 @@ async def cmd_help(message: Message):
     )
     await message.answer(help_text)
 
-@router.message(F.command == "model")
+@router.message(Command("model"))
 async def cmd_model(message: Message):
     user_id = message.from_user.id
     args = message.text.split(maxsplit=1)
@@ -44,7 +45,7 @@ async def cmd_model(message: Message):
         )
         try:
             models = await client.list_models()
-            models_list = "\n".join(f"• {m}" for m in models)
+            models_list = "\n".join(f"- {m}" for m in models)
             await message.answer(f"Current model: {current}\nAvailable models:\n{models_list}")
         except Exception as e:
             await message.answer(f"Current model: {current}\nCould not fetch model list: {str(e)}")
@@ -55,7 +56,7 @@ async def cmd_model(message: Message):
         storage.set_setting(user_id, "model", new_model)
         await message.answer(f"Model set to: {new_model}")
 
-@router.message(F.command == "settings")
+@router.message(Command("settings"))
 async def cmd_settings(message: Message):
     user_id = message.from_user.id
     current_model = storage.get_setting(user_id, "model", settings.free_claude_default_model)
@@ -71,8 +72,7 @@ async def cmd_settings(message: Message):
     )
     await message.answer(settings_text, parse_mode="HTML")
 
-@router.message(F.command == "clear")
+@router.message(Command("clear"))
 async def cmd_clear(message: Message):
-    user_id = message.from_user.id
-    storage.clear_history(user_id)
-    await message.answer("✅ Conversation history cleared.")
+    storage.clear_history(message.chat.id, message.from_user.id)
+    await message.answer("Conversation history cleared.")

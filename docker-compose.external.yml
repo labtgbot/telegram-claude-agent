@@ -1,0 +1,23 @@
+# Compose file for running the bot against an external free-claude-code proxy
+# that is already running on the host (e.g. on Windows/macOS via Docker Desktop).
+#
+# Usage:
+#   1. Start free-claude-code on the host, listening on :8082
+#   2. Configure .env (see .env.example)
+#   3. docker compose -f docker-compose.external.yml up -d --build
+#
+# `host.docker.internal` resolves to the host machine inside the container.
+# On Linux hosts you may need the `extra_hosts` block below.
+
+services:
+  telegram-bot-agent:
+    build: .
+    env_file:
+      - .env
+    environment:
+      - FREE_CLAUDE_BASE_URL=${FREE_CLAUDE_BASE_URL:-http://host.docker.internal:8082}
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
