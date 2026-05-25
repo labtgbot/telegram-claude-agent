@@ -57,8 +57,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 после внедрения `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
 `sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
-`sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup` и `sendVenue`
-остается 150 пока не интегрированный метод.
+`sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup`, `sendVenue` и
+`sendPoll` остается 149 пока не интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -89,6 +89,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendLocation` | `bot/services/send_location.py`, `/location` в `bot/handlers/commands.py` | Admin-flow отправки точки на карте в текущий чат как настоящей Telegram-локации по широте и долготе, через typed aiogram API; у локаций нет caption, координаты валидируются по диапазонам и не пишутся в structured logs. |
 | `sendMediaGroup` | `bot/services/send_media_group.py`, `/mediagroup` в `bot/handlers/commands.py` | Admin-flow отправки 2-10 медиа в текущий чат как единого альбома (media group) по URL или `file_id`, через typed aiogram API; все элементы одного типа (photo/video/document/audio), единый caption применяется к первому элементу. |
 | `sendVenue` | `bot/services/send_venue.py`, `/venue` в `bot/handlers/commands.py` | Admin-flow отправки заведения (venue) — именованного места с названием и адресом, закрепленного на карте — в текущий чат по широте, долготе, title и address, через typed aiogram API; координаты валидируются по диапазонам, а сами координаты, title и address не пишутся в structured logs. |
+| `sendPoll` | `bot/services/send_poll.py`, `/poll` в `bot/handlers/commands.py` | Admin-flow отправки нативного опроса (poll) — интерактивного вопроса с 2-10 вариантами ответа — в текущий чат, через typed aiogram API; длины вопроса (до 300) и вариантов (до 100) и их количество валидируются до обращения к Telegram, а сам вопрос и варианты ответа не пишутся в structured logs. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -128,7 +129,7 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `getChatMenuButton`, `setMyDefaultAdministratorRights`,
    `getMyDefaultAdministratorRights`.
 3. Более богатые ответы пользователю: `sendChatAction`,
-   `sendContact`, `sendPoll`, `sendChecklist`,
+   `sendContact`, `sendChecklist`,
    `sendDice`, `sendMessageDraft`, `setMessageReaction`.
 4. Управление сообщениями: `editMessageCaption`, `editMessageMedia`,
    `editMessageLiveLocation`, `stopMessageLiveLocation`,
@@ -869,6 +870,50 @@ id отправленного сообщения, без самих коорди
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/venue` так же, как к другим командам.
 
+### sendPoll
+
+Команда `/poll` вызывает typed aiogram API `Bot.send_poll()` для метода
+Telegram `sendPoll`. По официальной документации метод требует `chat_id`,
+`question` (1-300 символов) и `options` (2-10 строк по 1-100 символов) и
+возвращает отправленное `Message`. По умолчанию опрос анонимный и типа
+`regular`; для quiz-опроса передаются `type="quiz"` и `correct_option_id`, а
+опционально — `explanation`. `open_period` (5-600 секунд) или `close_date`
+задают автоматическое закрытие, а `is_closed` отправляет уже закрытый опрос для
+предпросмотра. Параметры соответствуют typed wrapper'у pinned `aiogram==3.3.0`
+(Bot API 7.0); в этой версии `options` — это список строк (в Bot API 7.3 он стал
+списком `InputPollOption`), а `business_connection_id` и более новые поля в
+wrapper не входят.
+
+Выбран admin-сценарий исходящего ответа: оператор отправляет в чат настоящий
+нативный Telegram-опрос (интерактивный вопрос с вариантами ответа), а не только
+текстовую интерпретацию. Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/poll <question> | <option> | <option> [| <option> ...]`. Вопрос идет первым, за
+ним следуют варианты ответа, все разделяются вертикальной чертой (`|`); вопрос и
+каждый вариант могут содержать пробелы.
+
+Команда сама проверяет validation path до обращения к Telegram: при отсутствии
+аргументов, отсутствии разделителя (а значит и вариантов) или пустом вопросе/
+варианте показывается usage; при количестве вариантов вне диапазона 2-10 —
+сообщение о допустимом количестве; при превышении длины вопроса (300) или
+варианта (100) — сообщение о допустимой длине. Опрос отправляется с дефолтами
+Telegram (анонимный одиночный regular-опрос). Вопрос и варианты ответа — это
+контент, который оператор решил опубликовать, поэтому в structured logs пишутся
+только количество вариантов, признак quiz и id отправленного сообщения, без
+текста вопроса и вариантов.
+
+`/poll` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при невалидном вводе команда показывает usage или сообщение об ограничении и
+  не обращается к Telegram;
+- ошибки Telegram (например, отсутствие прав на отправку в чат) возвращаются
+  пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/poll` так же, как к другим командам.
+
 ### sendMediaGroup
 
 Команда `/mediagroup` вызывает typed aiogram API `Bot.send_media_group()` для
@@ -1034,8 +1079,8 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 недоступна. Для деструктивных `/logout`, `/close`, для message-relay
 `/forward`, `/forwards`, `/copy`, `/copies` и для исходящего медиа `/photo`,
 `/audio`, `/livephoto`, `/document`, `/video`, `/videonote`, `/animation`,
-`/voice`, `/paidmedia`, `/location` и `/venue` fallback не применяется: команды
-требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
+`/voice`, `/paidmedia`, `/location`, `/venue` и `/poll` fallback не применяется:
+команды требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
 
 ## Безопасность и ограничения доступа
 
