@@ -23,6 +23,7 @@ from bot.services.send_location import perform_send_location
 from bot.services.send_media_group import perform_send_media_group
 from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
 from bot.services.send_photo import perform_send_photo
+from bot.services.send_poll import perform_send_poll
 from bot.services.send_venue import perform_send_venue
 from bot.services.send_video import perform_send_video
 from bot.services.send_video_note import perform_send_video_note
@@ -268,6 +269,28 @@ VENUE_USAGE = (
     "Both the title and the address are required and must be non-empty."
 )
 
+POLL_OPTION_SEPARATOR = "|"
+
+POLL_MIN_OPTIONS = 2
+
+POLL_MAX_OPTIONS = 10
+
+POLL_QUESTION_MAX_LENGTH = 300
+
+POLL_OPTION_MAX_LENGTH = 100
+
+POLL_USAGE = (
+    "<b>poll usage</b>\n"
+    "Sends a native poll into this chat as a real Telegram poll (an interactive "
+    "question with tappable answer options) instead of plain text. Pass the "
+    "question followed by the answer options, all separated by a vertical bar.\n"
+    "Usage: <code>/poll &lt;question&gt; | &lt;option&gt; | &lt;option&gt; "
+    "[| &lt;option&gt; ...]</code>\n"
+    "Provide 2-10 options. The question is limited to 300 characters and each "
+    "option to 100 characters; the question and every option may contain spaces "
+    "and must be non-empty."
+)
+
 MEDIA_GROUP_CAPTION_LIMIT = 1024
 
 MEDIA_GROUP_MIN_ITEMS = 2
@@ -330,6 +353,7 @@ async def cmd_help(message: Message):
         "/paidmedia - Send a paid photo into this chat priced in Telegram Stars (admin only)\n"
         "/location - Send a point on the map into this chat as a location (admin only)\n"
         "/venue - Send a venue (named place with title and address) into this chat (admin only)\n"
+        "/poll - Send a native poll (question with answer options) into this chat (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
@@ -956,6 +980,53 @@ async def cmd_venue(message: Message):
 
     await message.answer("Sent venue.")
 
+@router.message(Command("poll"))
+async def cmd_poll(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_poll_args(message.text or "")
+    if parsed is None:
+        await message.answer(POLL_USAGE, parse_mode="HTML")
+        return
+
+    question, options = parsed
+    if len(question) > POLL_QUESTION_MAX_LENGTH:
+        await message.answer(
+            f"Question is too long: {len(question)} characters "
+            f"(max {POLL_QUESTION_MAX_LENGTH})."
+        )
+        return
+
+    if not POLL_MIN_OPTIONS <= len(options) <= POLL_MAX_OPTIONS:
+        await message.answer(
+            f"A poll needs between {POLL_MIN_OPTIONS} and "
+            f"{POLL_MAX_OPTIONS} options."
+        )
+        return
+
+    too_long = next((opt for opt in options if len(opt) > POLL_OPTION_MAX_LENGTH), None)
+    if too_long is not None:
+        await message.answer(
+            f"Option is too long: {len(too_long)} characters "
+            f"(max {POLL_OPTION_MAX_LENGTH})."
+        )
+        return
+
+    try:
+        await perform_send_poll(
+            message.bot,
+            chat_id=message.chat.id,
+            question=question,
+            options=options,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not send the poll: {exc}")
+        return
+
+    await message.answer(f"Sent poll with {len(options)} options.")
+
 @router.message(Command("mediagroup"))
 async def cmd_media_group(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -1428,6 +1499,34 @@ def _parse_venue_args(text: str):
         return None
 
     return latitude, longitude, title, address
+
+
+def _parse_poll_args(text: str):
+    """Parse ``/poll`` args into ``(question, options)``.
+
+    Splits the raw command text into the command and the remainder, then splits
+    the remainder on the vertical bar (``|``) so the first segment is the poll
+    ``question`` and the following segments are the answer ``options``. Every
+    segment is trimmed of surrounding whitespace but keeps any internal spaces.
+    Returns ``None`` when there are no arguments, when the separator is missing
+    so no option is given, or when the question or any option is empty, so the
+    caller can show usage. The caller validates the question/option lengths and
+    the 2-10 option count against Telegram's limits.
+    """
+    parts = (text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        return None
+
+    segments = [segment.strip() for segment in parts[1].split(POLL_OPTION_SEPARATOR)]
+    question = segments[0]
+    options = segments[1:]
+    if not question or not options:
+        return None
+
+    if any(not option for option in options):
+        return None
+
+    return question, options
 
 
 def _parse_media_group_args(text: str):
