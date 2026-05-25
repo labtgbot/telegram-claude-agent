@@ -130,6 +130,7 @@ Area label: `area:lifecycle`. Priority baseline: `priority:P0`
 #### BOTAPI-003: `logOut`
 
 - Title: `telegram-api: реализовать logOut`
+- Status: implemented in PR #178 as restricted `/logout` command with confirmation.
 - Official docs: https://core.telegram.org/bots/api#logout
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:lifecycle`, `priority:P0`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
