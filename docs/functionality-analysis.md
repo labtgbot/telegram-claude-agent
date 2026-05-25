@@ -58,8 +58,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
 `sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
 `sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup`, `sendVenue`,
-`sendPoll`, `sendContact` и `sendDice` остается 147 пока не интегрированных
-методов.
+`sendPoll`, `sendContact`, `sendDice` и `sendChecklist` остается 146 пока не
+интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -93,6 +93,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendPoll` | `bot/services/send_poll.py`, `/poll` в `bot/handlers/commands.py` | Admin-flow отправки нативного опроса (poll) — интерактивного вопроса с 2-10 вариантами ответа — в текущий чат, через typed aiogram API; длины вопроса (до 300) и вариантов (до 100) и их количество валидируются до обращения к Telegram, а сам вопрос и варианты ответа не пишутся в structured logs. |
 | `sendContact` | `bot/services/send_contact.py`, `/contact` в `bot/handlers/commands.py` | Admin-flow отправки телефонного контакта (contact) — имени с номером телефона, который получатель может сохранить в адресную книгу — в текущий чат, через typed aiogram API; phone_number и first_name обязательны, last_name опционален, а номер телефона и имя контакта не пишутся в structured logs. |
 | `sendDice` | `bot/services/send_dice.py`, `/dice` в `bot/handlers/commands.py` | Admin-flow отправки анимированной кости (dice) — анимированного эмодзи со случайным значением, которое выбирает Telegram — в текущий чат, через typed aiogram API; опциональный emoji ограничен набором 🎲/🎯/🏀/⚽/🎳/🎰 и валидируется до обращения к Telegram, без аргумента отправляется 🎲. |
+| `sendChecklist` | `bot/services/send_checklist.py`, `/checklist` в `bot/handlers/commands.py` | Admin-flow отправки чеклиста (checklist) — озаглавленного списка из 1-30 задач — в текущий чат от имени подключенного business account, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 9.1; требует `business_connection_id`, длины title (до 255) и задач (до 100) и их количество валидируются до обращения к Telegram, а title и тексты задач не пишутся в structured logs. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -990,6 +991,60 @@ Telegram не вызывается. Кость не несет переданн�
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/dice` так же, как к другим командам.
 
+### sendChecklist
+
+Команда `/checklist` отправляет чеклист — озаглавленный список из 1-30 задач,
+которые получатели могут отмечать выполненными, — методом Telegram
+`sendChecklist` (введен в Bot API 9.1). По официальной документации метод
+отправляет сообщение от имени подключенного business account, поэтому требует
+`business_connection_id` (идентификатор живого business connection), `chat_id` и
+`checklist` (объект `InputChecklist`) и возвращает отправленное `Message`.
+`title` в `InputChecklist` ограничен 1-255 символами, каждый task — 1-100
+символами после парсинга entities, а каждый task несет положительный `id`,
+уникальный в пределах чеклиста. Так как метод действует от имени business
+account, его нельзя включать в обычный чат без business-mode: бот должен быть
+подключен к business account, а `business_connection_id` — соответствовать
+действующему подключению.
+
+Ключевое отличие от `sendPoll`: pinned `aiogram==3.3.0` (Bot API 7.0) не имеет
+typed wrapper для этого метода Bot API 9.1. Поэтому реализация идет через
+изолированный raw Bot API helper `bot/services/send_checklist.py`, который сам
+собирает JSON-payload (с JSON-сериализацией объекта `checklist`) и POST'ит его на
+endpoint `sendChecklist` через `httpx`, не завися от typed aiogram метода. URL
+endpoint берется из `bot.session.api.api_url(...)`, чтобы учесть кастомный local
+Bot API server, с fallback на cloud-endpoint. Ошибки транспорта и ответы Telegram
+с `ok: false` поднимаются как единое исключение `SendChecklistError`.
+
+Выбран admin-сценарий исходящего ответа: оператор отправляет в чат настоящий
+Telegram-чеклист от имени подключенного business account, а не только текстовую
+интерпретацию. Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/checklist <business_connection_id> <title> | <task> [| <task> ...]`.
+Идентификатор подключения идет первым (одним токеном без пробелов), затем
+заголовок и задачи, разделенные вертикальной чертой. Обработчик сам присваивает
+задачам последовательные `id`, начиная с 1.
+
+Команда сама проверяет validation path до обращения к Telegram: при отсутствии
+`business_connection_id`, заголовка или хотя бы одной задачи (а также при пустом
+сегменте) показывается usage; при слишком длинном заголовке (>255), количестве
+задач вне диапазона 1-30 или слишком длинной задаче (>100) — соответствующее
+сообщение, и Telegram не вызывается. Заголовок и тексты задач — переданный
+оператором контент, поэтому в structured logs пишутся только количество задач,
+признак защиты контента и id отправленного сообщения.
+
+`/checklist` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при невалидном вводе команда показывает usage или сообщение о превышении
+  лимитов и не обращается к Telegram;
+- ошибки Telegram (например, отсутствующий или истекший `business_connection_id`
+  либо недостаточные права бизнес-подключения) возвращаются пользователю, а
+  отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/checklist` так же, как к другим командам.
+
 ### sendMediaGroup
 
 Команда `/mediagroup` вызывает typed aiogram API `Bot.send_media_group()` для
@@ -1155,9 +1210,9 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 недоступна. Для деструктивных `/logout`, `/close`, для message-relay
 `/forward`, `/forwards`, `/copy`, `/copies` и для исходящего медиа `/photo`,
 `/audio`, `/livephoto`, `/document`, `/video`, `/videonote`, `/animation`,
-`/voice`, `/paidmedia`, `/location`, `/venue`, `/poll`, `/contact` и `/dice`
-fallback не применяется: команды требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`,
-иначе они отключены.
+`/voice`, `/paidmedia`, `/location`, `/venue`, `/poll`, `/contact`, `/dice` и
+`/checklist` fallback не применяется: команды требуют непустой
+`TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
 
 ## Безопасность и ограничения доступа
 
