@@ -1,7 +1,13 @@
 from aiogram import Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import (
+    InputMediaAudio,
+    InputMediaDocument,
+    InputMediaPhoto,
+    InputMediaVideo,
+    Message,
+)
 from bot.config import settings
 from bot.services.close import perform_close
 from bot.services.copy_message import perform_copy_message
@@ -14,6 +20,7 @@ from bot.services.send_audio import perform_send_audio
 from bot.services.send_document import perform_send_document
 from bot.services.send_live_photo import SendLivePhotoError, perform_send_live_photo
 from bot.services.send_location import perform_send_location
+from bot.services.send_media_group import perform_send_media_group
 from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
 from bot.services.send_photo import perform_send_photo
 from bot.services.send_video import perform_send_video
@@ -246,6 +253,34 @@ LOCATION_USAGE = (
     "Locations have no caption, so any extra text is ignored."
 )
 
+MEDIA_GROUP_CAPTION_LIMIT = 1024
+
+MEDIA_GROUP_MIN_ITEMS = 2
+
+MEDIA_GROUP_MAX_ITEMS = 10
+
+MEDIA_GROUP_CAPTION_KEYWORD = "caption"
+
+MEDIA_GROUP_TYPES = {
+    "photo": InputMediaPhoto,
+    "video": InputMediaVideo,
+    "document": InputMediaDocument,
+    "audio": InputMediaAudio,
+}
+
+MEDIA_GROUP_USAGE = (
+    "<b>mediagroup usage</b>\n"
+    "Sends several media items into this chat as a single album (media group) "
+    "instead of separate messages. All items must be of the same type. Pass "
+    "HTTP(S) URLs Telegram can fetch or file_ids of media already on Telegram "
+    "servers.\n"
+    "Usage: <code>/mediagroup &lt;type&gt; &lt;url_or_file_id&gt; "
+    "&lt;url_or_file_id&gt; [&lt;url_or_file_id&gt; ...] [caption &lt;text&gt;]</code>\n"
+    "Type is one of photo, video, document or audio. Provide 2-10 items. The "
+    "optional caption follows the literal word <code>caption</code> and is "
+    "applied to the album (its first item); it is limited to 1024 characters."
+)
+
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
@@ -279,6 +314,7 @@ async def cmd_help(message: Message):
         "/voice - Send a voice message into this chat as a playable audio clip (admin only)\n"
         "/paidmedia - Send a paid photo into this chat priced in Telegram Stars (admin only)\n"
         "/location - Send a point on the map into this chat as a location (admin only)\n"
+        "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -863,6 +899,58 @@ async def cmd_location(message: Message):
 
     await message.answer("Sent location.")
 
+@router.message(Command("mediagroup"))
+async def cmd_media_group(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_media_group_args(message.text or "")
+    if parsed is None:
+        await message.answer(MEDIA_GROUP_USAGE, parse_mode="HTML")
+        return
+
+    media_type, references, caption = parsed
+    if media_type not in MEDIA_GROUP_TYPES:
+        await message.answer(
+            "Unsupported media type. Use one of: "
+            + ", ".join(sorted(MEDIA_GROUP_TYPES))
+            + "."
+        )
+        return
+
+    if not MEDIA_GROUP_MIN_ITEMS <= len(references) <= MEDIA_GROUP_MAX_ITEMS:
+        await message.answer(
+            f"A media group needs between {MEDIA_GROUP_MIN_ITEMS} and "
+            f"{MEDIA_GROUP_MAX_ITEMS} items."
+        )
+        return
+
+    if caption is not None and len(caption) > MEDIA_GROUP_CAPTION_LIMIT:
+        await message.answer(
+            f"Caption is too long: {len(caption)} characters "
+            f"(max {MEDIA_GROUP_CAPTION_LIMIT})."
+        )
+        return
+
+    media = _build_media_group_items(media_type, references, caption)
+
+    try:
+        await perform_send_media_group(
+            message.bot,
+            chat_id=message.chat.id,
+            media=media,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not send the media group: {exc}")
+        return
+
+    await message.answer(
+        f"Sent media group of {len(references)} items with caption."
+        if caption
+        else f"Sent media group of {len(references)} items."
+    )
+
 @router.message(Command("clear"))
 async def cmd_clear(message: Message):
     storage.clear_history(message.chat.id, message.from_user.id)
@@ -1248,3 +1336,54 @@ def _parse_location_args(text: str):
         return None
 
     return latitude, longitude
+
+
+def _parse_media_group_args(text: str):
+    """Parse ``/mediagroup`` args into ``(media_type, references, caption)``.
+
+    Splits the raw command text into the command, the media ``type`` and the
+    media references (URLs or ``file_id`` values). An optional single album
+    caption follows the literal keyword ``caption``; everything after it is
+    joined back into the caption text, which may contain spaces. Returns
+    ``None`` when the type or at least one media reference is missing so the
+    caller can show usage. The caller validates the type, the 2-10 item count
+    and the caption length against Telegram's limits.
+    """
+    parts = (text or "").split()
+    if len(parts) < 2:
+        return None
+
+    media_type = parts[1].strip().lower()
+    rest = parts[2:]
+
+    caption = None
+    lowered = [token.lower() for token in rest]
+    if MEDIA_GROUP_CAPTION_KEYWORD in lowered:
+        keyword_index = lowered.index(MEDIA_GROUP_CAPTION_KEYWORD)
+        references = rest[:keyword_index]
+        caption = " ".join(rest[keyword_index + 1:]).strip() or None
+    else:
+        references = rest
+
+    if not references:
+        return None
+
+    return media_type, references, caption
+
+
+def _build_media_group_items(media_type: str, references: list[str], caption):
+    """Build the typed ``InputMedia`` album items for ``send_media_group``.
+
+    Maps the validated ``media_type`` to its aiogram ``InputMedia`` class and
+    wraps each reference in an item of that type. The single album caption is
+    expressed by attaching ``caption`` to the first item only, matching how
+    Telegram renders an album caption.
+    """
+    media_class = MEDIA_GROUP_TYPES[media_type]
+    items = []
+    for index, reference in enumerate(references):
+        if index == 0 and caption is not None:
+            items.append(media_class(media=reference, caption=caption))
+        else:
+            items.append(media_class(media=reference))
+    return items

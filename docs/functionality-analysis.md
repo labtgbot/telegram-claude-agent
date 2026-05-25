@@ -57,8 +57,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 после внедрения `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
 `sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
-`sendVoice`, `sendPaidMedia` и `sendLocation` остается 152 пока не
-интегрированных метода.
+`sendVoice`, `sendPaidMedia`, `sendLocation` и `sendMediaGroup` остается 151 пока
+не интегрированный метод.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -87,6 +87,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendVoice` | `bot/services/send_voice.py`, `/voice` в `bot/handlers/commands.py` | Admin-flow отправки голосового сообщения в текущий чат как проигрываемого аудиоклипа (в виде waveform) по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendPaidMedia` | `bot/services/send_paid_media.py`, `/paidmedia` в `bot/handlers/commands.py` | Admin-flow отправки платного фото в текущий чат, доступ к которому пользователи оплачивают Telegram Stars, по URL или `file_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 7.6. |
 | `sendLocation` | `bot/services/send_location.py`, `/location` в `bot/handlers/commands.py` | Admin-flow отправки точки на карте в текущий чат как настоящей Telegram-локации по широте и долготе, через typed aiogram API; у локаций нет caption, координаты валидируются по диапазонам и не пишутся в structured logs. |
+| `sendMediaGroup` | `bot/services/send_media_group.py`, `/mediagroup` в `bot/handlers/commands.py` | Admin-flow отправки 2-10 медиа в текущий чат как единого альбома (media group) по URL или `file_id`, через typed aiogram API; все элементы одного типа (photo/video/document/audio), единый caption применяется к первому элементу. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -126,7 +127,6 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `getChatMenuButton`, `setMyDefaultAdministratorRights`,
    `getMyDefaultAdministratorRights`.
 3. Более богатые ответы пользователю: `sendChatAction`,
-   `sendMediaGroup`,
    `sendVenue`, `sendContact`, `sendPoll`, `sendChecklist`,
    `sendDice`, `sendMessageDraft`, `setMessageReaction`.
 4. Управление сообщениями: `editMessageCaption`, `editMessageMedia`,
@@ -826,6 +826,50 @@ pinned `aiogram==3.3.0` (Bot API 7.0).
 
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/location` так же, как к другим командам.
+
+### sendMediaGroup
+
+Команда `/mediagroup` вызывает typed aiogram API `Bot.send_media_group()` для
+метода Telegram `sendMediaGroup`. По официальной документации метод требует
+`chat_id` и `media` (массив из 2-10 элементов `InputMediaPhoto`,
+`InputMediaVideo`, `InputMediaDocument` или `InputMediaAudio`) и возвращает
+список отправленных `Message`. Telegram разрешает только определенные сочетания
+типов в одном альбоме: документы группируются с документами, аудио — с аудио, а
+фото и видео можно смешивать; передача элементов одного типа поэтому всегда дает
+валидное сочетание. Параметры соответствуют typed wrapper'у pinned
+`aiogram==3.3.0` (Bot API 7.0).
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет несколько медиа в
+чат как единый альбом, а не отдельными сообщениями или только текстовой
+интерпретацией. Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/mediagroup <type> <url_or_file_id> <url_or_file_id> [<url_or_file_id> ...] [caption <text>]`.
+`type` — один из `photo`, `video`, `document`, `audio`, и все элементы альбома
+одного типа. Медиа передаются как URL, которые Telegram скачивает, или `file_id`
+уже загруженных на серверы Telegram файлов.
+
+Единый caption strategy: опциональная подпись следует за литеральным ключевым
+словом `caption`, остаток сообщения становится текстом подписи (может содержать
+пробелы) и применяется к альбому через `caption` только у первого элемента — так
+Telegram отображает подпись альбома. Тип проверяется по списку поддерживаемых,
+количество элементов — на диапазон 2-10, а длина caption — на лимит 1024 символа
+до обращения к Telegram, чтобы validation path не зависел от ошибки Telegram.
+Сам helper `bot/services/send_media_group.py` — тонкий typed-обертка, который
+пишет в structured logs количество элементов и id отправленных сообщений.
+
+`/mediagroup` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствии типа или медиа команда показывает usage, при неподдерживаемом
+  типе — сообщение о допустимых типах, при количестве вне диапазона 2-10 —
+  сообщение о допустимом диапазоне, а при слишком длинном caption — сообщение о
+  превышении лимита, и во всех случаях не обращается к Telegram;
+- ошибки Telegram (например, недоступный чат или неверный `file_id`)
+  возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/mediagroup` так же, как к другим командам.
 
 ### Текстовые сообщения
 
