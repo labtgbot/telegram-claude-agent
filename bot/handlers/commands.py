@@ -13,6 +13,7 @@ from bot.services.send_audio import perform_send_audio
 from bot.services.send_document import perform_send_document
 from bot.services.send_live_photo import SendLivePhotoError, perform_send_live_photo
 from bot.services.send_photo import perform_send_photo
+from bot.services.send_video import perform_send_video
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
 from bot.utils.storage import storage
 from bot.services.claude_proxy import ClaudeProxyClient
@@ -157,6 +158,18 @@ DOCUMENT_USAGE = (
     "a file sent by URL to 20 MB."
 )
 
+VIDEO_CAPTION_LIMIT = 1024
+
+VIDEO_USAGE = (
+    "<b>video usage</b>\n"
+    "Sends a video into this chat as a playable Telegram video instead of "
+    "plain text. Pass an HTTP(S) URL Telegram can fetch or a file_id of a "
+    "video already on Telegram servers.\n"
+    "Usage: <code>/video &lt;url_or_file_id&gt; [caption]</code>\n"
+    "The caption is optional and limited to 1024 characters. Telegram clients "
+    "support MPEG4 videos and limit a file sent by URL to 20 MB."
+)
+
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
@@ -184,6 +197,7 @@ async def cmd_help(message: Message):
         "/audio - Send an audio file into this chat as a music track (admin only)\n"
         "/livephoto - Send a live photo (video + cover) into this chat (admin only)\n"
         "/document - Send a file into this chat as a document (admin only)\n"
+        "/video - Send a video into this chat as a playable video (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -562,6 +576,40 @@ async def cmd_document(message: Message):
         "Sent document with caption." if caption else "Sent document."
     )
 
+@router.message(Command("video"))
+async def cmd_video(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_video_args(message.text or "")
+    if parsed is None:
+        await message.answer(VIDEO_USAGE, parse_mode="HTML")
+        return
+
+    video, caption = parsed
+    if caption is not None and len(caption) > VIDEO_CAPTION_LIMIT:
+        await message.answer(
+            f"Caption is too long: {len(caption)} characters "
+            f"(max {VIDEO_CAPTION_LIMIT})."
+        )
+        return
+
+    try:
+        await perform_send_video(
+            message.bot,
+            chat_id=message.chat.id,
+            video=video,
+            caption=caption,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not send the video: {exc}")
+        return
+
+    await message.answer(
+        "Sent video with caption." if caption else "Sent video."
+    )
+
 @router.message(Command("clear"))
 async def cmd_clear(message: Message):
     storage.clear_history(message.chat.id, message.from_user.id)
@@ -776,6 +824,30 @@ def _parse_document_args(text: str):
         caption = None
 
     return document, caption
+
+
+def _parse_video_args(text: str):
+    """Parse ``/video`` arguments into ``(video, caption)``.
+
+    Splits the raw command text into the command, the video reference (URL or
+    ``file_id``) and an optional free-text caption that may itself contain
+    spaces. Returns ``None`` when no video reference is provided so the caller
+    can show usage. The caller validates the caption length against Telegram's
+    1024-character limit.
+    """
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) < 2:
+        return None
+
+    video = parts[1].strip()
+    if not video:
+        return None
+
+    caption = parts[2].strip() if len(parts) >= 3 else None
+    if caption == "":
+        caption = None
+
+    return video, caption
 
 
 def _parse_live_photo_args(text: str):
