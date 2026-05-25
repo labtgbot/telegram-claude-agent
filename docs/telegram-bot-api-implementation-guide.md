@@ -332,6 +332,7 @@ Area label: `area:outbound-media`. Priority baseline: `priority:P1`
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:outbound-media`, `priority:P1`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Добавить поддержку `sendVoice` в область: исходящие ответы бота за пределами plain text, включая typing/draft feedback, медиа, polls, checklist и reactions. Определить конкретный сценарий: расширение chat handler или отдельный response builder, который выбирает Telegram output по результату Claude/proxy.
+- Status: implemented in PR #190 as restricted admin `/voice` outbound media command.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API

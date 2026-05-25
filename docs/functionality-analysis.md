@@ -56,8 +56,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 в нем 169 карточек методов с labels, stages, scope и acceptance criteria;
 после внедрения `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
-`sendLivePhoto`, `sendDocument`, `sendVideo` и `sendAnimation` остается 156 пока
-не интегрированных методов.
+`sendLivePhoto`, `sendDocument`, `sendVideo`, `sendAnimation` и `sendVoice`
+остается 155 пока не интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -82,6 +82,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendDocument` | `bot/services/send_document.py`, `/document` в `bot/handlers/commands.py` | Admin-flow отправки файла в текущий чат как Telegram-документа по URL или `file_id` — для больших текстовых, PDF или исходных артефактов, когда текстовый ответ не подходит. |
 | `sendVideo` | `bot/services/send_video.py`, `/video` в `bot/handlers/commands.py` | Admin-flow отправки видео в текущий чат как проигрываемого Telegram-видео по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendAnimation` | `bot/services/send_animation.py`, `/animation` в `bot/handlers/commands.py` | Admin-flow отправки анимации (GIF или видео без звука) в текущий чат как проигрываемого зацикленного клипа по URL или `file_id`, а не только текстовой интерпретации. |
+| `sendVoice` | `bot/services/send_voice.py`, `/voice` в `bot/handlers/commands.py` | Admin-flow отправки голосового сообщения в текущий чат как проигрываемого аудиоклипа (в виде waveform) по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -121,7 +122,6 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `getChatMenuButton`, `setMyDefaultAdministratorRights`,
    `getMyDefaultAdministratorRights`.
 3. Более богатые ответы пользователю: `sendChatAction`,
-   `sendVoice`,
    `sendVideoNote`, `sendMediaGroup`, `sendPaidMedia`,
    `sendLocation`, `sendVenue`, `sendContact`, `sendPoll`, `sendChecklist`,
    `sendDice`, `sendMessageDraft`, `setMessageReaction`.
@@ -661,6 +661,45 @@ Telegram. Метод обрабатывает анимацию без звука
 
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/animation` так же, как к другим командам.
+
+### sendVoice
+
+Команда `/voice` вызывает typed aiogram API `Bot.send_voice()` для метода
+Telegram `sendVoice`. По официальной документации метод требует `chat_id` и
+`voice` и возвращает отправленное `Message`. `voice` может быть HTTP(S)-URL,
+который Telegram скачивает сам, `file_id` уже существующего на серверах Telegram
+голосового сообщения или загружаемым файлом; helper принимает строковую форму
+URL/`file_id`. Чтобы аудио воспроизводилось именно как голосовое сообщение,
+Telegram ожидает `.OGG` файл в кодировке OPUS, либо `.MP3` или `.M4A`; другие
+форматы могут быть отправлены как audio или document. Telegram ограничивает файл,
+отправляемый по URL или `file_id`, 20 MB, а `caption` — 1024 символами после
+парсинга entities. Опциональный `duration` задает длительность голосового
+сообщения в секундах.
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет сгенерированный или
+полученный аудиоклип в чат как настоящее проигрываемое голосовое сообщение
+(в виде waveform), а не только текстовую интерпретацию. Целевой чат всегда тот,
+где вызвана команда. Синтаксис: `/voice <url_or_file_id> [caption]`.
+
+Caption необязателен, может содержать пробелы и проверяется на лимит 1024
+символа до обращения к Telegram, чтобы validation path не зависел от ошибки
+Telegram. Метод отправляет голосовое сообщение; музыкальный трек с метаданными —
+задача `sendAudio`, видеосообщение-кружок — `sendVideoNote`, а отправка альбома —
+`sendMediaGroup`.
+
+`/voice` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующем voice-аргументе команда показывает usage, а при слишком
+  длинном caption — сообщение о превышении лимита, и в обоих случаях не
+  обращается к Telegram;
+- ошибки Telegram (например, недоступный URL или неподдерживаемый формат файла)
+  возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/voice` так же, как к другим командам.
 
 ### Текстовые сообщения
 
