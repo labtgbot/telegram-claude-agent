@@ -18,6 +18,7 @@ from bot.services.log_out import perform_log_out
 from bot.services.send_animation import perform_send_animation
 from bot.services.send_audio import perform_send_audio
 from bot.services.send_contact import perform_send_contact
+from bot.services.send_dice import perform_send_dice
 from bot.services.send_document import perform_send_document
 from bot.services.send_live_photo import SendLivePhotoError, perform_send_live_photo
 from bot.services.send_location import perform_send_location
@@ -306,6 +307,19 @@ CONTACT_USAGE = (
     "The first name may contain spaces; the last name is optional."
 )
 
+DICE_EMOJI = ("🎲", "🎯", "🏀", "⚽", "🎳", "🎰")
+
+DICE_USAGE = (
+    "<b>dice usage</b>\n"
+    "Sends an animated dice into this chat as a real Telegram dice (an animated "
+    "emoji that shows a random value) instead of plain text. The rolled value "
+    "is chosen by Telegram.\n"
+    "Usage: <code>/dice [emoji]</code>\n"
+    "Without an emoji a 🎲 die is sent. The optional emoji must be one of: "
+    + " ".join(DICE_EMOJI)
+    + "."
+)
+
 MEDIA_GROUP_CAPTION_LIMIT = 1024
 
 MEDIA_GROUP_MIN_ITEMS = 2
@@ -370,6 +384,7 @@ async def cmd_help(message: Message):
         "/venue - Send a venue (named place with title and address) into this chat (admin only)\n"
         "/poll - Send a native poll (question with answer options) into this chat (admin only)\n"
         "/contact - Send a phone contact (name and phone number) into this chat (admin only)\n"
+        "/dice - Send an animated dice (random value) into this chat (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
@@ -1069,6 +1084,30 @@ async def cmd_contact(message: Message):
 
     await message.answer("Sent contact.")
 
+@router.message(Command("dice"))
+async def cmd_dice(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_dice_args(message.text or "")
+    if parsed is None:
+        await message.answer(DICE_USAGE, parse_mode="HTML")
+        return
+
+    (emoji,) = parsed
+    try:
+        await perform_send_dice(
+            message.bot,
+            chat_id=message.chat.id,
+            emoji=emoji,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not send the dice: {exc}")
+        return
+
+    await message.answer("Sent dice.")
+
 @router.message(Command("mediagroup"))
 async def cmd_media_group(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -1602,6 +1641,30 @@ def _parse_contact_args(text: str):
         return None
 
     return phone_number, first_name, last_name
+
+
+def _parse_dice_args(text: str):
+    """Parse ``/dice`` args into a single-element ``(emoji,)`` tuple.
+
+    Splits the raw command text into the command and an optional emoji token.
+    With no argument the emoji is ``None`` so Telegram sends its default ``🎲``
+    die. When a single token is given it must be one of the supported dice emoji
+    (:data:`DICE_EMOJI`); the parsed emoji is returned wrapped in a one-element
+    tuple so the caller can distinguish "no argument" (``(None,)``) from an
+    invalid request. Returns ``None`` when an unsupported emoji or more than one
+    argument is supplied so the caller can show usage.
+    """
+    parts = (text or "").split()
+    if len(parts) == 1:
+        return (None,)
+    if len(parts) > 2:
+        return None
+
+    emoji = parts[1]
+    if emoji not in DICE_EMOJI:
+        return None
+
+    return (emoji,)
 
 
 def _parse_media_group_args(text: str):
