@@ -79,7 +79,7 @@ LOG_LEVEL=INFO
 - `FREE_CLAUDE_STREAMING_ENABLED` – whether to stream responses (`true`/`false`).
 - `TELEGRAM_BOT_TOKEN` – your bot token from BotFather.
 - `TELEGRAM_WEBHOOK_URL` – if set, the bot will use webhook mode; otherwise, it uses long polling.
-- `TELEGRAM_GUEST_MODE_ENABLED` – enable guest mode restrictions in group chats (`true`/`false`).
+- `TELEGRAM_GUEST_MODE_ENABLED` – enable no-history group privacy mode for mentioned/replied messages (`true`/`false`).
 - `TELEGRAM_ALLOWED_CHAT_IDS` – optional comma-separated list of chat IDs to restrict operation.
 - `API_SECRET_TOKEN` – secret token for verifying webhook requests (highly recommended for webhook mode).
 - `RATE_LIMIT_REQUESTS_PER_MINUTE` – maximum requests per user per minute.
