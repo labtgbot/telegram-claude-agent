@@ -10,6 +10,7 @@ from bot.services.forward_message import perform_forward_message
 from bot.services.forward_messages import perform_forward_messages
 from bot.services.log_out import perform_log_out
 from bot.services.send_audio import perform_send_audio
+from bot.services.send_document import perform_send_document
 from bot.services.send_live_photo import SendLivePhotoError, perform_send_live_photo
 from bot.services.send_photo import perform_send_photo
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
@@ -143,6 +144,19 @@ LIVE_PHOTO_USAGE = (
     "caption is optional and limited to 1024 characters."
 )
 
+DOCUMENT_CAPTION_LIMIT = 1024
+
+DOCUMENT_USAGE = (
+    "<b>document usage</b>\n"
+    "Sends a file into this chat as a Telegram document instead of plain "
+    "text, for returning large text, PDF or source artifacts when a message "
+    "does not fit. Pass an HTTP(S) URL Telegram can fetch or a file_id of a "
+    "file already on Telegram servers.\n"
+    "Usage: <code>/document &lt;url_or_file_id&gt; [caption]</code>\n"
+    "The caption is optional and limited to 1024 characters. Telegram limits "
+    "a file sent by URL to 20 MB."
+)
+
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
@@ -169,6 +183,7 @@ async def cmd_help(message: Message):
         "/photo - Send an image into this chat as a photo (admin only)\n"
         "/audio - Send an audio file into this chat as a music track (admin only)\n"
         "/livephoto - Send a live photo (video + cover) into this chat (admin only)\n"
+        "/document - Send a file into this chat as a document (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -513,6 +528,40 @@ async def cmd_live_photo(message: Message):
         "Sent live photo with caption." if caption else "Sent live photo."
     )
 
+@router.message(Command("document"))
+async def cmd_document(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_document_args(message.text or "")
+    if parsed is None:
+        await message.answer(DOCUMENT_USAGE, parse_mode="HTML")
+        return
+
+    document, caption = parsed
+    if caption is not None and len(caption) > DOCUMENT_CAPTION_LIMIT:
+        await message.answer(
+            f"Caption is too long: {len(caption)} characters "
+            f"(max {DOCUMENT_CAPTION_LIMIT})."
+        )
+        return
+
+    try:
+        await perform_send_document(
+            message.bot,
+            chat_id=message.chat.id,
+            document=document,
+            caption=caption,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not send the document: {exc}")
+        return
+
+    await message.answer(
+        "Sent document with caption." if caption else "Sent document."
+    )
+
 @router.message(Command("clear"))
 async def cmd_clear(message: Message):
     storage.clear_history(message.chat.id, message.from_user.id)
@@ -703,6 +752,30 @@ def _parse_audio_args(text: str):
         caption = None
 
     return audio, caption
+
+
+def _parse_document_args(text: str):
+    """Parse ``/document`` arguments into ``(document, caption)``.
+
+    Splits the raw command text into the command, the document reference (URL or
+    ``file_id``) and an optional free-text caption that may itself contain
+    spaces. Returns ``None`` when no document reference is provided so the caller
+    can show usage. The caller validates the caption length against Telegram's
+    1024-character limit.
+    """
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) < 2:
+        return None
+
+    document = parts[1].strip()
+    if not document:
+        return None
+
+    caption = parts[2].strip() if len(parts) >= 3 else None
+    if caption == "":
+        caption = None
+
+    return document, caption
 
 
 def _parse_live_photo_args(text: str):

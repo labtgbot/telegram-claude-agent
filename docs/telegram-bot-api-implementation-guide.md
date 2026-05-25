@@ -285,6 +285,7 @@ Area label: `area:outbound-media`. Priority baseline: `priority:P1`
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:outbound-media`, `priority:P1`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Возвращать большие текстовые, PDF или исходные артефакты как document, когда sendMessage не подходит.
+- Status: implemented in PR #187 as restricted admin `/document` outbound media command.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API
