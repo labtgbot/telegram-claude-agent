@@ -158,6 +158,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/poll` – Send a native poll (an interactive question with 2-10 tappable answer options) into this chat (admin only).
 - `/contact` – Send a phone contact (a name with a phone number that can be saved to the address book) into this chat (admin only).
 - `/dice` – Send an animated dice (an emoji that shows a random value) into this chat (admin only).
+- `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
 - `/mediagroup` – Send 2-10 media items into this chat as a single album (media group) via URLs or file_ids (admin only).
 - `/clear` – Clear your conversation history.
 
@@ -741,6 +742,47 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Send a checklist
+
+The restricted `/checklist` command calls Telegram Bot API `sendChecklist`
+(introduced in Bot API 9.1). Because the pinned `aiogram==3.3.0` predates this
+method and ships no typed wrapper, the command goes through an **isolated raw
+Bot API helper** (`bot/services/send_checklist.py`) that POSTs the request over
+`httpx` instead of using a typed aiogram method. It lets an operator post a
+**checklist** — a titled list of tasks recipients can tick off — into the chat
+instead of only a textual interpretation.
+
+`sendChecklist` sends the message **on behalf of a connected business account**,
+so the bot must be connected to one and you must supply that live business
+connection id. It cannot be used as an ordinary chat command without
+business-mode.
+
+Usage: `/checklist <business_connection_id> <title> | <task> [| <task> ...]`
+
+- the checklist is always sent into the chat where the command was issued;
+- the business connection id comes first as a single token (no spaces), then the
+  title and the tasks, all separated by a vertical bar;
+- provide between 1 and 30 tasks (the command validates this bound before
+  calling Telegram); the handler assigns sequential task ids starting at 1;
+- the title is limited to 255 characters and each task to 100 characters (the
+  command validates these bounds before calling Telegram); the title and every
+  task may contain spaces and must be non-empty;
+- the command shows usage when the business connection id, the title or any task
+  is missing or empty, and does not contact Telegram in that case;
+- the title and task texts are operator-provided content, so only the task count
+  and the sent message id are logged;
+- a missing or expired `business_connection_id`, insufficient business-connection
+  rights or any other invalid request returns a Telegram error that the command
+  reports back instead of sending.
+
+Because the command makes the bot post a checklist on behalf of a business
+account, it is guarded like the other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Send a media group
 
 The restricted `/mediagroup` command calls Telegram Bot API `sendMediaGroup`
@@ -820,7 +862,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /mediagroup, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /checklist, /mediagroup, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -846,6 +888,7 @@ telegram-claude-agent/
 │   │   ├── send_poll.py        # Telegram sendPoll outbound helper
 │   │   ├── send_contact.py     # Telegram sendContact outbound helper
 │   │   ├── send_dice.py        # Telegram sendDice outbound helper
+│   │   ├── send_checklist.py   # Telegram sendChecklist raw Bot API helper
 │   │   └── send_media_group.py # Telegram sendMediaGroup outbound helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
@@ -898,6 +941,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/poll` command makes the bot post an arbitrary native poll into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the question and the answer options are kept out of the structured logs.
 - The `/contact` command makes the bot post an arbitrary phone contact into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the phone number and the contact's name are kept out of the structured logs.
 - The `/dice` command makes the bot post an animated dice into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
+- The `/checklist` command makes the bot post an arbitrary checklist into the chat on behalf of a connected business account, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the title and task texts are kept out of the structured logs.
 - The `/mediagroup` command makes the bot post an arbitrary album of 2-10 media items into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - Rate limiting helps prevent abuse.
 
