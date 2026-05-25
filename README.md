@@ -64,6 +64,7 @@ TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 TELEGRAM_WEBHOOK_URL=https://your-domain.com/webhook  # optional; if empty, uses polling
 TELEGRAM_GUEST_MODE_ENABLED=true
 TELEGRAM_ALLOWED_CHAT_IDS=  # optional whitelist
+TELEGRAM_ADMIN_CHAT_IDS=  # optional diagnostics command allowlist
 
 API_SECRET_TOKEN=random_secret_for_webhook_verification
 RATE_LIMIT_REQUESTS_PER_MINUTE=60
@@ -81,6 +82,7 @@ LOG_LEVEL=INFO
 - `TELEGRAM_WEBHOOK_URL` – if set, the bot will use webhook mode; otherwise, it uses long polling.
 - `TELEGRAM_GUEST_MODE_ENABLED` – enable no-history group privacy mode for mentioned/replied messages (`true`/`false`).
 - `TELEGRAM_ALLOWED_CHAT_IDS` – optional comma-separated list of chat IDs to restrict operation.
+- `TELEGRAM_ADMIN_CHAT_IDS` – optional comma-separated list of chat IDs allowed to run admin diagnostics commands. If empty, diagnostics fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if both are empty, diagnostics commands are disabled.
 - `API_SECRET_TOKEN` – secret token for verifying webhook requests (highly recommended for webhook mode).
 - `RATE_LIMIT_REQUESTS_PER_MINUTE` – maximum requests per user per minute.
 - `LOG_LEVEL` – logging level (default `INFO`).
@@ -135,7 +137,27 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/help` – Show help text.
 - `/model` – Show current model and list available models. Use `/model <model_id>` to switch.
 - `/settings` – Display your current settings.
+- `/webhook` – Show webhook diagnostics for allowed admin chats.
 - `/clear` – Clear your conversation history.
+
+### Webhook diagnostics
+
+The restricted `/webhook` command calls Telegram Bot API `getWebhookInfo`
+through aiogram's typed API. It requires no Telegram method parameters and
+shows the current webhook status, webhook URL, pending update count,
+`allowed_updates`, certificate flag, connection limit, and the latest delivery
+or synchronization error reported by Telegram.
+
+Use `TELEGRAM_ADMIN_CHAT_IDS` to restrict this operational output to private
+admin chats or trusted operations groups. If `TELEGRAM_ADMIN_CHAT_IDS` is empty,
+the command falls back to `TELEGRAM_ALLOWED_CHAT_IDS`. If both lists are empty,
+the diagnostics command is disabled. The global rate-limit middleware still
+applies to the command.
+
+When the bot is running in long polling mode, Telegram returns webhook info with
+an empty `url`, which the command displays as disabled. This command does not
+change webhook state; rollback is simply removing the command allowlist or
+stopping use of `/webhook`.
 
 ### Group privacy mode
 
@@ -188,7 +210,8 @@ telegram-claude-agent/
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
-│   │   └── claude_proxy.py     # Client for free-claude-code API
+│   │   ├── claude_proxy.py     # Client for free-claude-code API
+│   │   └── webhook_info.py     # Telegram webhook diagnostics formatting
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
 │       └── media.py            # Transcription, document extraction
@@ -219,6 +242,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - Use HTTPS for your webhook URL.
 - Keep your `FREE_CLAUDE_AUTH_TOKEN` and `TELEGRAM_BOT_TOKEN` secret; do not commit them to version control.
 - The `TELEGRAM_ALLOWED_CHAT_IDS` setting can restrict operation to specific chats.
+- The `/webhook` diagnostics command can expose webhook URL and delivery errors, so restrict it with `TELEGRAM_ADMIN_CHAT_IDS`.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work

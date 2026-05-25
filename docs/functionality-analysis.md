@@ -53,8 +53,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 Подробный issue-style backlog для доведения покрытия до полного Bot API
 описан в
 [telegram-bot-api-implementation-guide.md](telegram-bot-api-implementation-guide.md):
-в нем 169 карточек для пока не интегрированных методов с labels, stages,
-scope и acceptance criteria.
+в нем 169 карточек методов с labels, stages, scope и acceptance criteria;
+после внедрения `getWebhookInfo` остается 168 пока не интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -66,6 +66,7 @@ scope и acceptance criteria.
 | `getMe` | `bot/main.py`, `bot/handlers/chat.py` | Кеширование данных бота при startup и получение username для определения mention/reply в группах. |
 | `getUpdates` | `dp.start_polling()` в `bot/main.py` | Непрямое использование через aiogram long polling, когда `TELEGRAM_WEBHOOK_URL` не задан. |
 | `setWebhook` | `bot/main.py` | Регистрация webhook URL и optional `secret_token` при наличии `TELEGRAM_WEBHOOK_URL`. |
+| `getWebhookInfo` | `bot/services/webhook_info.py`, `/webhook` в `bot/handlers/commands.py` | Админская диагностика статуса webhook, pending updates, `allowed_updates` и последних ошибок доставки. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -95,8 +96,8 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
 покрытия их лучше добавлять не одним большим слоем, а по функциональным
 направлениям:
 
-1. Lifecycle и диагностика: `deleteWebhook`, `getWebhookInfo`, `logOut`,
-   `close`, явная настройка `allowed_updates`, диагностика конфликтов между
+1. Lifecycle и диагностика: `deleteWebhook`, `logOut`, `close`,
+   явная настройка `allowed_updates`, диагностика конфликтов между
    webhook и long polling.
 2. Профиль и команды бота: `setMyCommands`, `deleteMyCommands`,
    `getMyCommands`, `setMyName`, `getMyName`, `setMyDescription`,
@@ -144,10 +145,10 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
     `getGameHighScores`).
 
 Для этого проекта наиболее полезный следующий слой Telegram API выглядит так:
-сначала lifecycle/diagnostics, `sendChatAction`, реальные inline/callback
-flows, official Guest Mode и rich outbound media; затем group administration,
-payments/Stars/gifts, business/managed-bot возможности и остальные
-domain-specific методы.
+сначала оставшиеся lifecycle/diagnostics, `sendChatAction`, реальные
+inline/callback flows, official Guest Mode и rich outbound media; затем group
+administration, payments/Stars/gifts, business/managed-bot возможности и
+остальные domain-specific методы.
 
 Для планирования последующих PR этот список уже разложен до отдельных
 issue-карточек в
@@ -165,12 +166,38 @@ issue-карточек в
   пользователя;
 - `/settings` показывает текущую модель, streaming flag, guest mode и лимит
   запросов;
+- `/webhook` показывает диагностику Telegram webhook для разрешенных
+  admin/ops чатов;
 - `/clear` очищает историю разговора для пары `(chat_id, user_id)`.
 
 Важная деталь: выбранная через `/model <model_id>` модель сохраняется в
 `storage.user_settings`, но обработчик чата сейчас отправляет запросы с
 `settings.free_claude_default_model`. То есть команда сохраняет настройку, но
 не влияет на реальные ответы чата.
+
+### Webhook diagnostics
+
+Команда `/webhook` вызывает typed aiogram API `Bot.get_webhook_info()` без
+параметров. По официальной документации Telegram метод требует только валидный
+bot token и возвращает `WebhookInfo`; если бот использует `getUpdates`, поле
+`url` пустое.
+
+Ответ команды включает webhook status, URL, `pending_update_count`,
+`allowed_updates`, флаг custom certificate, `max_connections`, последнюю ошибку
+доставки update и последнюю ошибку синхронизации с Telegram datacenters, если
+они есть. Команда не меняет состояние webhook и не взаимодействует с
+`free-claude-code`, поэтому rollback сводится к удалению allowlist для
+диагностики или отключению использования команды.
+
+Из-за operational metadata команда закрыта allowlist'ом:
+
+- если задан `TELEGRAM_ADMIN_CHAT_IDS`, `/webhook` доступен только этим chat id;
+- если `TELEGRAM_ADMIN_CHAT_IDS` пустой, используется fallback на
+  `TELEGRAM_ALLOWED_CHAT_IDS`;
+- если оба списка пустые, команда отключена и отвечает restricted message.
+
+Глобальный `RateLimitMiddleware` применяется к `/webhook` так же, как к другим
+Telegram-командам.
 
 ### Текстовые сообщения
 
@@ -279,6 +306,7 @@ fallback'ится на plain text.
 - `TELEGRAM_WEBHOOK_URL`;
 - `TELEGRAM_GUEST_MODE_ENABLED`;
 - `TELEGRAM_ALLOWED_CHAT_IDS`;
+- `TELEGRAM_ADMIN_CHAT_IDS`;
 - `API_SECRET_TOKEN`;
 - `RATE_LIMIT_REQUESTS_PER_MINUTE`;
 - `LOG_LEVEL`.
@@ -286,12 +314,18 @@ fallback'ится на plain text.
 `TELEGRAM_ALLOWED_CHAT_IDS` парсится как comma-separated список целых chat id.
 Если список пустой, бот доступен во всех чатах.
 
+`TELEGRAM_ADMIN_CHAT_IDS` парсится тем же способом и ограничивает доступ к
+операционной диагностике `/webhook`. Если список пустой, используется
+`TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пустые, диагностика недоступна.
+
 ## Безопасность и ограничения доступа
 
 Текущие защитные механизмы:
 
 - webhook secret token при заданном `API_SECRET_TOKEN`;
 - optional whitelist чатов через `TELEGRAM_ALLOWED_CHAT_IDS`;
+- admin/ops allowlist для `/webhook` через `TELEGRAM_ADMIN_CHAT_IDS` с
+  fallback на общий whitelist;
 - per-user rate limit в sliding window на 60 секунд;
 - guest mode для групп;
 - экранирование HTML в LLM-ответах перед Telegram HTML.
@@ -301,6 +335,8 @@ fallback'ится на plain text.
 - `API_SECRET_TOKEN` опционален на уровне настроек, хотя для webhook режима он
   практически обязателен;
 - rate limit хранится в памяти и сбрасывается при рестарте;
+- `/webhook` показывает webhook URL и последние ошибки доставки, поэтому его
+  нельзя оставлять доступным в публичных группах;
 - нет persistent audit log, admin panel или метрик;
 - нет отдельной проверки размера входных файлов перед скачиванием и обработкой.
 
@@ -308,6 +344,10 @@ fallback'ится на plain text.
 
 `structlog` настроен на JSON output. `LoggingMiddleware` логирует входящие
 сообщения, callback query, inline query и неизвестные update types.
+
+`fetch_webhook_info()` логирует `webhook_info_fetched` с агрегированными
+полями статуса без webhook URL и текста delivery error. При ошибке Telegram API
+логируется `webhook_info_fetch_failed` с типом исключения.
 
 `LOG_LEVEL` присутствует в настройках, но сейчас не применяется к конфигурации
 logging. Фактическая детализация логов зависит от дефолтного окружения.
@@ -342,6 +382,8 @@ logging. Фактическая детализация логов зависит
 - парсинг `TELEGRAM_ALLOWED_CHAT_IDS` и boolean env values;
 - операции `MemoryStorage`;
 - `ClaudeProxyClient.list_models()`, non-streaming и streaming отправку;
+- форматирование `WebhookInfo`, вызов typed aiogram `get_webhook_info()`,
+  обработку Telegram API ошибок и allowlist для `/webhook`;
 - извлечение текста из plain text и поведение на неизвестном MIME;
 - rate limit middleware;
 - Markdown/HTML форматирование, удаление mention и разбивку Telegram сообщений.
@@ -380,7 +422,7 @@ python -m pytest -v
 9. Нет тестов обработчиков команд `/model`, `/settings`, `/clear` с моками
    Telegram message objects.
 10. Нет теста webhook secret validation и `/health`.
-11. Покрытие Telegram Bot API ограничено семью методами; official Guest Mode,
+11. Покрытие Telegram Bot API ограничено восемью методами; official Guest Mode,
     callback flows, rich outbound media, bot profile/commands management,
     moderation, payments/Stars/gifts, business и managed-bot методы не
     реализованы.
@@ -400,6 +442,6 @@ python -m pytest -v
    если proxy поддерживает long-lived SSE responses.
 8. Добавить ограничения и диагностику для входных файлов и optional voice
    dependencies.
-9. Добавить следующий слой Telegram API: `deleteWebhook`, `getWebhookInfo`,
-   `sendChatAction`, `setMyCommands`, `answerCallbackQuery`, полноценный
+9. Добавить следующий слой Telegram API: `deleteWebhook`, `sendChatAction`,
+   `setMyCommands`, `answerCallbackQuery`, полноценный
    `answerInlineQuery`, `answerGuestQuery` и rich outbound media методы.

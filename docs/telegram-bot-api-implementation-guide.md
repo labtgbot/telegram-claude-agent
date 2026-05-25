@@ -18,13 +18,15 @@ criteria. Это не означает, что все методы нужно в
 ## Текущее покрытие
 
 Всего методов Bot API в официальной документации: 176.
-Фактически интегрировано в проекте: 7.
-Остается для backlog: 169.
+Фактически интегрировано в проекте: 8.
+Остается для backlog: 168. Карточка BOTAPI-002 сохранена ниже как
+реализованная, чтобы не менять стабильную нумерацию method backlog.
 
 Интегрированные методы:
 
 - `getUpdates`
 - `setWebhook`
+- `getWebhookInfo`
 - `getMe`
 - `sendMessage`
 - `getFile`
@@ -109,6 +111,7 @@ Area label: `area:lifecycle`. Priority baseline: `priority:P0`
 #### BOTAPI-002: `getWebhookInfo`
 
 - Title: `telegram-api: реализовать getWebhookInfo`
+- Status: implemented in PR #176 as restricted `/webhook` diagnostics.
 - Official docs: https://core.telegram.org/bots/api#getwebhookinfo
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:lifecycle`, `priority:P0`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
