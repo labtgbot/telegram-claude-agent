@@ -13,6 +13,7 @@ from bot.services.send_animation import perform_send_animation
 from bot.services.send_audio import perform_send_audio
 from bot.services.send_document import perform_send_document
 from bot.services.send_live_photo import SendLivePhotoError, perform_send_live_photo
+from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
 from bot.services.send_photo import perform_send_photo
 from bot.services.send_video import perform_send_video
 from bot.services.send_voice import perform_send_voice
@@ -198,6 +199,23 @@ VOICE_USAGE = (
     "or .M4A file, and limits a file sent by URL to 20 MB."
 )
 
+PAID_MEDIA_CAPTION_LIMIT = 1024
+
+PAID_MEDIA_MIN_STARS = 1
+
+PAID_MEDIA_MAX_STARS = 25000
+
+PAID_MEDIA_USAGE = (
+    "<b>paidmedia usage</b>\n"
+    "Sends a paid photo into this chat that users must pay for with Telegram "
+    "Stars to access. Pass the star price (1-25000), then an HTTP(S) URL "
+    "Telegram can fetch or a file_id of a photo already on Telegram servers.\n"
+    "Usage: <code>/paidmedia &lt;star_count&gt; &lt;url_or_file_id&gt; [caption]</code>\n"
+    "The caption is optional and limited to 1024 characters. When this chat is a "
+    "channel the Telegram Star proceeds are credited to the channel balance, "
+    "otherwise to the bot balance."
+)
+
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
@@ -228,6 +246,7 @@ async def cmd_help(message: Message):
         "/video - Send a video into this chat as a playable video (admin only)\n"
         "/animation - Send an animation (GIF/soundless video) into this chat (admin only)\n"
         "/voice - Send a voice message into this chat as a playable audio clip (admin only)\n"
+        "/paidmedia - Send a paid photo into this chat priced in Telegram Stars (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -708,6 +727,48 @@ async def cmd_voice(message: Message):
         "Sent voice message with caption." if caption else "Sent voice message."
     )
 
+@router.message(Command("paidmedia"))
+async def cmd_paid_media(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_paid_media_args(message.text or "")
+    if parsed is None:
+        await message.answer(PAID_MEDIA_USAGE, parse_mode="HTML")
+        return
+
+    star_count, media, caption = parsed
+    if not PAID_MEDIA_MIN_STARS <= star_count <= PAID_MEDIA_MAX_STARS:
+        await message.answer(
+            f"Star count must be between {PAID_MEDIA_MIN_STARS} and "
+            f"{PAID_MEDIA_MAX_STARS}."
+        )
+        return
+
+    if caption is not None and len(caption) > PAID_MEDIA_CAPTION_LIMIT:
+        await message.answer(
+            f"Caption is too long: {len(caption)} characters "
+            f"(max {PAID_MEDIA_CAPTION_LIMIT})."
+        )
+        return
+
+    try:
+        await perform_send_paid_media(
+            message.bot,
+            chat_id=message.chat.id,
+            star_count=star_count,
+            media=[{"type": "photo", "media": media}],
+            caption=caption,
+        )
+    except SendPaidMediaError as exc:
+        await message.answer(f"Could not send the paid media: {exc}")
+        return
+
+    await message.answer(
+        "Sent paid media with caption." if caption else "Sent paid media."
+    )
+
 @router.message(Command("clear"))
 async def cmd_clear(message: Message):
     storage.clear_history(message.chat.id, message.from_user.id)
@@ -1021,3 +1082,34 @@ def _parse_live_photo_args(text: str):
         caption = None
 
     return live_photo, photo, caption
+
+
+def _parse_paid_media_args(text: str):
+    """Parse ``/paidmedia`` arguments into ``(star_count, media, caption)``.
+
+    Splits the raw command text into the command, the integer ``star_count``,
+    the photo reference (URL or ``file_id``) and an optional free-text caption
+    that may itself contain spaces. Returns ``None`` when the star price or media
+    reference is missing or the star price is not an integer so the caller can
+    show usage. The caller validates the ``star_count`` range (1-25000) and the
+    caption length against Telegram's 1024-character limit.
+    """
+    parts = (text or "").split(maxsplit=3)
+    if len(parts) < 3:
+        return None
+
+    star_count_str = parts[1].strip()
+    media = parts[2].strip()
+    if not star_count_str or not media:
+        return None
+
+    try:
+        star_count = int(star_count_str)
+    except ValueError:
+        return None
+
+    caption = parts[3].strip() if len(parts) >= 4 else None
+    if caption == "":
+        caption = None
+
+    return star_count, media, caption
