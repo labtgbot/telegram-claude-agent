@@ -54,8 +54,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 описан в
 [telegram-bot-api-implementation-guide.md](telegram-bot-api-implementation-guide.md):
 в нем 169 карточек методов с labels, stages, scope и acceptance criteria;
-после внедрения `getWebhookInfo`, `logOut`, `close`, `forwardMessage` и
-`copyMessage` остается 164 пока не интегрированных методов.
+после внедрения `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
+`copyMessage` и `forwardMessages` остается 163 пока не интегрированных метода.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -71,6 +71,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `logOut` | `bot/services/log_out.py`, `/logout` в `bot/handlers/commands.py` | Защищенный admin-flow выхода из cloud Bot API перед запуском local Bot API server, с обязательным подтверждением. |
 | `close` | `bot/services/close.py`, `/close` в `bot/handlers/commands.py` | Защищенный admin-flow закрытия bot instance перед миграцией между local Bot API серверами, с обязательным подтверждением. |
 | `forwardMessage` | `bot/services/forward_message.py`, `/forward` в `bot/handlers/commands.py` | Admin-flow пересылки одного сообщения из другого чата в текущий admin-чат для поддержки/модерации, с `protect_content` по умолчанию. |
+| `forwardMessages` | `bot/services/forward_messages.py`, `/forwards` в `bot/handlers/commands.py` | Admin-flow пакетной пересылки 1-100 сообщений из другого чата в текущий admin-чат с сохранением album grouping, с `protect_content` по умолчанию. |
 | `copyMessage` | `bot/services/copy_message.py`, `/copy` в `bot/handlers/commands.py` | Admin-flow копирования одного сообщения из другого чата в текущий admin-чат как нового сообщения без ссылки на исходного отправителя, с `protect_content` по умолчанию. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
@@ -115,8 +116,8 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `sendVideoNote`, `sendMediaGroup`, `sendLivePhoto`, `sendPaidMedia`,
    `sendLocation`, `sendVenue`, `sendContact`, `sendPoll`, `sendChecklist`,
    `sendDice`, `sendMessageDraft`, `setMessageReaction`.
-4. Управление сообщениями: `forwardMessages`,
-   `copyMessages`, `editMessageCaption`, `editMessageMedia`,
+4. Управление сообщениями: `copyMessages`, `editMessageCaption`,
+   `editMessageMedia`,
    `editMessageLiveLocation`, `stopMessageLiveLocation`,
    `editMessageChecklist`, `editMessageReplyMarkup`, `stopPoll`,
    `approveSuggestedPost`, `declineSuggestedPost`, `deleteMessage`,
@@ -179,6 +180,9 @@ issue-карточек в
   сервере для admin-чатов и требует явного подтверждения `/close confirm`;
 - `/forward <from_chat_id> <message_id> [share]` пересылает одно сообщение из
   другого чата в текущий admin-чат для поддержки/модерации;
+- `/forwards <from_chat_id> <message_id> [<message_id> ...] [share]` пакетно
+  пересылает 1-100 сообщений из другого чата в текущий admin-чат с сохранением
+  album grouping;
 - `/copy <from_chat_id> <message_id> [share]` копирует одно сообщение из другого
   чата в текущий admin-чат как новое сообщение без ссылки на исходного
   отправителя;
@@ -294,6 +298,43 @@ Service-сообщения и сообщения с уже protected content п�
 
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/forward` так же, как к другим командам.
+
+### forwardMessages
+
+Команда `/forwards` вызывает typed aiogram API `Bot.forward_messages()` для
+метода Telegram `forwardMessages`. По официальной документации метод требует
+`chat_id`, `from_chat_id` и `message_ids` (1-100 идентификаторов в строго
+возрастающем порядке) и возвращает массив `MessageId` отправленных сообщений.
+В отличие от `forwardMessage`, `forwardMessages` сохраняет album grouping:
+сообщения, изначально входившие в один альбом, пересылаются альбомом. Сообщения,
+которые переслать нельзя (service-сообщения и сообщения с protected content),
+пропускаются, поэтому возвращённый список может быть короче запрошенного; если
+переслать нельзя ни одно, вызов завершается ошибкой. Бот должен иметь доступ к
+`from_chat_id`, то есть быть участником исходного чата.
+
+Выбран тот же admin-сценарий поддержки/модерации, что и для `/forward`, но для
+переноса сразу нескольких сообщений (например, целого альбома) одним вызовом.
+Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/forwards <from_chat_id> <message_id> [<message_id> ...] [share]`.
+
+По умолчанию пересланные копии защищаются `protect_content=True`; необязательное
+ключевое слово `share` отключает защиту. Команда сообщает, сколько из
+запрошенных сообщений было фактически переслано, так как часть могла быть
+пропущена Telegram.
+
+`/forwards` относится к message-relay и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующих, нечисловых, нарушающих строгий порядок или выходящих за
+  пределы 1-100 идентификаторах команда показывает usage и не обращается к
+  Telegram;
+- ошибки Telegram (например, недоступный чат) возвращаются пользователю, а
+  пересылка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/forwards` так же, как к другим командам.
 
 ### copyMessage
 
@@ -450,8 +491,8 @@ fallback'ится на plain text.
 admin-командам. Для диагностики `/webhook` при пустом списке используется
 fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пустые, диагностика
 недоступна. Для деструктивных `/logout`, `/close` и для message-relay
-`/forward` и `/copy` fallback не применяется: команды требуют непустой
-`TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
+`/forward`, `/forwards` и `/copy` fallback не применяется: команды требуют
+непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
 
 ## Безопасность и ограничения доступа
 
@@ -468,6 +509,8 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 - строгий admin allowlist без fallback для `/forward` и `protect_content` по
   умолчанию, чтобы пересланный контент нельзя было переслать или сохранить
   дальше;
+- строгий admin allowlist без fallback для `/forwards` и `protect_content` по
+  умолчанию для пакетной пересылки с сохранением album grouping;
 - строгий admin allowlist без fallback для `/copy` и `protect_content` по
   умолчанию, чтобы скопированный контент нельзя было переслать или сохранить
   дальше;
@@ -490,6 +533,9 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 - `/forward` переносит чужой контент между чатами, поэтому требует явного admin
   allowlist и по умолчанию защищает пересланную копию `protect_content`; его
   нельзя открывать публично;
+- `/forwards` переносит пакет чужих сообщений между чатами с сохранением album
+  grouping, поэтому требует явного admin allowlist и по умолчанию защищает
+  пересланные копии `protect_content`; его нельзя открывать публично;
 - `/copy` переносит чужой контент между чатами без ссылки на источник, поэтому
   требует явного admin allowlist и по умолчанию защищает скопированное сообщение
   `protect_content`; его нельзя открывать публично;
@@ -515,6 +561,11 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 `from_chat_id`, `message_id`, флагом `protect_content` и id новой копии; при
 ошибке Telegram API логируется `forward_message_failed` с типом исключения,
 `from_chat_id` и `message_id`.
+
+`perform_forward_messages()` логирует `messages_forwarded` с `chat_id`,
+`from_chat_id`, `message_ids`, флагом `protect_content` и `forwarded_count`; при
+ошибке Telegram API логируется `forward_messages_failed` с типом исключения,
+`from_chat_id` и `message_ids`.
 
 `perform_copy_message()` логирует `message_copied` с `chat_id`, `from_chat_id`,
 `message_id`, флагом `protect_content` и id новой копии; при ошибке Telegram API
@@ -565,6 +616,11 @@ logging. Фактическая детализация логов зависит
   (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
   аргументов, `protect_content` по умолчанию и переключение через `share` для
   `/forward`;
+- вызов typed aiogram `forward_messages()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
+  списка message ids (нечисловые, нарушение строгого порядка, дубли, лимит
+  1-100), `protect_content` по умолчанию, переключение через `share` и отчет о
+  числе фактически пересланных сообщений для `/forwards`;
 - вызов typed aiogram `copy_message()`, обработку Telegram API ошибок
   (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
   аргументов, `protect_content` по умолчанию и переключение через `share` для
@@ -580,7 +636,7 @@ module-level `pytestmark`.
 
 ```text
 python -m pytest -v
-67 passed, 2 skipped, 6 warnings
+80 passed, 2 skipped, 6 warnings
 ```
 
 Предупреждения связаны с pydantic deprecated `__fields__` при использовании
@@ -607,7 +663,7 @@ python -m pytest -v
 9. Нет тестов обработчиков команд `/model`, `/settings`, `/clear` с моками
    Telegram message objects.
 10. Нет теста webhook secret validation и `/health`.
-11. Покрытие Telegram Bot API ограничено двенадцатью методами; official Guest
+11. Покрытие Telegram Bot API ограничено тринадцатью методами; official Guest
     Mode, callback flows, rich outbound media, bot profile/commands management,
     moderation, payments/Stars/gifts, business и managed-bot методы не
     реализованы.

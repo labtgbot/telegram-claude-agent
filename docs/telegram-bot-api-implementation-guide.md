@@ -180,6 +180,7 @@ Area label: `area:message-relay`. Priority baseline: `priority:P2`
 #### BOTAPI-006: `forwardMessages`
 
 - Title: `telegram-api: реализовать forwardMessages`
+- Status: implemented in PR #182 as restricted admin `/forwards` batch relay command.
 - Official docs: https://core.telegram.org/bots/api#forwardmessages
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:message-relay`, `priority:P2`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`

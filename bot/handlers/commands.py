@@ -6,6 +6,7 @@ from bot.config import settings
 from bot.services.close import perform_close
 from bot.services.copy_message import perform_copy_message
 from bot.services.forward_message import perform_forward_message
+from bot.services.forward_messages import perform_forward_messages
 from bot.services.log_out import perform_log_out
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
 from bot.utils.storage import storage
@@ -48,6 +49,23 @@ FORWARD_USAGE = (
     "saving. Append <code>share</code> to allow re-forwarding it."
 )
 
+FORWARDS_SHARE_KEYWORD = "share"
+
+FORWARDS_MAX_MESSAGE_IDS = 100
+
+FORWARDS_USAGE = (
+    "<b>forwards usage</b>\n"
+    "Forwards several messages from another chat into this chat for "
+    "support/moderation review, preserving album grouping. The bot must be a "
+    "member of the source chat; service messages and messages with protected "
+    "content cannot be forwarded and are skipped.\n"
+    "Usage: <code>/forwards &lt;from_chat_id&gt; &lt;message_id&gt; "
+    "[&lt;message_id&gt; ...] [share]</code>\n"
+    "Provide 1-100 message ids in strictly increasing order. By default the "
+    "forwarded copies are protected from further forwarding and saving. Append "
+    "<code>share</code> to allow re-forwarding them."
+)
+
 COPY_SHARE_KEYWORD = "share"
 
 COPY_USAGE = (
@@ -81,6 +99,7 @@ async def cmd_help(message: Message):
         "/logout - Log out from the cloud Bot API (admin only)\n"
         "/close - Close the bot instance on the current Bot API (admin only)\n"
         "/forward - Forward a message into this chat for review (admin only)\n"
+        "/forwards - Forward several messages into this chat for review (admin only)\n"
         "/copy - Copy a message into this chat without source link (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
@@ -223,6 +242,39 @@ async def cmd_forward(message: Message):
         f"({protection} copy)."
     )
 
+@router.message(Command("forwards"))
+async def cmd_forwards(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    args = (message.text or "").split()
+    parsed = _parse_forward_messages_args(args[1:])
+    if parsed is None:
+        await message.answer(FORWARDS_USAGE, parse_mode="HTML")
+        return
+
+    from_chat_id, message_ids, protect_content = parsed
+
+    try:
+        result = await perform_forward_messages(
+            message.bot,
+            chat_id=message.chat.id,
+            from_chat_id=from_chat_id,
+            message_ids=message_ids,
+            protect_content=protect_content,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not forward the messages: {exc}")
+        return
+
+    forwarded_count = len(result) if hasattr(result, "__len__") else len(message_ids)
+    protection = "protected" if protect_content else "shareable"
+    await message.answer(
+        f"Forwarded {forwarded_count} of {len(message_ids)} messages from chat "
+        f"{from_chat_id} ({protection} copy)."
+    )
+
 @router.message(Command("copy"))
 async def cmd_copy(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -298,6 +350,38 @@ def _parse_forward_args(args: list[str]):
         protect_content = False
 
     return from_chat_id, message_id, protect_content
+
+
+def _parse_forward_messages_args(args: list[str]):
+    """Parse ``/forwards`` arguments into ``(from_chat_id, message_ids, protect)``.
+
+    Returns ``None`` when the arguments are missing or invalid so the caller can
+    show usage. ``protect`` defaults to ``True`` and is disabled by the optional
+    trailing ``share`` keyword. Telegram requires 1-100 message ids specified in
+    a strictly increasing order, so both bounds are validated here before the
+    call instead of relying on a Telegram error.
+    """
+    protect_content = True
+    if args and args[-1].strip().lower() == FORWARDS_SHARE_KEYWORD:
+        protect_content = False
+        args = args[:-1]
+
+    if len(args) < 2:
+        return None
+
+    try:
+        from_chat_id = int(args[0])
+        message_ids = [int(x) for x in args[1:]]
+    except ValueError:
+        return None
+
+    if not 1 <= len(message_ids) <= FORWARDS_MAX_MESSAGE_IDS:
+        return None
+
+    if any(later <= earlier for earlier, later in zip(message_ids, message_ids[1:])):
+        return None
+
+    return from_chat_id, message_ids, protect_content
 
 
 def _parse_copy_args(args: list[str]):
