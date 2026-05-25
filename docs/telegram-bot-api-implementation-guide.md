@@ -364,6 +364,7 @@ Area label: `area:outbound-media`. Priority baseline: `priority:P1`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Добавить поддержку `sendPaidMedia` в область: исходящие ответы бота за пределами plain text, включая typing/draft feedback, медиа, polls, checklist и reactions. Определить конкретный сценарий: расширение chat handler или отдельный response builder, который выбирает Telegram output по результату Claude/proxy.
 - Method note: Требует отдельного решения по paid content, payload, цене и доступу к purchased_paid_media updates.
+- Status: implemented in PR #191 as restricted admin `/paidmedia` outbound media command via an isolated raw Bot API helper (`aiogram==3.3.0` ships no typed wrapper for this Bot API 7.6 method).
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API
