@@ -143,6 +143,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/forward` – Forward a message from another chat into this chat for support/moderation review (admin only).
 - `/forwards` – Forward several messages from another chat into this chat, preserving album grouping (admin only).
 - `/copy` – Copy a message from another chat into this chat without a link to the original sender (admin only).
+- `/photo` – Send an image into this chat as a real Telegram photo via a URL or file_id (admin only).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics
@@ -297,6 +298,32 @@ admin commands:
 `copyMessage` copies a single message; copying a whole album as a group is the
 job of `copyMessages`, which is tracked separately.
 
+### Send a photo
+
+The restricted `/photo` command calls Telegram Bot API `sendPhoto` through
+aiogram's typed `Bot.send_photo()` wrapper. It lets an operator deliver a
+generated or received image into the chat as a **real Telegram photo** instead
+of only a textual interpretation.
+
+Usage: `/photo <url_or_file_id> [caption]`
+
+- the photo is always sent into the chat where the command was issued;
+- the photo reference is either an HTTP(S) URL that Telegram fetches itself or a
+  `file_id` of a photo that already exists on Telegram servers;
+- the caption is optional, may contain spaces, and is limited to 1024
+  characters (the command validates this bound before calling Telegram);
+- Telegram limits the photo to 10 MB, its total width+height to 10000 and its
+  width/height ratio to 20; an invalid reference or oversized image returns a
+  Telegram error that the command reports back instead of sending.
+
+Because the command makes the bot post content, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Group privacy mode
 
 When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
@@ -344,7 +371,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /photo, /clear
 │   │   ├── chat.py             # Text and media message handler
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -354,7 +381,8 @@ telegram-claude-agent/
 │   │   ├── close.py            # Telegram close lifecycle helper
 │   │   ├── forward_message.py  # Telegram forwardMessage relay helper
 │   │   ├── forward_messages.py # Telegram forwardMessages batch relay helper
-│   │   └── copy_message.py     # Telegram copyMessage relay helper
+│   │   ├── copy_message.py     # Telegram copyMessage relay helper
+│   │   └── send_photo.py       # Telegram sendPhoto outbound helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
 │       └── media.py            # Transcription, document extraction
@@ -391,6 +419,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/forward` command relays a message from another chat into the admin chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and protects the forwarded copy from re-forwarding by default.
 - The `/forwards` command relays a batch of messages from another chat into the admin chat (preserving album grouping), so it requires `TELEGRAM_ADMIN_CHAT_IDS` and protects the forwarded copies from re-forwarding by default.
 - The `/copy` command relays a message from another chat into the admin chat without a link to the original sender, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and protects the copied message from re-forwarding by default.
+- The `/photo` command makes the bot post an arbitrary image into the chat as a photo, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work

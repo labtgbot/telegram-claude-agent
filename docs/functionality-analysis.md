@@ -55,7 +55,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 [telegram-bot-api-implementation-guide.md](telegram-bot-api-implementation-guide.md):
 в нем 169 карточек методов с labels, stages, scope и acceptance criteria;
 после внедрения `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
-`copyMessage` и `forwardMessages` остается 163 пока не интегрированных метода.
+`copyMessage`, `forwardMessages` и `sendPhoto` остается 162 пока не
+интегрированных метода.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -73,6 +74,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `forwardMessage` | `bot/services/forward_message.py`, `/forward` в `bot/handlers/commands.py` | Admin-flow пересылки одного сообщения из другого чата в текущий admin-чат для поддержки/модерации, с `protect_content` по умолчанию. |
 | `forwardMessages` | `bot/services/forward_messages.py`, `/forwards` в `bot/handlers/commands.py` | Admin-flow пакетной пересылки 1-100 сообщений из другого чата в текущий admin-чат с сохранением album grouping, с `protect_content` по умолчанию. |
 | `copyMessage` | `bot/services/copy_message.py`, `/copy` в `bot/handlers/commands.py` | Admin-flow копирования одного сообщения из другого чата в текущий admin-чат как нового сообщения без ссылки на исходного отправителя, с `protect_content` по умолчанию. |
+| `sendPhoto` | `bot/services/send_photo.py`, `/photo` в `bot/handlers/commands.py` | Admin-flow отправки изображения в текущий чат как настоящего Telegram-фото по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -111,7 +113,7 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `setMyProfilePhoto`, `removeMyProfilePhoto`, `setChatMenuButton`,
    `getChatMenuButton`, `setMyDefaultAdministratorRights`,
    `getMyDefaultAdministratorRights`.
-3. Более богатые ответы пользователю: `sendChatAction`, `sendPhoto`,
+3. Более богатые ответы пользователю: `sendChatAction`,
    `sendDocument`, `sendAudio`, `sendVoice`, `sendVideo`, `sendAnimation`,
    `sendVideoNote`, `sendMediaGroup`, `sendLivePhoto`, `sendPaidMedia`,
    `sendLocation`, `sendVenue`, `sendContact`, `sendPoll`, `sendChecklist`,
@@ -186,6 +188,8 @@ issue-карточек в
 - `/copy <from_chat_id> <message_id> [share]` копирует одно сообщение из другого
   чата в текущий admin-чат как новое сообщение без ссылки на исходного
   отправителя;
+- `/photo <url_or_file_id> [caption]` отправляет изображение в текущий чат как
+  настоящее Telegram-фото по URL или `file_id`, а не только как текст;
 - `/clear` очищает историю разговора для пары `(chat_id, user_id)`.
 
 Важная деталь: выбранная через `/model <model_id>` модель сохраняется в
@@ -372,6 +376,40 @@ invoice-сообщения скопировать нельзя, а бот дол
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/copy` так же, как к другим командам.
 
+### sendPhoto
+
+Команда `/photo` вызывает typed aiogram API `Bot.send_photo()` для метода
+Telegram `sendPhoto`. По официальной документации метод требует `chat_id` и
+`photo` и возвращает отправленное `Message`. `photo` может быть HTTP(S)-URL,
+который Telegram скачивает сам, `file_id` уже существующего на серверах Telegram
+фото или загружаемым файлом; helper принимает строковую форму URL/`file_id`.
+Telegram ограничивает фото 10 MB, сумму ширины и высоты — 10000, соотношение
+сторон — не более 20, а `caption` — 1024 символами после парсинга entities.
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет сгенерированное или
+полученное изображение в чат как настоящее фото, а не только текстовую
+интерпретацию. Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/photo <url_or_file_id> [caption]`.
+
+Caption необязателен, может содержать пробелы и проверяется на лимит 1024
+символа до обращения к Telegram, чтобы validation path не зависел от ошибки
+Telegram. Метод обрабатывает одиночное фото; отправка альбома — задача
+`sendMediaGroup`.
+
+`/photo` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующем photo-аргументе команда показывает usage, а при слишком
+  длинном caption — сообщение о превышении лимита, и в обоих случаях не
+  обращается к Telegram;
+- ошибки Telegram (например, недоступный URL или превышение лимитов фото)
+  возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/photo` так же, как к другим командам.
+
 ### Текстовые сообщения
 
 Личные чаты используют историю сообщений пользователя в конкретном чате.
@@ -490,9 +528,10 @@ fallback'ится на plain text.
 `TELEGRAM_ADMIN_CHAT_IDS` парсится тем же способом и ограничивает доступ к
 admin-командам. Для диагностики `/webhook` при пустом списке используется
 fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пустые, диагностика
-недоступна. Для деструктивных `/logout`, `/close` и для message-relay
-`/forward`, `/forwards` и `/copy` fallback не применяется: команды требуют
-непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
+недоступна. Для деструктивных `/logout`, `/close`, для message-relay
+`/forward`, `/forwards`, `/copy` и для исходящего медиа `/photo` fallback не
+применяется: команды требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они
+отключены.
 
 ## Безопасность и ограничения доступа
 
@@ -514,6 +553,8 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 - строгий admin allowlist без fallback для `/copy` и `protect_content` по
   умолчанию, чтобы скопированный контент нельзя было переслать или сохранить
   дальше;
+- строгий admin allowlist без fallback для `/photo`, чтобы только операторы
+  могли заставить бота публиковать произвольные изображения как фото;
 - per-user rate limit в sliding window на 60 секунд;
 - guest mode для групп;
 - экранирование HTML в LLM-ответах перед Telegram HTML.
@@ -539,6 +580,9 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 - `/copy` переносит чужой контент между чатами без ссылки на источник, поэтому
   требует явного admin allowlist и по умолчанию защищает скопированное сообщение
   `protect_content`; его нельзя открывать публично;
+- `/photo` заставляет бота публиковать произвольное изображение по URL или
+  `file_id`, поэтому требует явного admin allowlist; его нельзя открывать
+  публично;
 - нет persistent audit log, admin panel или метрик;
 - нет отдельной проверки размера входных файлов перед скачиванием и обработкой.
 
@@ -571,6 +615,11 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 `message_id`, флагом `protect_content` и id новой копии; при ошибке Telegram API
 логируется `copy_message_failed` с типом исключения, `from_chat_id` и
 `message_id`.
+
+`perform_send_photo()` логирует `photo_sent` с `chat_id`, флагами `has_caption`,
+`has_spoiler`, `protect_content` и id отправленного сообщения; при ошибке
+Telegram API логируется `send_photo_failed` с типом исключения и `chat_id`. URL
+или `file_id` фото в логи не попадают.
 
 `LOG_LEVEL` присутствует в настройках, но сейчас не применяется к конфигурации
 logging. Фактическая детализация логов зависит от дефолтного окружения.
@@ -625,6 +674,10 @@ logging. Фактическая детализация логов зависит
   (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
   аргументов, `protect_content` по умолчанию и переключение через `share` для
   `/copy`;
+- вызов typed aiogram `send_photo()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
+  photo-аргумента и caption с пробелами, validation path для слишком длинного
+  caption и отправку с caption и без него для `/photo`;
 - извлечение текста из plain text и поведение на неизвестном MIME;
 - rate limit middleware;
 - Markdown/HTML форматирование, удаление mention и разбивку Telegram сообщений.
@@ -632,14 +685,15 @@ logging. Фактическая детализация логов зависит
 Integration tests описаны для живого proxy, но сейчас всегда skipped через
 module-level `pytestmark`.
 
-Локальная проверка на Python 3.12.3:
+Локальная проверка на Python 3.14.4:
 
 ```text
 python -m pytest -v
-80 passed, 2 skipped, 6 warnings
+89 passed, 2 skipped
 ```
 
-Предупреждения связаны с pydantic deprecated `__fields__` при использовании
+На более старых рантаймах (например, Python 3.12) дополнительно появляются
+предупреждения о pydantic deprecated `__fields__` при использовании
 `MagicMock(spec=types.Message)` в тестах rate limit middleware.
 
 ## Выявленные пробелы
