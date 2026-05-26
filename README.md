@@ -193,6 +193,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/getchatadministrators <chat_id>` – Fetch the administrator list and rights for a group, supergroup, or channel known to the bot (admin only).
 - `/getchatmembercount <chat_id>` – Fetch the member count for a group, supergroup, or channel known to the bot (admin only).
 - `/forumtopiciconstickers` – Fetch available forum topic icon stickers and their `custom_emoji_id` values (admin only).
+- `/createforumtopic <chat_id> <name> [icon_color=<rgb_int>] [icon_custom_emoji_id=<id>]` – Create a forum topic in a supergroup where the bot can manage topics (admin only).
 - `/userpersonalchatmessages <user_id> [limit]` – Fetch recent messages from the user's personal chat with the bot (admin only).
 - `/leavechat <chat_id> confirm` – Make the bot leave a group, supergroup, or channel (admin only, requires confirmation).
 - `/createchatinvitelink <chat_id> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Create an additional invite link where the bot has `can_invite_users` (admin only).
@@ -1403,6 +1404,34 @@ is guarded like the other admin commands:
   **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
+
+### Create forum topic
+
+The `/createforumtopic` admin command calls Telegram Bot API
+`createForumTopic` through an isolated raw Bot API helper because the project
+pins `aiogram==3.3.0`. It is intended for trusted operations chats when a
+moderator creates a triage or support topic in a supergroup, separate from the
+normal Claude chat flow.
+
+Usage:
+
+```text
+/createforumtopic <chat_id> <name> [icon_color=<rgb_int>] [icon_custom_emoji_id=<id>]
+```
+
+The topic name is required and limited to 128 characters. The bot must be an
+administrator in the target supergroup with the right to manage topics.
+`icon_color` is Telegram's RGB integer topic icon color; `icon_custom_emoji_id`
+can be discovered with `/forumtopiciconstickers`. No special update
+subscription is required because the scenario starts from a normal admin
+command message. Telegram transport, rate-limit or API errors are reported
+back to the admin chat.
+
+This command does not call `free-claude-code`, mutates only the addressed
+supergroup by creating a new forum topic, and is guarded by
+`TELEGRAM_ADMIN_CHAT_IDS` with no fallback to `TELEGRAM_ALLOWED_CHAT_IDS`.
+Rollback is operational: delete the created topic in Telegram or with a future
+forum-topic lifecycle command when available.
 
 ### Edit forum topic
 
