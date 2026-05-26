@@ -44,3 +44,13 @@ def test_bot_name_settings(monkeypatch):
     settings = Settings()
     assert settings.telegram_bot_name == "Claude Agent"
     assert settings.telegram_bot_name_language_code == "ru"
+
+def test_bot_description_settings(monkeypatch):
+    monkeypatch.setenv("FREE_CLAUDE_BASE_URL", "http://localhost:8082")
+    monkeypatch.setenv("FREE_CLAUDE_AUTH_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:ABC")
+    monkeypatch.setenv("TELEGRAM_BOT_DESCRIPTION", "Claude agent for Telegram")
+    monkeypatch.setenv("TELEGRAM_BOT_DESCRIPTION_LANGUAGE_CODE", "ru")
+    settings = Settings()
+    assert settings.telegram_bot_description == "Claude agent for Telegram"
+    assert settings.telegram_bot_description_language_code == "ru"
