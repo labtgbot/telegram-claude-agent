@@ -118,6 +118,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `unpinChatMessage` | `bot/services/unpin_chat_message.py`, `/unpinchatmessage` в `bot/handlers/commands.py` | Admin-flow открепления конкретного или последнего закрепленного сообщения в группе, супергруппе или канале по `chat_id` и optional `message_id`, через typed aiogram API `Bot.unpin_chat_message`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с `can_pin_messages` в группах/супергруппах или `can_edit_messages` в каналах; специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, rollback выполняется ручным повторным закреплением, а ошибки Telegram по правам, неизвестному чату или незакрепленному сообщению возвращаются оператору. |
 | `promoteChatMember` | `bot/services/promote_chat_member.py`, `/promotechatmember` в `bot/handlers/commands.py` | Admin-flow повышения или понижения пользователя в группе, супергруппе или канале по `chat_id`, `user_id` и preset (`moderator`, `manager`, `demote`), через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_promote_members` и может выдавать только свои права; ошибки Telegram возвращаются оператору. |
 | `exportChatInviteLink` | `bot/services/export_chat_invite_link.py`, `/exportchatinvitelink` в `bot/handlers/commands.py` | Admin-flow ротации и получения primary invite link группы, супергруппы или канала по `chat_id`, через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_invite_users`; успешный вызов отзывает ранее сгенерированную primary invite link, специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, а ошибки Telegram возвращаются оператору. |
+| `leaveChat` | `bot/services/leave_chat.py`, `/leavechat` в `bot/handlers/commands.py` | Destructive admin-flow вывода бота из группы, супергруппы или канала по `chat_id`, через typed aiogram API `Bot.leave_chat`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, требует явного `confirm`, бот должен быть текущим участником целевого чата; специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, rollback выполняется ручным добавлением бота обратно и восстановлением прав, а ошибки Telegram возвращаются оператору. |
 | `approveChatJoinRequest` | `bot/services/approve_chat_join_request.py`, `/approvechatjoinrequest` в `bot/handlers/commands.py` | Admin-flow одобрения pending join request пользователя в группе, супергруппе или канале по `chat_id` и `user_id`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_invite_users`; используется typed aiogram API, если runtime его предоставляет, иначе изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; специальных update types для самой команды не требуется, так как сценарий запускается обычной командой из admin-чата, а ошибки Telegram по правам, отсутствующей заявке или rate limit возвращаются оператору. |
 | `declineChatJoinRequest` | `bot/services/decline_chat_join_request.py`, `/declinechatjoinrequest` в `bot/handlers/commands.py` | Admin-flow отклонения pending join request пользователя в группе, супергруппе или канале по `chat_id` и `user_id`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_invite_users`; используется typed aiogram API, если runtime его предоставляет, иначе изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; специальных update types для самой команды не требуется, так как сценарий запускается обычной командой из admin-чата, а ошибки Telegram по правам, отсутствующей заявке или rate limit возвращаются оператору. |
 | `createChatInviteLink` | `bot/services/create_chat_invite_link.py`, `/createchatinvitelink` в `bot/handlers/commands.py` | Admin-flow создания дополнительной invite link группы, супергруппы или канала по `chat_id` и опциям `name`, `expire_date`, `member_limit`, `creates_join_request`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_invite_users`; используется typed aiogram API, если runtime его предоставляет, иначе изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; `member_limit` валидируется в диапазоне 1-99999, `creates_join_request=true` нельзя совмещать с `member_limit`, специальных update types не требуется, а ошибки Telegram возвращаются оператору. |
@@ -270,6 +271,8 @@ issue-карточек в
   admin-чата;
 - `/exportchatinvitelink <chat_id>` ротирует и возвращает primary invite link
   группы, супергруппы или канала из разрешенного admin-чата;
+- `/leavechat <chat_id> confirm` выводит бота из группы, супергруппы или
+  канала из разрешенного admin-чата и требует явного подтверждения;
 - `/createchatinvitelink <chat_id> [name=<text>] [expire_date=<unix_time>]
   [member_limit=<1-99999>] [creates_join_request=true|false]` создает
   дополнительную invite link группы, супергруппы или канала из разрешенного
@@ -1531,6 +1534,10 @@ fallback не применяется: команды требуют непуст
 `perform_close()` логирует `bot_closed` с результатом успешного вызова; при
 ошибке Telegram API логируется `bot_close_failed` с типом исключения.
 
+`perform_leave_chat()` логирует `leave_chat_succeeded` с `chat_id` и
+результатом успешного вызова; при ошибке Telegram API логируется
+`leave_chat_failed` с `chat_id` и типом исключения.
+
 `perform_forward_message()` логирует `message_forwarded` с `chat_id`,
 `from_chat_id`, `message_id`, флагом `protect_content` и id новой копии; при
 ошибке Telegram API логируется `forward_message_failed` с типом исключения,
@@ -1616,6 +1623,10 @@ logging. Фактическая детализация логов зависит
 - вызов typed aiogram `close()`, обработку Telegram API ошибок (включая
   429/`TelegramRetryAfter`), admin allowlist и требование подтверждения для
   `/close`;
+- вызов typed aiogram `leave_chat()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), строгий admin allowlist,
+  парсинг `chat_id`, validation path и требование подтверждения для
+  `/leavechat`;
 - вызов typed aiogram `forward_message()`, обработку Telegram API ошибок
   (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
   аргументов, `protect_content` по умолчанию и переключение через `share` для
