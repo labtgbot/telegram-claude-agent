@@ -188,6 +188,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/setchatphoto <chat_id> <photo_path>` – Set a new group/supergroup photo from a local file where the bot can change chat information (admin only).
 - `/deletechatphoto <chat_id>` – Delete the current group/supergroup photo where the bot can change chat information (admin only).
 - `/setmyname <name> [language=<code>]` – Set or clear the bot display name shown in Telegram clients (admin only).
+- `/getmyname [language=<code>]` – Fetch the bot display name shown in Telegram clients (admin only).
 - `/setchatdescription <chat_id> [description]` – Set or clear a group,
   supergroup, or channel description where the bot can change chat information
   (admin only).
@@ -414,6 +415,32 @@ Examples:
   like the other admin commands.
 - Rollback is to run `/setmyname` again with the previous name, clear the
   configured env values and restart, or restore the name through BotFather.
+
+It is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+**not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+is empty, the command is disabled. The global rate-limit middleware still
+applies.
+
+### Get bot name
+
+The restricted `/getmyname` command calls Telegram Bot API `getMyName` through
+aiogram's typed `Bot.get_my_name()` wrapper. It is a read-only diagnostic for
+checking the default or localized bot display name that Telegram currently
+serves after startup sync, `/setmyname` or BotFather changes. Startup also
+audits the configured language variant after optional `TELEGRAM_BOT_NAME` sync.
+
+Usage: `/getmyname [language=<code>]`
+
+Examples:
+
+- `/getmyname`
+- `/getmyname language=ru`
+
+- Telegram accepts only optional `language_code` and returns `BotName`.
+- The method does not require chat administrator rights and does not need
+  special update types.
+- The command is admin-only because profile diagnostics belong to the
+  reproducible BotFather/startup-sync operational flow.
 
 It is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
 **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
