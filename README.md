@@ -65,6 +65,7 @@ TELEGRAM_WEBHOOK_URL=https://your-domain.com/webhook  # optional; if empty, uses
 TELEGRAM_GUEST_MODE_ENABLED=true
 TELEGRAM_ALLOWED_CHAT_IDS=  # optional whitelist
 TELEGRAM_ADMIN_CHAT_IDS=  # optional diagnostics command allowlist
+TELEGRAM_CHAT_ACTION_ENABLED=true  # show "typing…" while a request is handled
 
 API_SECRET_TOKEN=random_secret_for_webhook_verification
 RATE_LIMIT_REQUESTS_PER_MINUTE=60
@@ -83,6 +84,7 @@ LOG_LEVEL=INFO
 - `TELEGRAM_GUEST_MODE_ENABLED` – enable no-history group privacy mode for mentioned/replied messages (`true`/`false`).
 - `TELEGRAM_ALLOWED_CHAT_IDS` – optional comma-separated list of chat IDs to restrict operation.
 - `TELEGRAM_ADMIN_CHAT_IDS` – optional comma-separated list of chat IDs allowed to run admin diagnostics commands. If empty, diagnostics fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if both are empty, diagnostics commands are disabled.
+- `TELEGRAM_CHAT_ACTION_ENABLED` – whether to show a `typing…` chat action while Claude/proxy handles a request (`true`/`false`, default `true`). Set to `false` to keep the chat silent during processing.
 - `API_SECRET_TOKEN` – secret token for verifying webhook requests (highly recommended for webhook mode).
 - `RATE_LIMIT_REQUESTS_PER_MINUTE` – maximum requests per user per minute.
 - `LOG_LEVEL` – logging level (default `INFO`).
@@ -158,6 +160,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/poll` – Send a native poll (an interactive question with 2-10 tappable answer options) into this chat (admin only).
 - `/contact` – Send a phone contact (a name with a phone number that can be saved to the address book) into this chat (admin only).
 - `/dice` – Send an animated dice (an emoji that shows a random value) into this chat (admin only).
+- `/chataction` – Show a chat action (a transient status such as `typing…`) in this chat (admin only).
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
 - `/mediagroup` – Send 2-10 media items into this chat as a single album (media group) via URLs or file_ids (admin only).
 - `/clear` – Clear your conversation history.
@@ -742,6 +745,45 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Show a chat action
+
+The bot calls Telegram Bot API `sendChatAction` through aiogram's typed
+`Bot.send_chat_action()` wrapper to show a transient status — such as
+**typing…** — that tells the user it is busy. Telegram clears the status after
+about five seconds or as soon as the bot posts a message.
+
+This happens automatically while Claude/proxy handles a chat message: the bot
+shows `typing…` and refreshes it until the reply is ready, so a noticeably long
+request no longer leaves the chat silent. The behaviour is controlled by
+`TELEGRAM_CHAT_ACTION_ENABLED` (default `true`); set it to `false` to keep the
+chat silent during processing.
+
+The restricted `/chataction` command lets an operator trigger a chat action on
+demand, mostly for testing:
+
+Usage: `/chataction [action]`
+
+- the action is always shown in the chat where the command was issued;
+- without an argument a `typing` status is shown;
+- the optional action must be one of `typing`, `upload_photo`, `record_video`,
+  `upload_video`, `record_voice`, `upload_voice`, `upload_document`,
+  `choose_sticker`, `find_location`, `record_video_note` or
+  `upload_video_note`;
+- the command shows usage when an unsupported action or more than one argument
+  is supplied, and does not contact Telegram in that case;
+- the action carries no operator-provided content, so the chosen action and the
+  target chat are logged;
+- an invalid request (for example a chat the bot cannot post to) returns a
+  Telegram error that the command reports back.
+
+Because the command makes the bot act on the chat, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Send a checklist
 
 The restricted `/checklist` command calls Telegram Bot API `sendChecklist`
@@ -862,8 +904,8 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /checklist, /mediagroup, /clear
-│   │   ├── chat.py             # Text and media message handler
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /checklist, /mediagroup, /clear
+│   │   ├── chat.py             # Text and media message handler (shows typing… while processing)
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
 │   │   ├── claude_proxy.py     # Client for free-claude-code API
@@ -888,6 +930,7 @@ telegram-claude-agent/
 │   │   ├── send_poll.py        # Telegram sendPoll outbound helper
 │   │   ├── send_contact.py     # Telegram sendContact outbound helper
 │   │   ├── send_dice.py        # Telegram sendDice outbound helper
+│   │   ├── send_chat_action.py # Telegram sendChatAction outbound helper (typing…)
 │   │   ├── send_checklist.py   # Telegram sendChecklist raw Bot API helper
 │   │   └── send_media_group.py # Telegram sendMediaGroup outbound helper
 │   └── utils/
@@ -941,6 +984,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/poll` command makes the bot post an arbitrary native poll into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the question and the answer options are kept out of the structured logs.
 - The `/contact` command makes the bot post an arbitrary phone contact into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the phone number and the contact's name are kept out of the structured logs.
 - The `/dice` command makes the bot post an animated dice into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
+- The `/chataction` command makes the bot show a chat action in the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the automatic `typing…` indicator shown while processing a request is independent of this command and is controlled by `TELEGRAM_CHAT_ACTION_ENABLED`.
 - The `/checklist` command makes the bot post an arbitrary checklist into the chat on behalf of a connected business account, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the title and task texts are kept out of the structured logs.
 - The `/mediagroup` command makes the bot post an arbitrary album of 2-10 media items into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - Rate limiting helps prevent abuse.
