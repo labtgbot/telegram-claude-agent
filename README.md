@@ -139,13 +139,13 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 
 - `/start` – Show welcome message.
 - `/help` – Show help text.
-- `/model` – Show current model and list available models. Use `/model <model_id>` to switch.
-- `/settings` – Display your current settings.
+- `/model` – Show current model and list available models. Use `/model <model_id>` or an inline model button to switch.
+- `/settings` – Display your current settings with an inline refresh button.
 - `/webhook` – Show webhook diagnostics for allowed admin chats.
 - `/deletewebhook [drop_pending_updates=true|false]` – Delete the webhook for
   allowed admin chats; pending updates are kept by default.
-- `/logout` – Log the bot out of the cloud Bot API server (admin only, requires confirmation).
-- `/close` – Close the bot instance on the current Bot API server (admin only, requires confirmation).
+- `/logout` – Log the bot out of the cloud Bot API server (admin only, requires text or inline confirmation).
+- `/close` – Close the bot instance on the current Bot API server (admin only, requires text or inline confirmation).
 - `/forward` – Forward a message from another chat into this chat for support/moderation review (admin only).
 - `/forwards` – Forward several messages from another chat into this chat, preserving album grouping (admin only).
 - `/copy` – Copy a message from another chat into this chat without a link to the original sender (admin only).
@@ -211,7 +211,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/revokechatinvitelink <chat_id> <invite_link>` – Revoke an invite link created by the bot where the bot has `can_invite_users` (admin only).
 - `/createchatsubscriptioninvitelink <chat_id> <subscription_price> [name=<text>] [subscription_period=2592000]` – Create a paid subscription invite link where the bot has `can_invite_users` (admin only).
 - `/editchatsubscriptioninvitelink <chat_id> <invite_link> [name=<text>]` – Edit an existing subscription invite link where the bot has `can_invite_users` (admin only).
-- `/clear` – Clear your conversation history.
+- `/clear` – Clear your conversation history and show an inline repeat action.
 
 ### Official Telegram Guest Mode
 
@@ -221,6 +221,15 @@ bot now sends the final Claude response through the raw Bot API
 query without requiring the bot to be a member of the target chat. If Telegram
 rejects the guest query answer, the handler logs the error and falls back to the
 normal chat reply path.
+
+### Callback queries
+
+Inline keyboard actions for `/settings`, `/model`, `/clear`, `/logout`, and
+`/close` are answered with Telegram Bot API `answerCallbackQuery` through
+aiogram's typed API. The bot must receive `callback_query` updates. Callback
+answer text follows Telegram's 200-character limit, Telegram errors are
+structured-log events, and admin callbacks keep the same strict
+`TELEGRAM_ADMIN_CHAT_IDS` checks as the matching text commands.
 
 ### Webhook diagnostics and lifecycle
 

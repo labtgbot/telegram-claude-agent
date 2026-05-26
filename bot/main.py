@@ -8,6 +8,7 @@ from aiogram.types import Update
 
 from bot.config import settings
 from bot.handlers.commands import router as commands_router
+from bot.handlers.callbacks import router as callbacks_router
 from bot.handlers.chat import router as chat_router
 from bot.handlers.inline import router as inline_router
 from bot.middlewares.logging import LoggingMiddleware
@@ -32,6 +33,7 @@ dp.update.middleware(RateLimitMiddleware(settings.rate_limit_requests_per_minute
 
 # Register routers
 dp.include_router(commands_router)
+dp.include_router(callbacks_router)
 dp.include_router(chat_router)
 dp.include_router(inline_router)
 
