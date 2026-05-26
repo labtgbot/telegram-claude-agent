@@ -227,6 +227,11 @@ from bot.services.get_managed_bot_token import (
     format_managed_bot_token,
     perform_get_managed_bot_token,
 )
+from bot.services.get_managed_bot_access_settings import (
+    GetManagedBotAccessSettingsError,
+    format_managed_bot_access_settings,
+    perform_get_managed_bot_access_settings,
+)
 from bot.services.replace_managed_bot_token import (
     ReplaceManagedBotTokenError,
     format_replaced_managed_bot_token,
@@ -662,6 +667,19 @@ MANAGED_BOT_TOKEN_USAGE = (
     "The id must come from a trusted <code>managed_bot</code> update, "
     "<code>managed_bot_created</code> message, or another operator-controlled "
     "source. Telegram allows only the manager/owner flow to access the token."
+)
+
+MANAGED_BOT_ACCESS_SETTINGS_USAGE = (
+    "<b>managedbotaccess usage</b>\n"
+    "Fetches Telegram <code>getManagedBotAccessSettings</code> for a managed "
+    "bot by its user id. This exposes the bot access allowlist, so the command "
+    "is admin-only, disabled unless <code>TELEGRAM_ADMIN_CHAT_IDS</code> "
+    "contains the current chat, and keeps returned user objects out of "
+    "structured logs.\n"
+    "Usage: <code>/managedbotaccess &lt;managed_bot_user_id&gt;</code>\n"
+    "The id must come from a trusted <code>managed_bot</code> update, "
+    "<code>managed_bot_created</code> message, or another operator-controlled "
+    "source. Telegram allows only the manager/owner flow to read these settings."
 )
 
 REPLACE_MANAGED_BOT_TOKEN_CONFIRM_KEYWORD = "confirm"
@@ -1379,6 +1397,7 @@ async def cmd_help(message: Message):
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/managedbottoken - Fetch a managed bot token by user id (admin only)\n"
+        "/managedbotaccess - Fetch managed bot access settings by user id (admin only)\n"
         "/replacemanagedbottoken - Rotate a managed bot token by user id (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
@@ -2376,6 +2395,37 @@ async def cmd_managed_bot_token(message: Message):
 
     await message.answer(
         format_managed_bot_token(user_id=user_id, token=token),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("managedbotaccess"))
+async def cmd_managed_bot_access_settings(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    user_id = _parse_managed_bot_access_settings_args(message.text or "")
+    if user_id is None:
+        await message.answer(
+            MANAGED_BOT_ACCESS_SETTINGS_USAGE,
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        settings = await perform_get_managed_bot_access_settings(
+            message.bot,
+            user_id=user_id,
+        )
+    except GetManagedBotAccessSettingsError as exc:
+        await message.answer(
+            f"Could not fetch the managed bot access settings: {exc}"
+        )
+        return
+
+    await message.answer(
+        format_managed_bot_access_settings(user_id=user_id, settings=settings),
         parse_mode="HTML",
     )
 
@@ -4635,6 +4685,22 @@ def _parse_business_connection_args(text: str) -> str | None:
 
 def _parse_managed_bot_token_args(text: str) -> int | None:
     """Parse ``/managedbottoken`` args into managed bot ``user_id``."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+
+    if user_id <= 0:
+        return None
+    return user_id
+
+
+def _parse_managed_bot_access_settings_args(text: str) -> int | None:
+    """Parse ``/managedbotaccess`` args into managed bot ``user_id``."""
     parts = (text or "").split()
     if len(parts) != 2:
         return None

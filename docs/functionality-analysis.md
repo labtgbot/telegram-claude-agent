@@ -107,6 +107,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendChecklist` | `bot/services/send_checklist.py`, `/checklist` в `bot/handlers/commands.py` | Admin-flow отправки чеклиста (checklist) — озаглавленного списка из 1-30 задач — в текущий чат от имени подключенного business account, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 9.1; требует `business_connection_id`, длины title (до 255) и задач (до 100) и их количество валидируются до обращения к Telegram, а title и тексты задач не пишутся в structured logs. |
 | `getBusinessConnection` | `bot/services/get_business_connection.py`, `/businessconnection` в `bot/handlers/commands.py` | Admin-flow получения `BusinessConnection` по live `business_connection_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, показывает owner/user chat/lifecycle/can_reply/enabled metadata и не пишет owner-поля или полный объект в structured logs. |
 | `getManagedBotToken` | `bot/services/get_managed_bot_token.py`, `/managedbottoken` в `bot/handlers/commands.py` | Admin-flow получения live token управляемого бота по положительному `user_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для managed-bot методов Bot API 9.6; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует trusted source для id из `managed_bot`/`managed_bot_created`, показывает токен только в ответе admin-чата и не пишет токен в structured logs. |
+| `getManagedBotAccessSettings` | `bot/services/get_managed_bot_access_settings.py`, `/managedbotaccess` в `bot/handlers/commands.py` | Admin-flow чтения `BotAccessSettings` управляемого бота по положительному `user_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для managed-bot access settings Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует trusted source для id из `managed_bot`/`managed_bot_created`, показывает restricted flag и allowlist summary в admin-чате и не пишет returned user objects в structured logs. |
 | `replaceManagedBotToken` | `bot/services/replace_managed_bot_token.py`, `/replacemanagedbottoken` в `bot/handlers/commands.py` | Admin-flow ротации live token управляемого бота по положительному `user_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для managed-bot методов Bot API 9.6; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует trusted source для id из `managed_bot`/`managed_bot_created` и явный `confirm`, показывает новый токен только в ответе admin-чата, не пишет токены в structured logs, а rollback выполняется повторной ротацией или заранее сохраненным прежним credential, если Telegram еще принимает его. |
 | `sendChatAction` | `bot/services/send_chat_action.py`, `keep_chat_action` в `bot/handlers/chat.py` и `/chataction` в `bot/handlers/commands.py` | Показ chat action (transient-статуса вроде `typing…`) в чате через typed aiogram API. Автоматически показывается и обновляется, пока Claude/proxy обрабатывает входящее сообщение (управляется `TELEGRAM_CHAT_ACTION_ENABLED`); admin-команда `/chataction [action]` запускает action вручную, где action ограничен набором поддерживаемых значений и валидируется до обращения к Telegram. |
 | `sendMessageDraft` | `bot/services/send_message_draft.py`, `handle_streaming_with_draft` в `bot/handlers/chat.py` и `/messagedraft` в `bot/handlers/commands.py` | Стриминг частичного ответа через эфемерный draft preview (временный ~30-секундный предпросмотр) в private chat как альтернатива частым `editMessageText`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; включается флагом `TELEGRAM_MESSAGE_DRAFT_ENABLED` и работает только в private chats, финальный ответ затем сохраняется обычным `sendMessage`. Admin-команда `/messagedraft [text]` запускает draft вручную; `draft_id` обязан быть ненулевым, а длина текста (до 4096) валидируется до обращения к Telegram, и текст draft не пишется в structured logs. |
@@ -1269,6 +1270,48 @@ Rollback при раскрытии токена выполняется чере�
 BotFather-ротацию; текущая команда только читает существующий токен.
 
 `RateLimitMiddleware` применяется к `/managedbottoken` так же, как к другим
+командам. Telegram permission, unknown managed-bot, transport и rate-limit
+ошибки возвращаются оператору в admin chat.
+
+### getManagedBotAccessSettings
+
+Команда `/managedbotaccess <managed_bot_user_id>` получает объект
+`BotAccessSettings` управляемого Telegram-бота методом
+`getManagedBotAccessSettings` (Bot API 10.0). Метод принимает только `user_id`
+управляемого бота; этот id должен приходить из trusted operator source,
+например update `managed_bot` или сообщения с `managed_bot_created`. Для самой
+команды не нужен отдельный update type, потому что ее запускает обычное
+сообщение администратора. Update type `managed_bot` нужен только в полном
+lifecycle flow, где оператор собирает id управляемого бота из Telegram updates.
+
+По официальной документации результат содержит boolean
+`is_access_restricted` и опциональный массив `added_users`. Если доступ
+ограничен, владелец бота всегда сохраняет доступ, а `added_users` описывает
+дополнительных пользователей allowlist. Pinned `aiogram==3.3.0` не имеет typed
+wrapper для этого метода, поэтому реализация идет через изолированный raw Bot
+API helper `bot/services/get_managed_bot_access_settings.py`. Helper POST'ит
+JSON payload `{"user_id": ...}` на endpoint `getManagedBotAccessSettings`
+через `httpx`, берет URL через `bot.session.api.api_url(...)` для поддержки
+local Bot API server и поднимает транспортные ошибки или Telegram `ok: false`
+как `GetManagedBotAccessSettingsError`.
+
+Сценарий намеренно вынесен в отдельный защищенный admin surface: команда
+доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS`, не делает fallback на
+`TELEGRAM_ALLOWED_CHAT_IDS` и отключена при пустом admin allowlist. `user_id`
+валидируется локально как положительное целое число; при ошибке usage
+показывается до обращения к Telegram. Telegram дополнительно проверяет, что
+вызывающий бот имеет право управлять указанным ботом.
+
+Security/privacy impact: успешный ответ раскрывает access allowlist
+управляемого бота. Ответ admin-чата показывает restricted flag, количество
+пользователей и, если Telegram вернул `added_users`, краткие user ids/display
+names. Structured logs не содержат полные user objects, имена или usernames:
+логируются только `user_id`, `is_access_restricted` и `added_users_count`.
+Команда не вызывает `free-claude-code`, не читает и не меняет токены, а
+rollback для этой read-only поверхности состоит в удалении команды из admin
+surface или последующем изменении доступа через `setManagedBotAccessSettings`.
+
+`RateLimitMiddleware` применяется к `/managedbotaccess` так же, как к другим
 командам. Telegram permission, unknown managed-bot, transport и rate-limit
 ошибки возвращаются оператору в admin chat.
 

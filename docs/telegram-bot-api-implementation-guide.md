@@ -1393,6 +1393,11 @@ Area label: `area:managed-bots`. Priority baseline: `priority:P3`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Добавить поддержку `getManagedBotAccessSettings` в область: интеграцию business connection и управляемых ботов с учетом token lifecycle и прав владельца. Определить конкретный сценарий: отдельный защищенный admin surface; по умолчанию выключено из-за чувствительности токенов.
 - Method note: Новый метод Bot API 10.0; изолировать от обычного bot token lifecycle.
+- Implementation note: Read-only admin surface `/managedbotaccess
+  <managed_bot_user_id>` через raw Bot API helper, так как pinned
+  `aiogram==3.3.0` не имеет typed wrapper. Метод возвращает
+  `BotAccessSettings` с `is_access_restricted` и опциональным `added_users`;
+  structured logs не должны содержать returned user objects.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API
