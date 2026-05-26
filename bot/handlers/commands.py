@@ -121,6 +121,12 @@ from bot.services.get_chat_administrators import (
     format_get_chat_administrators_result,
     perform_get_chat_administrators,
 )
+from bot.services.get_user_personal_chat_messages import (
+    GET_USER_PERSONAL_CHAT_MESSAGES_MAX_LIMIT,
+    GET_USER_PERSONAL_CHAT_MESSAGES_MIN_LIMIT,
+    format_get_user_personal_chat_messages_result,
+    perform_get_user_personal_chat_messages,
+)
 from bot.services.get_chat_member_count import (
     format_get_chat_member_count_result,
     perform_get_chat_member_count,
@@ -833,6 +839,19 @@ GET_CHAT_ADMINISTRATORS_USAGE = (
     "Usage: <code>/getchatadministrators &lt;chat_id&gt;</code>"
 )
 
+GET_USER_PERSONAL_CHAT_MESSAGES_USAGE = (
+    "<b>userpersonalchatmessages usage</b>\n"
+    "Fetches recent messages from the personal chat between a user and this "
+    "bot through <code>getUserPersonalChatMessages</code>. This command can "
+    "expose private conversation metadata and is deny-by-default: it only "
+    "works from <code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/userpersonalchatmessages &lt;user_id&gt; [limit]</code>\n"
+    f"The optional <code>limit</code> must be between "
+    f"{GET_USER_PERSONAL_CHAT_MESSAGES_MIN_LIMIT} and "
+    f"{GET_USER_PERSONAL_CHAT_MESSAGES_MAX_LIMIT}; default "
+    f"{GET_USER_PERSONAL_CHAT_MESSAGES_MAX_LIMIT}."
+)
+
 LEAVE_CHAT_CONFIRM_KEYWORD = "confirm"
 
 LEAVE_CHAT_USAGE = (
@@ -1016,6 +1035,7 @@ async def cmd_help(message: Message):
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
+        "/userpersonalchatmessages - Fetch user personal chat messages (admin only)\n"
         "/getchat - Fetch chat metadata from Telegram (admin only)\n"
         "/getchatadministrators - Fetch chat administrators from Telegram (admin only)\n"
         "/banchatmember - Ban a user from a chat (admin only)\n"
@@ -2510,6 +2530,42 @@ async def cmd_get_chat_administrators(message: Message):
 
     await message.answer(
         format_get_chat_administrators_result(chat_id, administrators),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("userpersonalchatmessages"))
+async def cmd_get_user_personal_chat_messages(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_get_user_personal_chat_messages_args(message.text or "")
+    if parsed is None:
+        await message.answer(
+            GET_USER_PERSONAL_CHAT_MESSAGES_USAGE,
+            parse_mode="HTML",
+        )
+        return
+
+    user_id, limit = parsed
+
+    try:
+        messages = await perform_get_user_personal_chat_messages(
+            message.bot,
+            user_id=user_id,
+            limit=limit,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not get user personal chat messages: {exc}")
+        return
+
+    await message.answer(
+        format_get_user_personal_chat_messages_result(
+            user_id=user_id,
+            limit=limit,
+            messages=messages,
+        ),
         parse_mode="HTML",
     )
 
@@ -4157,6 +4213,32 @@ def _parse_get_chat_administrators_args(text: str):
         return int(parts[1])
     except ValueError:
         return None
+
+
+def _parse_get_user_personal_chat_messages_args(text: str):
+    """Parse ``/userpersonalchatmessages`` args into ``user_id`` and limit."""
+    parts = (text or "").split()
+    if len(parts) not in {2, 3}:
+        return None
+
+    try:
+        user_id = int(parts[1])
+        limit = (
+            int(parts[2])
+            if len(parts) == 3
+            else GET_USER_PERSONAL_CHAT_MESSAGES_MAX_LIMIT
+        )
+    except ValueError:
+        return None
+
+    if not (
+        GET_USER_PERSONAL_CHAT_MESSAGES_MIN_LIMIT
+        <= limit
+        <= GET_USER_PERSONAL_CHAT_MESSAGES_MAX_LIMIT
+    ):
+        return None
+
+    return user_id, limit
 
 
 def _parse_delete_chat_photo_args(text: str):
