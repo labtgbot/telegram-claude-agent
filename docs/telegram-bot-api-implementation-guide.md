@@ -1326,6 +1326,12 @@ Area label: `area:interactive`. Priority baseline: `priority:P0`
   - есть unit tests для успешного вызова, ошибки Telegram и validation path;
   - пользовательская или админская документация обновлена вместе с
     `docs/functionality-analysis.md`.
+- Implementation note: реализовано через typed aiogram
+  `Bot.get_user_chat_boosts(chat_id, user_id)` и deny-by-default admin команду
+  `/userchatboosts <chat_id> <user_id>`. Команда доступна только из
+  `TELEGRAM_ADMIN_CHAT_IDS`, читает boost-контекст для callback/guest/boost
+  разборов без изменения обычного пользовательского flow и полагается на
+  Telegram-проверку права: бот должен быть администратором целевого чата.
 
 ### Business connection и managed bots
 

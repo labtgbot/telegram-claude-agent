@@ -215,7 +215,9 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
    `leaveChat`.
 7. Пользовательский контекст Telegram: `getUserProfilePhotos` (уже интегрирован),
    `setUserEmojiStatus` (уже интегрирован), `getUserProfileAudios`,
-   `getUserChatBoosts`, `getUserPersonalChatMessages`.
+   `getUserChatBoosts` (уже интегрирован как deny-by-default admin diagnostic
+   `/userchatboosts <chat_id> <user_id>`; бот должен быть администратором в
+   целевом чате), `getUserPersonalChatMessages`.
 8. Бизнес, managed bots и bot-to-bot: `getBusinessConnection`,
    `readBusinessMessage`, `deleteBusinessMessages`, методы
    `setBusinessAccount*`, `getManagedBotToken`, `replaceManagedBotToken`,
