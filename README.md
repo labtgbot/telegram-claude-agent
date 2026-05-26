@@ -167,6 +167,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/chataction` – Show a chat action (a transient status such as `typing…`) in this chat (admin only).
 - `/messagedraft` – Stream an ephemeral message draft (a ~30-second preview shown above the input field) into this private chat (admin only).
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
+- `/businessconnection` – Fetch metadata for a connected Telegram business account by `business_connection_id` (admin only).
 - `/mediagroup` – Send 2-10 media items into this chat as a single album (media group) via URLs or file_ids (admin only).
 - `/banchatmember <chat_id> <user_id> [until_date_unix] [revoke=true|false]` – Ban a user from a group, supergroup, or channel where the bot has `can_restrict_members` (admin only).
 - `/banchatsenderchat <chat_id> <sender_chat_id>` – Ban a channel chat from sending messages as itself into a supergroup or channel where the bot has `can_restrict_members` (admin only).
@@ -976,6 +977,32 @@ account, it is guarded like the other admin commands:
   **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
+
+### Get a business connection
+
+The restricted `/businessconnection` command calls Telegram Bot API
+`getBusinessConnection` to fetch a `BusinessConnection` object for a live
+`business_connection_id`. Because the pinned `aiogram==3.3.0` does not expose a
+typed wrapper for this Bot API 10.0 method, the command uses an isolated raw Bot
+API helper (`bot/services/get_business_connection.py`) over `httpx`.
+
+Usage: `/businessconnection <business_connection_id>`
+
+The command reports the connection id, owner, user chat id, creation date,
+`can_reply`, and enabled state. It does not manage tokens and does not call
+`free-claude-code`; it is intended as a narrow admin diagnostic surface before
+operators use business-account flows such as `/checklist`.
+
+Because the response exposes business owner and lifecycle metadata, it is
+guarded like the sensitive business commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- only structural state is logged; owner names and returned object contents are
+  not written to structured logs;
+- Telegram errors, such as an expired or unknown `business_connection_id`, are
+  reported back without retrying or changing connection state.
 
 ### Send a media group
 
@@ -2046,6 +2073,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/chataction` command makes the bot show a chat action in the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the automatic `typing…` indicator shown while processing a request is independent of this command and is controlled by `TELEGRAM_CHAT_ACTION_ENABLED`.
 - The `/messagedraft` command makes the bot post an ephemeral message draft into the (private) chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the draft text is kept out of the structured logs. The automatic draft-based streaming preview is independent of this command and is controlled by `TELEGRAM_MESSAGE_DRAFT_ENABLED`.
 - The `/checklist` command makes the bot post an arbitrary checklist into the chat on behalf of a connected business account, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the title and task texts are kept out of the structured logs.
+- The `/businessconnection` command fetches business connection owner/lifecycle metadata by `business_connection_id`, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps returned owner fields out of structured logs.
 - The `/mediagroup` command makes the bot post an arbitrary album of 2-10 media items into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/banchatmember` command removes a user from a target chat and can revoke their previous messages, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
 - The `/banchatsenderchat` command blocks a channel identity from posting as a sender chat in a target supergroup or channel, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
