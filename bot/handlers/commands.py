@@ -69,6 +69,10 @@ from bot.services.set_user_emoji_status import perform_set_user_emoji_status
 from bot.services.webhook_delete import delete_webhook
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
 from bot.services.ban_chat_member import format_ban_result, perform_ban_chat_member
+from bot.services.ban_chat_sender_chat import (
+    format_ban_sender_chat_result,
+    perform_ban_chat_sender_chat,
+)
 from bot.services.restrict_chat_member import (
     format_restrict_result,
     perform_restrict_chat_member,
@@ -500,6 +504,20 @@ BAN_CHAT_MEMBER_USAGE = (
     "revoked for supergroups/channels)."
 )
 
+BAN_CHAT_SENDER_CHAT_USAGE = (
+    "<b>banchatsenderchat usage</b>\n"
+    "Bans a channel chat from sending messages as itself into the specified "
+    "supergroup or channel. The bot must be an administrator with the "
+    "<code>can_restrict_members</code> right in the target chat. This command "
+    "is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/banchatsenderchat &lt;chat_id&gt; "
+    "&lt;sender_chat_id&gt;</code>\n"
+    "The <code>chat_id</code> is the target chat. The "
+    "<code>sender_chat_id</code> is the channel chat to ban from posting as a "
+    "sender chat."
+)
+
 UNBAN_CHAT_MEMBER_USAGE = (
     "<b>unbanchatmember usage</b>\n"
     "Unbans a user from the specified group, supergroup or channel. The bot "
@@ -630,6 +648,7 @@ async def cmd_help(message: Message):
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
         "/banchatmember - Ban a user from a chat (admin only)\n"
+        "/banchatsenderchat - Ban a sender chat from a chat (admin only)\n"
         "/unbanchatmember - Unban a user from a chat (admin only)\n"
         "/restrictchatmember - Restrict a user in a chat (admin only)\n"
         "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
@@ -1595,6 +1614,35 @@ async def cmd_ban_chat_member(message: Message):
 
     await message.answer(
         format_ban_result(chat_id, user_id, until_date, revoke_messages),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("banchatsenderchat"))
+async def cmd_ban_chat_sender_chat(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_ban_chat_sender_chat_args(message.text or "")
+    if parsed is None:
+        await message.answer(BAN_CHAT_SENDER_CHAT_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, sender_chat_id = parsed
+
+    try:
+        await perform_ban_chat_sender_chat(
+            message.bot,
+            chat_id=chat_id,
+            sender_chat_id=sender_chat_id,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not ban the sender chat: {exc}")
+        return
+
+    await message.answer(
+        format_ban_sender_chat_result(chat_id, sender_chat_id),
         parse_mode="HTML",
     )
 
@@ -2706,6 +2754,25 @@ def _parse_ban_chat_member_args(text: str):
             return None
 
     return chat_id, user_id, until_date, revoke_messages
+
+
+def _parse_ban_chat_sender_chat_args(text: str):
+    """Parse ``/banchatsenderchat`` args into ``(chat_id, sender_chat_id)``."""
+    parts = (text or "").split()
+    if len(parts) < 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    try:
+        sender_chat_id = int(parts[2])
+    except ValueError:
+        return None
+
+    return chat_id, sender_chat_id
 
 
 def _parse_unban_chat_member_args(text: str):
