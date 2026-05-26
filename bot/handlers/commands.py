@@ -25,6 +25,10 @@ from bot.services.delete_chat_photo import (
     format_delete_chat_photo_result,
     perform_delete_chat_photo,
 )
+from bot.services.set_chat_photo import (
+    format_set_chat_photo_result,
+    perform_set_chat_photo,
+)
 from bot.services.copy_message import perform_copy_message
 from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
@@ -645,6 +649,19 @@ DELETE_CHAT_PHOTO_USAGE = (
     "Rollback is manual: set a new chat photo in Telegram chat administration."
 )
 
+SET_CHAT_PHOTO_USAGE = (
+    "<b>setchatphoto usage</b>\n"
+    "Sets a new photo for the specified group or supergroup. Telegram requires "
+    "the bot to upload a fresh image file, so pass a local file path available "
+    "to the running bot process. The bot must be an administrator with the "
+    "right to change chat information in the target chat. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setchatphoto &lt;chat_id&gt; &lt;photo_path&gt;</code>\n"
+    "Rollback is manual: run this command again with the previous photo, or "
+    "use Telegram chat administration."
+)
+
 PROMOTE_CHAT_MEMBER_USAGE = (
     "<b>promotechatmember usage</b>\n"
     "Promotes or demotes a user in the specified group, supergroup or channel. "
@@ -862,6 +879,7 @@ async def cmd_help(message: Message):
         "/unbanchatsenderchat - Unban a sender chat from a chat (admin only)\n"
         "/restrictchatmember - Restrict a user in a chat (admin only)\n"
         "/setchatpermissions - Set default chat permissions (admin only)\n"
+        "/setchatphoto - Set a group or supergroup photo (admin only)\n"
         "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
         "/approvechatjoinrequest - Approve a pending chat join request (admin only)\n"
         "/declinechatjoinrequest - Decline a pending chat join request (admin only)\n"
@@ -2024,6 +2042,35 @@ async def cmd_delete_chat_photo(message: Message):
 
     await message.answer(
         format_delete_chat_photo_result(chat_id=chat_id),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setchatphoto"))
+async def cmd_set_chat_photo(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_chat_photo_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_CHAT_PHOTO_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, photo_path = parsed
+
+    try:
+        await perform_set_chat_photo(
+            message.bot,
+            chat_id=chat_id,
+            photo_path=photo_path,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not set the chat photo: {exc}")
+        return
+
+    await message.answer(
+        format_set_chat_photo_result(chat_id=chat_id, photo_path=photo_path),
         parse_mode="HTML",
     )
 
@@ -3683,6 +3730,24 @@ def _parse_delete_chat_photo_args(text: str):
         return int(parts[1])
     except ValueError:
         return None
+
+
+def _parse_set_chat_photo_args(text: str):
+    """Parse ``/setchatphoto`` args into ``chat_id`` and local ``photo_path``."""
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) != 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    photo_path = parts[2].strip()
+    if not photo_path:
+        return None
+
+    return chat_id, photo_path
 
 
 def _parse_approve_chat_join_request_args(text: str):
