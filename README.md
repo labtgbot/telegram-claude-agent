@@ -172,6 +172,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/banchatsenderchat <chat_id> <sender_chat_id>` – Ban a channel chat from sending messages as itself into a supergroup or channel where the bot has `can_restrict_members` (admin only).
 - `/unbanchatmember <chat_id> <user_id> [only_if_banned=true|false]` – Unban a user from a group, supergroup, or channel where the bot has `can_restrict_members` (admin only).
 - `/restrictchatmember <chat_id> <user_id> <mute|readonly|unrestrict> [until_date_unix] [independent=true|false]` – Restrict or restore a group/supergroup member where the bot has `can_restrict_members` (admin only).
+- `/setchatpermissions <chat_id> <closed|text|media|open> [independent=true|false]` – Set default group/supergroup member permissions where the bot has `can_restrict_members` (admin only).
 - `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` – Promote or demote a group, supergroup, or channel member where the bot has `can_promote_members` (admin only).
 - `/clear` – Clear your conversation history.
 
@@ -265,6 +266,38 @@ Usage: `/forward <from_chat_id> <message_id> [share]`
 
 Because the command relays content between chats, it is guarded like the other
 admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
+The `/setchatpermissions <chat_id> <closed|text|media|open>
+[independent=true|false]` admin command calls Telegram Bot API
+`setChatPermissions` through aiogram's typed API. It changes the default
+permissions for all non-administrator members in a target group or supergroup;
+it does not change administrator permissions and is independent from the
+free-claude-code proxy.
+
+The target `chat_id` and preset are required. `closed` denies sending messages,
+`text` allows text messages only, `media` allows text plus common media and
+reactions but keeps polls, other messages, link previews and management actions
+disabled, and `open` restores common member permissions including invites, pins
+and topic management. The optional `independent=true|false` flag is passed as
+`use_independent_chat_permissions`; when enabled, Telegram applies media
+permission flags independently instead of deriving them from broader send
+permissions.
+
+The bot must already be an administrator in the target group or supergroup
+with `can_restrict_members`. No special update subscription is required because
+the scenario is initiated by a normal Telegram message update. Telegram
+permission errors such as missing admin rights, unknown chats, or unsupported
+chat types are reported back to the admin chat. Rollback is another
+`/setchatpermissions` call with the previous preset, usually `open`, or a
+manual permission change in Telegram's chat administration UI.
+
+Because the command changes the default permissions for a whole chat, it is
+guarded like the other admin commands:
 
 - it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
   **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
@@ -1184,6 +1217,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/banchatsenderchat` command blocks a channel identity from posting as a sender chat in a target supergroup or channel, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
 - The `/unbanchatmember` command restores access to a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
 - The `/restrictchatmember` command changes a user's permissions in a target group or supergroup, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
+- The `/setchatpermissions` command changes default permissions for all non-administrator members in a target group or supergroup, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
 - The `/promotechatmember` command changes a user's administrator privileges in a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_promote_members` in the target chat.
 - Rate limiting helps prevent abuse.
 
