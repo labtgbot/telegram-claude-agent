@@ -41,6 +41,12 @@ from bot.services.send_venue import perform_send_venue
 from bot.services.send_video import perform_send_video
 from bot.services.send_video_note import perform_send_video_note
 from bot.services.send_voice import perform_send_voice
+from bot.services.get_user_profile_photos import (
+    GET_USER_PROFILE_PHOTOS_MAX_LIMIT,
+    GET_USER_PROFILE_PHOTOS_MIN_LIMIT,
+    fetch_user_profile_photos,
+    format_user_profile_photos,
+)
 from bot.services.webhook_delete import delete_webhook
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
 from bot.utils.storage import storage
@@ -397,6 +403,19 @@ CHECKLIST_USAGE = (
     "non-empty."
 )
 
+USER_PROFILE_PHOTOS_USAGE = (
+    "<b>userprofilephotos usage</b>\n"
+    "Fetches the profile photos of a Telegram user and lists their "
+    "<code>file_id</code> values and dimensions. No special bot permissions are "
+    "needed; Telegram may return an error when the user has restricted profile "
+    "photo visibility in their privacy settings.\n"
+    "Usage: <code>/userprofilephotos &lt;user_id&gt; [offset] [limit]</code>\n"
+    "The <code>user_id</code> is required. The optional <code>offset</code> "
+    "skips the first N photos (default 0) and the optional <code>limit</code> "
+    f"caps the number of photos returned (1-{GET_USER_PROFILE_PHOTOS_MAX_LIMIT}, "
+    f"default {GET_USER_PROFILE_PHOTOS_MAX_LIMIT})."
+)
+
 MEDIA_GROUP_CAPTION_LIMIT = 1024
 
 MEDIA_GROUP_MIN_ITEMS = 2
@@ -467,6 +486,7 @@ async def cmd_help(message: Message):
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
+        "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -1323,6 +1343,44 @@ async def cmd_checklist(message: Message):
 
     await message.answer(f"Sent checklist with {len(tasks)} tasks.")
 
+@router.message(Command("userprofilephotos"))
+async def cmd_user_profile_photos(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_user_profile_photos_args(message.text or "")
+    if parsed is None:
+        await message.answer(USER_PROFILE_PHOTOS_USAGE, parse_mode="HTML")
+        return
+
+    user_id, offset, limit = parsed
+
+    if limit is not None and not (
+        GET_USER_PROFILE_PHOTOS_MIN_LIMIT <= limit <= GET_USER_PROFILE_PHOTOS_MAX_LIMIT
+    ):
+        await message.answer(
+            f"Limit must be between {GET_USER_PROFILE_PHOTOS_MIN_LIMIT} and "
+            f"{GET_USER_PROFILE_PHOTOS_MAX_LIMIT}."
+        )
+        return
+
+    try:
+        result = await fetch_user_profile_photos(
+            message.bot,
+            user_id=user_id,
+            offset=offset,
+            limit=limit,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not fetch user profile photos: {exc}")
+        return
+
+    await message.answer(
+        format_user_profile_photos(result, user_id), parse_mode="HTML"
+    )
+
+
 @router.message(Command("mediagroup"))
 async def cmd_media_group(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -1973,6 +2031,44 @@ def _parse_checklist_args(text: str):
         return None
 
     return business_connection_id, title, tasks
+
+
+def _parse_user_profile_photos_args(text: str):
+    """Parse ``/userprofilephotos`` args into ``(user_id, offset, limit)``.
+
+    Splits the raw command text into the command, the required integer
+    ``user_id`` and optional integer ``offset`` and ``limit`` values. Returns
+    ``None`` when ``user_id`` is missing or not a valid integer so the caller
+    can show usage. ``offset`` and ``limit`` default to ``None`` so the service
+    layer can pass them unchanged to Telegram (Telegram ignores ``None`` values
+    and uses its own defaults: offset 0, limit 100). The caller validates the
+    ``limit`` range (1-100) against Telegram's accepted bounds.
+    """
+    parts = (text or "").split()
+    if len(parts) < 2:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+
+    offset = None
+    limit = None
+
+    if len(parts) >= 3:
+        try:
+            offset = int(parts[2])
+        except ValueError:
+            return None
+
+    if len(parts) >= 4:
+        try:
+            limit = int(parts[3])
+        except ValueError:
+            return None
+
+    return user_id, offset, limit
 
 
 def _parse_media_group_args(text: str):

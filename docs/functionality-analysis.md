@@ -58,9 +58,9 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
 `sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
 `sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup`, `sendVenue`,
-`sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `sendChatAction` и
-`sendMessageDraft`
-остается 143 пока не интегрированных методов.
+`sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `sendChatAction`,
+`sendMessageDraft` и `getUserProfilePhotos`
+остается 142 пока не интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -98,6 +98,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendChecklist` | `bot/services/send_checklist.py`, `/checklist` в `bot/handlers/commands.py` | Admin-flow отправки чеклиста (checklist) — озаглавленного списка из 1-30 задач — в текущий чат от имени подключенного business account, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 9.1; требует `business_connection_id`, длины title (до 255) и задач (до 100) и их количество валидируются до обращения к Telegram, а title и тексты задач не пишутся в structured logs. |
 | `sendChatAction` | `bot/services/send_chat_action.py`, `keep_chat_action` в `bot/handlers/chat.py` и `/chataction` в `bot/handlers/commands.py` | Показ chat action (transient-статуса вроде `typing…`) в чате через typed aiogram API. Автоматически показывается и обновляется, пока Claude/proxy обрабатывает входящее сообщение (управляется `TELEGRAM_CHAT_ACTION_ENABLED`); admin-команда `/chataction [action]` запускает action вручную, где action ограничен набором поддерживаемых значений и валидируется до обращения к Telegram. |
 | `sendMessageDraft` | `bot/services/send_message_draft.py`, `handle_streaming_with_draft` в `bot/handlers/chat.py` и `/messagedraft` в `bot/handlers/commands.py` | Стриминг частичного ответа через эфемерный draft preview (временный ~30-секундный предпросмотр) в private chat как альтернатива частым `editMessageText`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; включается флагом `TELEGRAM_MESSAGE_DRAFT_ENABLED` и работает только в private chats, финальный ответ затем сохраняется обычным `sendMessage`. Admin-команда `/messagedraft [text]` запускает draft вручную; `draft_id` обязан быть ненулевым, а длина текста (до 4096) валидируется до обращения к Telegram, и текст draft не пишется в structured logs. |
+| `getUserProfilePhotos` | `bot/services/get_user_profile_photos.py`, `/userprofilephotos` в `bot/handlers/commands.py` | Admin-flow получения фотографий профиля Telegram-пользователя по `user_id`, через typed aiogram API; не требует особых прав бота, Telegram может вернуть ошибку при ограниченной приватности пользователя; опциональные `offset` и `limit` (1-100) позволяют постранично получать фотографии, каждая в нескольких разрешениях; `user_id` и `file_id` фотографий не пишутся в structured logs. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
