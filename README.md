@@ -1023,6 +1023,27 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+The `/unbanchatsenderchat <chat_id> <sender_chat_id>` admin command calls
+Telegram Bot API `unbanChatSenderChat` through aiogram's typed API. It is
+intended for moderator-run supergroup and channel administration from trusted
+operations chats, when a previously banned channel identity must be allowed to
+post as a sender chat again.
+
+The target `chat_id` and `sender_chat_id` are required. The bot must already be
+an administrator in the target supergroup or channel with `can_restrict_members`.
+No special update subscription is required because the command is initiated by
+a normal Telegram message update. Telegram permission errors such as missing
+admin rights, unknown chats, or sender chats that cannot be unbanned are
+reported back to the admin chat.
+
+Because the command restores a channel identity's ability to post into a target
+chat, it is guarded like the other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 The `/restrictchatmember <chat_id> <user_id> <mute|readonly|unrestrict>
 [until_date_unix] [independent=true|false]` admin command calls Telegram Bot
 API `restrictChatMember` through aiogram's typed API. It is intended for
