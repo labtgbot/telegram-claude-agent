@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     telegram_guest_mode_enabled: bool = True
     telegram_allowed_chat_ids: str = ""
     telegram_admin_chat_ids: str = ""
+    telegram_chat_action_enabled: bool = True
 
     api_secret_token: Optional[str] = None
     rate_limit_requests_per_minute: int = 60

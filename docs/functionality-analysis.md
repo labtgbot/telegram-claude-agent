@@ -58,8 +58,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
 `sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
 `sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup`, `sendVenue`,
-`sendPoll`, `sendContact`, `sendDice` и `sendChecklist` остается 146 пока не
-интегрированных методов.
+`sendPoll`, `sendContact`, `sendDice`, `sendChecklist` и `sendChatAction`
+остается 145 пока не интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -94,6 +94,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendContact` | `bot/services/send_contact.py`, `/contact` в `bot/handlers/commands.py` | Admin-flow отправки телефонного контакта (contact) — имени с номером телефона, который получатель может сохранить в адресную книгу — в текущий чат, через typed aiogram API; phone_number и first_name обязательны, last_name опционален, а номер телефона и имя контакта не пишутся в structured logs. |
 | `sendDice` | `bot/services/send_dice.py`, `/dice` в `bot/handlers/commands.py` | Admin-flow отправки анимированной кости (dice) — анимированного эмодзи со случайным значением, которое выбирает Telegram — в текущий чат, через typed aiogram API; опциональный emoji ограничен набором 🎲/🎯/🏀/⚽/🎳/🎰 и валидируется до обращения к Telegram, без аргумента отправляется 🎲. |
 | `sendChecklist` | `bot/services/send_checklist.py`, `/checklist` в `bot/handlers/commands.py` | Admin-flow отправки чеклиста (checklist) — озаглавленного списка из 1-30 задач — в текущий чат от имени подключенного business account, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 9.1; требует `business_connection_id`, длины title (до 255) и задач (до 100) и их количество валидируются до обращения к Telegram, а title и тексты задач не пишутся в structured logs. |
+| `sendChatAction` | `bot/services/send_chat_action.py`, `keep_chat_action` в `bot/handlers/chat.py` и `/chataction` в `bot/handlers/commands.py` | Показ chat action (transient-статуса вроде `typing…`) в чате через typed aiogram API. Автоматически показывается и обновляется, пока Claude/proxy обрабатывает входящее сообщение (управляется `TELEGRAM_CHAT_ACTION_ENABLED`); admin-команда `/chataction [action]` запускает action вручную, где action ограничен набором поддерживаемых значений и валидируется до обращения к Telegram. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -1045,6 +1046,55 @@ Telegram-чеклист от имени подключенного business acco
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/checklist` так же, как к другим командам.
 
+### sendChatAction
+
+`sendChatAction` показывает в чате transient-статус (например, `typing…`),
+который сообщает пользователю, что бот занят. По официальной документации метод
+требует `chat_id` и `action`, возвращает `True` и не создает сообщения: Telegram
+сбрасывает статус примерно через пять секунд или как только бот отправит
+сообщение. Реализация идет через typed aiogram API `Bot.send_chat_action()` в
+`bot/services/send_chat_action.py`; `action` должен быть одним из поддерживаемых
+значений (`typing`, `upload_photo`, `record_video`, `upload_video`,
+`record_voice`, `upload_voice`, `upload_document`, `choose_sticker`,
+`find_location`, `record_video_note`, `upload_video_note`), а неподдерживаемое
+значение отклоняется исключением `SendChatActionError` до обращения к Telegram.
+Опциональные `message_thread_id` (forum topic) и `business_connection_id`
+соответствуют typed wrapper'у pinned `aiogram==3.3.0` (Bot API 7.0).
+
+Выбран пользовательский сценарий из scope issue: показывать typing/upload
+action, пока Claude/proxy обрабатывает заметно долгий запрос. Поскольку Telegram
+сбрасывает статус через ~5 секунд, helper `keep_chat_action` — это async context
+manager, который отправляет action сразу и обновляет его в фоновой задаче, пока
+выполняется обернутый блок. `bot/handlers/chat.py` оборачивает обработку Claude
+(и streaming, и non-streaming ветки) в `_typing_indicator`, который показывает
+`typing…` до готовности ответа. Поведение управляется флагом
+`TELEGRAM_CHAT_ACTION_ENABLED` (по умолчанию `true`); при `false` индикатор не
+показывается и поведение остается прежним. Ошибки Telegram при обновлении
+индикатора логируются и проглатываются, чтобы сбой отображения статуса не ломал
+саму обработку запроса, а фоновая задача всегда отменяется при выходе из блока.
+
+Дополнительно admin-команда `/chataction [action]` запускает action вручную (в
+основном для проверки). Синтаксис: без аргумента показывается `typing`, а
+единственный опциональный аргумент должен быть одним из поддерживаемых action.
+Команда сама проверяет validation path до обращения к Telegram: при
+неподдерживаемом action или более чем одном аргументе показывается usage, и
+Telegram не вызывается. Action не несет переданного оператором контента, поэтому
+в structured logs пишутся выбранный action, целевой чат и признаки forum
+topic/business connection.
+
+`/chataction` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при невалидном вводе команда показывает usage и не обращается к Telegram;
+- ошибки Telegram (например, отсутствие прав на отправку в чат) возвращаются
+  пользователю.
+
+Автоматический `typing…`-индикатор не требует admin-прав и работает для обычных
+пользователей в рамках уже разрешенных чатов. Глобальный `RateLimitMiddleware`
+применяется к `/chataction` так же, как к другим командам.
+
 ### sendMediaGroup
 
 Команда `/mediagroup` вызывает typed aiogram API `Bot.send_media_group()` для
@@ -1210,9 +1260,11 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 недоступна. Для деструктивных `/logout`, `/close`, для message-relay
 `/forward`, `/forwards`, `/copy`, `/copies` и для исходящего медиа `/photo`,
 `/audio`, `/livephoto`, `/document`, `/video`, `/videonote`, `/animation`,
-`/voice`, `/paidmedia`, `/location`, `/venue`, `/poll`, `/contact`, `/dice` и
-`/checklist` fallback не применяется: команды требуют непустой
-`TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
+`/voice`, `/paidmedia`, `/location`, `/venue`, `/poll`, `/contact`, `/dice`,
+`/chataction` и `/checklist` fallback не применяется: команды требуют непустой
+`TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены. Автоматический `typing…`-индикатор
+(управляемый `TELEGRAM_CHAT_ACTION_ENABLED`) admin-прав не требует и работает для
+обычных пользователей в уже разрешенных чатах.
 
 ## Безопасность и ограничения доступа
 

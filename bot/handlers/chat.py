@@ -1,5 +1,6 @@
 import base64
 import re
+from contextlib import asynccontextmanager
 from html import escape as html_escape
 
 import structlog
@@ -8,6 +9,7 @@ from aiogram.types import Message
 
 from bot.config import settings
 from bot.services.claude_proxy import ClaudeProxyClient
+from bot.services.send_chat_action import keep_chat_action
 from bot.utils.media import extract_document_text, transcribe_voice
 from bot.utils.storage import storage
 
@@ -16,6 +18,22 @@ logger = structlog.get_logger()
 router = Router()
 
 TELEGRAM_MESSAGE_LIMIT = 4096
+
+
+@asynccontextmanager
+async def _typing_indicator(message: Message):
+    """Show a "typing…" chat action while Claude/proxy handles the request.
+
+    Wraps :func:`keep_chat_action` so the bot refreshes the indicator until the
+    block exits, signalling that a noticeably long request is in progress. The
+    indicator is skipped entirely when ``telegram_chat_action_enabled`` is off,
+    keeping behaviour unchanged for deployments that opt out.
+    """
+    if not settings.telegram_chat_action_enabled:
+        yield
+        return
+    async with keep_chat_action(message.bot, chat_id=message.chat.id, action="typing"):
+        yield
 
 
 def text_to_content_blocks(text: str) -> list:
@@ -235,20 +253,21 @@ async def handle_chat_message(message: Message):
         settings.free_claude_timeout_seconds,
     )
     try:
-        if settings.free_claude_streaming_enabled:
-            reply_text = await handle_streaming(message, client, messages)
-        else:
-            response = await client.send_message(
-                messages=messages,
-                model=settings.free_claude_default_model,
-            )
-            reply_text = ""
-            for block in response.get("content", []):
-                if block.get("type") == "text":
-                    reply_text += block.get("text", "")
-            if not reply_text:
-                reply_text = "Claude returned no text response."
-            await send_reply_safely(message, md_to_html(reply_text))
+        async with _typing_indicator(message):
+            if settings.free_claude_streaming_enabled:
+                reply_text = await handle_streaming(message, client, messages)
+            else:
+                response = await client.send_message(
+                    messages=messages,
+                    model=settings.free_claude_default_model,
+                )
+                reply_text = ""
+                for block in response.get("content", []):
+                    if block.get("type") == "text":
+                        reply_text += block.get("text", "")
+                if not reply_text:
+                    reply_text = "Claude returned no text response."
+                await send_reply_safely(message, md_to_html(reply_text))
 
         if use_history and reply_text:
             storage.add_message(chat.id, user_id, "user", content_blocks)
