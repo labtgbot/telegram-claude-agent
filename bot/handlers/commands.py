@@ -20,6 +20,11 @@ from bot.services.export_chat_invite_link import (
     format_export_chat_invite_link_result,
     perform_export_chat_invite_link,
 )
+from bot.services.edit_chat_invite_link import (
+    EditChatInviteLinkError,
+    format_edit_chat_invite_link_result,
+    perform_edit_chat_invite_link,
+)
 from bot.services.promote_chat_member import (
     format_promote_result,
     perform_promote_chat_member,
@@ -621,6 +626,20 @@ EXPORT_CHAT_INVITE_LINK_USAGE = (
     "Usage: <code>/exportchatinvitelink &lt;chat_id&gt;</code>"
 )
 
+EDIT_CHAT_INVITE_LINK_USAGE = (
+    "<b>editchatinvitelink usage</b>\n"
+    "Edits an existing non-primary invite link for the specified group, "
+    "supergroup or channel. The bot must be an administrator with the "
+    "<code>can_invite_users</code> right in the target chat. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/editchatinvitelink &lt;chat_id&gt; &lt;invite_link&gt; "
+    "[name=&lt;text&gt;] [expire_date=&lt;unix_time&gt;] "
+    "[member_limit=&lt;1-99999&gt;] [creates_join_request=true|false]</code>\n"
+    "<code>creates_join_request=true</code> cannot be used with "
+    "<code>member_limit</code>."
+)
+
 SET_CHAT_ADMINISTRATOR_CUSTOM_TITLE_USAGE = (
     "<b>setchatadministratortitle usage</b>\n"
     "Sets a custom title for an administrator in the specified supergroup. "
@@ -725,6 +744,7 @@ async def cmd_help(message: Message):
         "/setchatpermissions - Set default chat permissions (admin only)\n"
         "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
         "/exportchatinvitelink - Export a new primary chat invite link (admin only)\n"
+        "/editchatinvitelink - Edit a non-primary chat invite link (admin only)\n"
         "/setchatadministratortitle - Set a chat administrator custom title (admin only)\n"
         "/setchatmembertag - Set or clear a chat member tag (admin only)\n"
         "/react - Set or remove a reaction on a message in this chat (admin only)\n"
@@ -1921,6 +1941,35 @@ async def cmd_export_chat_invite_link(message: Message):
             chat_id=chat_id,
             invite_link=invite_link,
         ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("editchatinvitelink"))
+async def cmd_edit_chat_invite_link(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_edit_chat_invite_link_args(message.text or "")
+    if parsed is None:
+        await message.answer(EDIT_CHAT_INVITE_LINK_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, invite_link, options = parsed
+    try:
+        link = await perform_edit_chat_invite_link(
+            message.bot,
+            chat_id=chat_id,
+            invite_link=invite_link,
+            **options,
+        )
+    except (TelegramAPIError, EditChatInviteLinkError) as exc:
+        await message.answer(f"Could not edit the chat invite link: {exc}")
+        return
+
+    await message.answer(
+        format_edit_chat_invite_link_result(chat_id=chat_id, link=link),
         parse_mode="HTML",
     )
 
@@ -3294,6 +3343,65 @@ def _parse_export_chat_invite_link_args(text: str):
         return int(parts[1])
     except ValueError:
         return None
+
+
+def _parse_edit_chat_invite_link_args(text: str):
+    """Parse ``/editchatinvitelink`` args into chat id, link and options."""
+    parts = (text or "").split()
+    if len(parts) < 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    options = {
+        "name": None,
+        "expire_date": None,
+        "member_limit": None,
+        "creates_join_request": None,
+    }
+    for token in parts[3:]:
+        if "=" not in token:
+            return None
+        key, value = token.split("=", 1)
+        if key == "name":
+            options["name"] = value
+        elif key == "expire_date":
+            try:
+                options["expire_date"] = int(value)
+            except ValueError:
+                return None
+        elif key == "member_limit":
+            try:
+                member_limit = int(value)
+            except ValueError:
+                return None
+            if not 1 <= member_limit <= 99999:
+                return None
+            options["member_limit"] = member_limit
+        elif key == "creates_join_request":
+            parsed = _parse_bool_value(value)
+            if parsed is None:
+                return None
+            options["creates_join_request"] = parsed
+        else:
+            return None
+
+    if options["creates_join_request"] is True and options["member_limit"] is not None:
+        return None
+
+    return chat_id, parts[2], options
+
+
+def _parse_bool_value(value: str):
+    normalized = value.lower()
+    if normalized in {"true", "1", "yes", "on"}:
+        return True
+    if normalized in {"false", "0", "no", "off"}:
+        return False
+    return None
 
 
 def _parse_set_chat_administrator_custom_title_args(text: str):
