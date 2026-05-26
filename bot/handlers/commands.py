@@ -51,6 +51,10 @@ from bot.services.set_my_commands import (
     format_set_my_commands_result,
     perform_set_my_commands,
 )
+from bot.services.get_my_commands import (
+    format_get_my_commands_result,
+    perform_get_my_commands,
+)
 from bot.services.delete_my_commands import (
     format_delete_my_commands_result,
     perform_delete_my_commands,
@@ -1012,6 +1016,22 @@ DELETE_MY_COMMANDS_USAGE = (
     "<code>/deletemycommands scope=chat chat_id=-100123 language=en</code>"
 )
 
+GET_MY_COMMANDS_USAGE = (
+    "<b>getmycommands usage</b>\n"
+    "Fetches the bot command list shown in Telegram clients via "
+    "<code>getMyCommands</code> for the default or selected scope/language. "
+    "Use this to verify the actual Telegram command menu after "
+    "<code>/setmycommands</code> or BotFather changes. This command is "
+    "read-only, deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/getmycommands [scope=default|all_private_chats|"
+    "all_group_chats|all_chat_administrators|chat|chat_administrators|"
+    "chat_member] [chat_id=&lt;id&gt;] [user_id=&lt;id&gt;] "
+    "[language=&lt;code&gt;]</code>\n"
+    "Examples: <code>/getmycommands</code>, "
+    "<code>/getmycommands scope=chat chat_id=-100123 language=en</code>"
+)
+
 SET_CHAT_STICKER_SET_USAGE = (
     "<b>setchatstickerset usage</b>\n"
     "Sets a sticker set for the specified supergroup. The bot must be an "
@@ -1508,6 +1528,7 @@ async def cmd_help(message: Message):
         "/setchatdescription - Set or clear a chat description (admin only)\n"
         "/setchattitle - Set a group, supergroup or channel title (admin only)\n"
         "/setmycommands - Set the bot command list shown in Telegram clients (admin only)\n"
+        "/getmycommands - Fetch and diagnose the bot command list (admin only)\n"
         "/deletemycommands - Delete bot commands by scope/language (admin only)\n"
         "/setchatstickerset - Set a supergroup sticker set (admin only)\n"
         "/deletechatstickerset - Delete a supergroup sticker set (admin only)\n"
@@ -3110,6 +3131,38 @@ async def cmd_delete_my_commands(message: Message):
 
     await message.answer(
         format_delete_my_commands_result(scope=scope, language_code=language_code),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("getmycommands"))
+async def cmd_get_my_commands(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_get_my_commands_args(message.text or "")
+    if parsed is None:
+        await message.answer(GET_MY_COMMANDS_USAGE, parse_mode="HTML")
+        return
+
+    scope, language_code = parsed
+    try:
+        actual_commands = await perform_get_my_commands(
+            message.bot,
+            scope=scope,
+            language_code=language_code,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not get bot commands: {exc}")
+        return
+
+    await message.answer(
+        format_get_my_commands_result(
+            actual_commands,
+            scope=scope,
+            language_code=language_code,
+        ),
         parse_mode="HTML",
     )
 
@@ -6028,6 +6081,13 @@ def _parse_delete_my_commands_args(text: str):
     if scope is None:
         return None
     return scope, language_code
+
+
+def _parse_get_my_commands_args(text: str):
+    """Parse ``/getmycommands`` args into scope and language code."""
+    return _parse_delete_my_commands_args(
+        (text or "").replace("/getmycommands", "/deletemycommands", 1)
+    )
 
 
 def _build_bot_command_scope(

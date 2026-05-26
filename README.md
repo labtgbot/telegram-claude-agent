@@ -387,6 +387,37 @@ It is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
 is empty, the command is disabled. The global rate-limit middleware still
 applies.
 
+### Get bot commands
+
+The restricted `/getmycommands` command calls Telegram Bot API `getMyCommands`
+through aiogram's typed `Bot.get_my_commands()` wrapper. It is a read-only
+diagnostic for checking the command menu that Telegram currently serves for the
+default or selected scope/language after `/setmycommands`, `/deletemycommands`
+or BotFather changes.
+
+Usage: `/getmycommands [scope=<scope>] [chat_id=<id>] [user_id=<id>] [language=<code>]`
+
+Examples:
+
+- `/getmycommands`
+- `/getmycommands scope=chat chat_id=-100123 language=en`
+- `/getmycommands scope=chat_member chat_id=-100123 user_id=123456 language=uk`
+
+Supported scopes: `default`, `all_private_chats`, `all_group_chats`,
+`all_chat_administrators`, `chat`, `chat_administrators`, `chat_member`.
+
+- `chat` and `chat_administrators` require `chat_id`;
+- `chat_member` requires both `chat_id` and `user_id`;
+- `language` is optional and targets a localized command menu;
+- the bot does not need chat administrator rights, but the command can expose
+  operational command-menu configuration and is guarded like the other admin
+  diagnostics.
+
+It is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+**not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+is empty, the command is disabled. The global rate-limit middleware still
+applies.
+
 ### Delete bot commands
 
 The restricted `/deletemycommands` command calls Telegram Bot API
