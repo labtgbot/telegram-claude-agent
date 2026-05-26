@@ -67,6 +67,8 @@ TELEGRAM_ALLOWED_CHAT_IDS=  # optional whitelist
 TELEGRAM_ADMIN_CHAT_IDS=  # optional admin webhook command allowlist
 TELEGRAM_CHAT_ACTION_ENABLED=true  # show "typing…" while a request is handled
 TELEGRAM_MESSAGE_DRAFT_ENABLED=false  # stream replies via ephemeral drafts (private chats only)
+TELEGRAM_BOT_NAME=  # optional startup sync for the bot display name
+TELEGRAM_BOT_NAME_LANGUAGE_CODE=  # optional IETF language code for localized bot name
 
 API_SECRET_TOKEN=random_secret_for_webhook_verification
 RATE_LIMIT_REQUESTS_PER_MINUTE=60
@@ -87,6 +89,8 @@ LOG_LEVEL=INFO
 - `TELEGRAM_ADMIN_CHAT_IDS` – optional comma-separated list of chat IDs allowed to run admin commands. Diagnostics like `/webhook` and lifecycle commands like `/deletewebhook` fall back to `TELEGRAM_ALLOWED_CHAT_IDS` when empty; destructive commands like `/logout` require this list and do not fall back. If both lists are empty, admin commands are disabled.
 - `TELEGRAM_CHAT_ACTION_ENABLED` – whether to show a `typing…` chat action while Claude/proxy handles a request (`true`/`false`, default `true`). Set to `false` to keep the chat silent during processing.
 - `TELEGRAM_MESSAGE_DRAFT_ENABLED` – whether to stream replies through ephemeral `sendMessageDraft` previews instead of repeatedly editing a message while Claude generates the answer (`true`/`false`, default `false`). Telegram limits the method to private chats, so other chats keep edit-based streaming.
+- `TELEGRAM_BOT_NAME` – optional bot display name to apply with Telegram `setMyName` on startup. Leave unset to skip profile sync; an empty string clears the selected name.
+- `TELEGRAM_BOT_NAME_LANGUAGE_CODE` – optional language code for a localized `setMyName` update. Leave empty to update the default bot name.
 - `API_SECRET_TOKEN` – secret token for verifying webhook requests (highly recommended for webhook mode).
 - `RATE_LIMIT_REQUESTS_PER_MINUTE` – maximum requests per user per minute.
 - `LOG_LEVEL` – logging level (default `INFO`).
@@ -183,6 +187,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/unpinallchatmessages <chat_id>` – Unpin all pinned messages where the bot has `can_pin_messages` in groups/supergroups or `can_edit_messages` in channels (admin only).
 - `/setchatphoto <chat_id> <photo_path>` – Set a new group/supergroup photo from a local file where the bot can change chat information (admin only).
 - `/deletechatphoto <chat_id>` – Delete the current group/supergroup photo where the bot can change chat information (admin only).
+- `/setmyname <name> [language=<code>]` – Set or clear the bot display name shown in Telegram clients (admin only).
 - `/setchatdescription <chat_id> [description]` – Set or clear a group,
   supergroup, or channel description where the bot can change chat information
   (admin only).
@@ -381,6 +386,34 @@ Example: `/setmycommands start:Start the bot | help:Show help | model:Show or ch
 - descriptions are required and must be 1-256 characters long;
 - the bot does not need chat administrator rights, but the command changes the
   bot's public UI and is guarded like the other admin commands.
+
+It is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+**not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+is empty, the command is disabled. The global rate-limit middleware still
+applies.
+
+### Set bot name
+
+The restricted `/setmyname` command calls Telegram Bot API `setMyName` through
+aiogram's typed `Bot.set_my_name()` wrapper. It updates the bot display name
+shown in Telegram clients. The same sync can run automatically at startup by
+setting `TELEGRAM_BOT_NAME` and optional `TELEGRAM_BOT_NAME_LANGUAGE_CODE`.
+
+Usage: `/setmyname <name> [language=<code>]` or `/setmyname --clear [language=<code>]`
+
+Examples:
+
+- `/setmyname Claude Agent`
+- `/setmyname Claude Agent language=ru`
+- `/setmyname --clear language=ru` to clear the localized Russian name
+
+- Telegram limits `name` to 0-64 characters; empty name clears the selected
+  default or localized name.
+- The method does not require chat administrator rights and does not need
+  special update types, but it changes the bot's public profile and is guarded
+  like the other admin commands.
+- Rollback is to run `/setmyname` again with the previous name, clear the
+  configured env values and restart, or restore the name through BotFather.
 
 It is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
 **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
