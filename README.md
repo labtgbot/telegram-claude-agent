@@ -177,6 +177,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/exportchatinvitelink <chat_id>` – Export a new primary invite link for a group, supergroup, or channel where the bot has `can_invite_users` (admin only).
 - `/createchatinvitelink <chat_id> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Create an additional invite link where the bot has `can_invite_users` (admin only).
 - `/editchatinvitelink <chat_id> <invite_link> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Edit an existing non-primary invite link where the bot has `can_invite_users` (admin only).
+- `/editchatsubscriptioninvitelink <chat_id> <invite_link> [name=<text>]` – Edit an existing subscription invite link where the bot has `can_invite_users` (admin only).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics and lifecycle
@@ -1158,6 +1159,19 @@ Because the command changes an access link to a chat, it is guarded like the oth
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Edit chat subscription invite link
+
+The `/editchatsubscriptioninvitelink <chat_id> <invite_link> [name=<text>]` admin command calls Telegram Bot API `editChatSubscriptionInviteLink`. It edits a subscription invite link created by the bot for a supergroup or channel. The project still pins `aiogram==3.3.0`, so the service uses aiogram's typed `edit_chat_subscription_invite_link` method when the runtime provides it and falls back to an isolated raw Bot API helper otherwise.
+
+The bot must already be an administrator in the target chat with `can_invite_users`. Telegram only allows changing the optional link `name`, which must be 0-32 characters. No special update subscription is required because the scenario is initiated by a normal Telegram message update. Telegram permission and validation errors are reported back to the admin chat. Rollback is manual: edit the link again with the previous name, revoke the link in Telegram chat administration, or create a replacement subscription link.
+
+Because the command changes a paid access link to a chat, it is guarded like the other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Group privacy mode
 
 When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
@@ -1300,6 +1314,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/exportchatinvitelink` command rotates and exposes the primary invite link for a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.
 - The `/createchatinvitelink` command creates and exposes an additional invite link for a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.
 - The `/editchatinvitelink` command changes an existing non-primary invite link for a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.
+- The `/editchatsubscriptioninvitelink` command changes an existing subscription invite link for a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work
