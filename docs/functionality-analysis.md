@@ -60,8 +60,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup`, `sendVenue`,
 `sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `sendChatAction`,
 `sendMessageDraft`, `getUserProfilePhotos`, `setMessageReaction`,
-`setUserEmojiStatus` и `getUserProfileAudios`
-остается 139 пока не интегрированных методов.
+`setUserEmojiStatus`, `getUserProfileAudios` и `banChatMember`
+остается 138 пока не интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -103,6 +103,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `setMessageReaction` | `bot/services/set_message_reaction.py`, `/react` в `bot/handlers/commands.py` | Admin-flow установки emoji-реакции на сообщение в текущем чате по `message_id`, через typed aiogram API (поддерживается с `aiogram==3.3.0`, Bot API 7.0); реакция задаётся стандартным emoji из фиксированного набора Telegram или опускается для удаления всех реакций бота; опциональный флаг `big` включает увеличенную анимацию; служебные сообщения не поддерживают реакции, в альбомах нужно реагировать на первое сообщение; не-premium боты могут ставить не более одной реакции на сообщение. |
 | `setUserEmojiStatus` | `bot/services/set_user_emoji_status.py`, `/setemojistatus` в `bot/handlers/commands.py` | Admin-flow установки или удаления emoji-статуса Telegram-пользователя по `user_id`, через typed aiogram API (Bot API 10.0); пользователь должен предварительно разрешить боту управление своим emoji-статусом через метод Mini App `requestEmojiStatusAccess` — без этого Telegram вернёт ошибку; передача пустой строки в качестве `custom_emoji_id` удаляет текущий статус; бот не требует административных прав; `user_id` не пишется в structured logs уровня "info". |
 | `getUserProfileAudios` | `bot/services/get_user_profile_audios.py`, `/userprofileaudios` в `bot/handlers/commands.py` | Admin-flow получения аудио профиля Telegram-пользователя по `user_id`, через typed aiogram API (Bot API 9.4, поддерживается в `aiogram==3.28`); не требует особых прав бота, Telegram может вернуть ошибку при ограниченной приватности пользователя; опциональные `offset` и `limit` (1-100) позволяют постранично получать аудио; для каждого трека выводятся `file_id`, длительность, исполнитель, название и имя файла при наличии; `user_id` и `file_id` аудио не пишутся в structured logs. |
+| `banChatMember` | `bot/services/ban_chat_member.py`, `/banchatmember` в `bot/handlers/commands.py` | Admin-flow блокировки пользователя в группе, супергруппе или канале по `chat_id` и `user_id`, через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback, бот должен быть администратором целевого чата с правом `can_restrict_members`; опциональные `until_date_unix` и `revoke=true|false` управляют временной блокировкой и удалением сообщений, а ошибки Telegram возвращаются оператору. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -1588,6 +1589,10 @@ logging. Фактическая детализация логов зависит
   allowlist, парсинг двух `file_id`-аргументов и caption с пробелами, validation
   path для слишком длинного caption и отправку с caption и без него для
   `/livephoto`;
+- вызов typed aiogram `ban_chat_member()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), строгий admin allowlist,
+  парсинг `chat_id`, `user_id`, `until_date_unix`, `revoke=true|false` и
+  validation path для неверных аргументов `/banchatmember`;
 - вызов typed aiogram `send_document()`, обработку Telegram API ошибок
   (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
   document-аргумента и caption с пробелами, validation path для слишком длинного
