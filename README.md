@@ -213,6 +213,15 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/editchatsubscriptioninvitelink <chat_id> <invite_link> [name=<text>]` – Edit an existing subscription invite link where the bot has `can_invite_users` (admin only).
 - `/clear` – Clear your conversation history.
 
+### Official Telegram Guest Mode
+
+When Telegram delivers a Guest Mode message with `Message.guest_query_id`, the
+bot now sends the final Claude response through the raw Bot API
+`answerGuestQuery` endpoint. This lets Telegram return the answer to the guest
+query without requiring the bot to be a member of the target chat. If Telegram
+rejects the guest query answer, the handler logs the error and falls back to the
+normal chat reply path.
+
 ### Webhook diagnostics and lifecycle
 
 The restricted `/webhook` command calls Telegram Bot API `getWebhookInfo`
@@ -2057,7 +2066,9 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
   per-method issue drafts with labels, stages, scope, and acceptance criteria.
 - The Telegram Bot API issue index links those method drafts to the actual
   GitHub issues created in this repository.
-- Official Telegram Guest Mode (`guest_message`/`answerGuestQuery`) is not yet implemented.
+- Official Telegram Guest Mode answers are supported for incoming messages that
+  expose `Message.guest_query_id`; broader guest-specific update routing can be
+  expanded as aiogram gains typed Bot API 10.0 support.
 - Bot-to-Bot communication is not supported.
 - The transcription service requires the optional `openai-whisper` package and may be slow for longer audio; consider using a faster service like NVIDIA NIM.
 

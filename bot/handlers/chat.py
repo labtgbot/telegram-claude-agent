@@ -9,6 +9,10 @@ from aiogram import Router, F
 from aiogram.types import Message
 
 from bot.config import settings
+from bot.services.answer_guest_query import (
+    AnswerGuestQueryError,
+    perform_answer_guest_query,
+)
 from bot.services.claude_proxy import ClaudeProxyClient
 from bot.services.send_chat_action import keep_chat_action
 from bot.services.send_message_draft import (
@@ -119,6 +123,33 @@ async def send_reply_safely(message: Message, text: str, parse_mode: str | None 
         except Exception as exc:
             logger.warning("send_failed_falling_back_to_plain", error=str(exc))
             await message.answer(chunk)
+
+
+def _guest_query_id(message: Message) -> str | None:
+    value = getattr(message, "guest_query_id", None)
+    return value or None
+
+
+async def send_final_reply(
+    message: Message, text: str, parse_mode: str | None = "HTML"
+) -> None:
+    guest_query_id = _guest_query_id(message)
+    if guest_query_id:
+        try:
+            await perform_answer_guest_query(
+                message.bot,
+                guest_query_id=guest_query_id,
+                text=text[:TELEGRAM_MESSAGE_LIMIT],
+            )
+            return
+        except AnswerGuestQueryError as exc:
+            logger.warning(
+                "answer_guest_query_failed_falling_back_to_message",
+                error=str(exc),
+                guest_query_id=guest_query_id,
+            )
+
+    await send_reply_safely(message, text, parse_mode=parse_mode)
 
 
 async def handle_streaming(message: Message, client: ClaudeProxyClient, messages: list) -> str:
@@ -239,7 +270,7 @@ async def handle_streaming_with_draft(
             await _send_draft_preview(message, draft_id, full_text)
 
     reply_text = full_text or "Claude returned no text response."
-    await send_reply_safely(message, md_to_html(reply_text))
+    await send_final_reply(message, md_to_html(reply_text))
     return reply_text
 
 
@@ -360,7 +391,7 @@ async def handle_chat_message(message: Message):
                         reply_text += block.get("text", "")
                 if not reply_text:
                     reply_text = "Claude returned no text response."
-                await send_reply_safely(message, md_to_html(reply_text))
+                await send_final_reply(message, md_to_html(reply_text))
 
         if use_history and reply_text:
             storage.add_message(chat.id, user_id, "user", content_blocks)
