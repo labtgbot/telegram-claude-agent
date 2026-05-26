@@ -1272,6 +1272,30 @@ the other admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Get chat member
+
+The `/getchatmember <chat_id> <user_id>` admin command calls Telegram Bot API
+`getChatMember` through aiogram's typed API. It is intended for trusted
+operations chats when an administrator needs to inspect a user's current status
+and permissions in a group, supergroup or channel known to the bot.
+
+The command takes the target `chat_id` and `user_id`. When Telegram succeeds,
+the bot returns a concise HTML summary with the requested ids, Telegram member
+status, display name, username, custom title, anonymity/member flags and
+enabled permission fields when Telegram includes them in the response. The bot
+must be able to access the target chat; depending on chat type and privacy
+settings Telegram may require the bot to be a member or administrator.
+Telegram permission errors such as unknown chats, inaccessible users,
+insufficient rights or rate limits are reported back to the admin chat.
+
+Because the command may expose private membership metadata, it is guarded like
+the other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Get chat administrators
 
 The `/getchatadministrators <chat_id>` admin command calls Telegram Bot API

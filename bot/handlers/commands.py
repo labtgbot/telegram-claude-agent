@@ -131,6 +131,10 @@ from bot.services.get_chat_member_count import (
     format_get_chat_member_count_result,
     perform_get_chat_member_count,
 )
+from bot.services.get_chat_member import (
+    format_get_chat_member_result,
+    perform_get_chat_member,
+)
 from bot.services.set_message_reaction import (
     REACTION_EMOJI,
     perform_set_message_reaction,
@@ -829,6 +833,16 @@ GET_CHAT_MEMBER_COUNT_USAGE = (
     "Usage: <code>/getchatmembercount &lt;chat_id&gt;</code>"
 )
 
+GET_CHAT_MEMBER_USAGE = (
+    "<b>getchatmember usage</b>\n"
+    "Fetches a single chat member status through <code>getChatMember</code>. "
+    "The bot must be able to access the target chat and may need "
+    "administrator rights depending on chat type and privacy settings. This "
+    "command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/getchatmember &lt;chat_id&gt; &lt;user_id&gt;</code>"
+)
+
 GET_CHAT_ADMINISTRATORS_USAGE = (
     "<b>getchatadministrators usage</b>\n"
     "Fetches the list of administrators in a group, supergroup or channel "
@@ -1037,6 +1051,8 @@ async def cmd_help(message: Message):
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
         "/userpersonalchatmessages - Fetch user personal chat messages (admin only)\n"
         "/getchat - Fetch chat metadata from Telegram (admin only)\n"
+        "/getchatmember - Fetch a chat member status from Telegram (admin only)\n"
+        "/getchatmembercount - Fetch chat member count from Telegram (admin only)\n"
         "/getchatadministrators - Fetch chat administrators from Telegram (admin only)\n"
         "/banchatmember - Ban a user from a chat (admin only)\n"
         "/banchatsenderchat - Ban a sender chat from a chat (admin only)\n"
@@ -2504,6 +2520,34 @@ async def cmd_get_chat_member_count(message: Message):
 
     await message.answer(
         format_get_chat_member_count_result(chat_id, member_count),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("getchatmember"))
+async def cmd_get_chat_member(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_get_chat_member_args(message.text or "")
+    if parsed is None:
+        await message.answer(GET_CHAT_MEMBER_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, user_id = parsed
+    try:
+        member = await perform_get_chat_member(
+            message.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not get chat member: {exc}")
+        return
+
+    await message.answer(
+        format_get_chat_member_result(chat_id, user_id, member),
         parse_mode="HTML",
     )
 
@@ -4199,6 +4243,18 @@ def _parse_get_chat_member_count_args(text: str):
 
     try:
         return int(parts[1])
+    except ValueError:
+        return None
+
+
+def _parse_get_chat_member_args(text: str):
+    """Parse ``/getchatmember`` args into ``(chat_id, user_id)``."""
+    parts = (text or "").split()
+    if len(parts) != 3:
+        return None
+
+    try:
+        return int(parts[1]), int(parts[2])
     except ValueError:
         return None
 
