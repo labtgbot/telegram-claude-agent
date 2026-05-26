@@ -51,6 +51,12 @@ from bot.services.set_my_commands import (
     format_set_my_commands_result,
     perform_set_my_commands,
 )
+from bot.services.set_my_name import (
+    SET_MY_NAME_LIMIT,
+    SetMyNameValidationError,
+    format_set_my_name_result,
+    perform_set_my_name,
+)
 from bot.services.get_my_commands import (
     format_get_my_commands_result,
     perform_get_my_commands,
@@ -1002,6 +1008,20 @@ SET_MY_COMMANDS_USAGE = (
     "Example: <code>/setmycommands start:Start the bot | help:Show help</code>"
 )
 
+SET_MY_NAME_USAGE = (
+    "<b>setmyname usage</b>\n"
+    "Sets the bot display name shown in Telegram clients via "
+    "<code>setMyName</code>. Use configuration "
+    "<code>TELEGRAM_BOT_NAME</code> and optional "
+    "<code>TELEGRAM_BOT_NAME_LANGUAGE_CODE</code> for startup sync. Passing an "
+    "empty name clears the selected name. This command changes the bot's "
+    "public profile, is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setmyname &lt;name&gt; [language=&lt;code&gt;]</code> or "
+    "<code>/setmyname --clear [language=&lt;code&gt;]</code>\n"
+    f"The name is limited to {SET_MY_NAME_LIMIT} characters."
+)
+
 DELETE_MY_COMMANDS_USAGE = (
     "<b>deletemycommands usage</b>\n"
     "Deletes the bot command list shown in Telegram clients via "
@@ -1527,6 +1547,7 @@ async def cmd_help(message: Message):
         "/setchatphoto - Set a group or supergroup photo (admin only)\n"
         "/setchatdescription - Set or clear a chat description (admin only)\n"
         "/setchattitle - Set a group, supergroup or channel title (admin only)\n"
+        "/setmyname - Set or clear the bot display name (admin only)\n"
         "/setmycommands - Set the bot command list shown in Telegram clients (admin only)\n"
         "/getmycommands - Fetch and diagnose the bot command list (admin only)\n"
         "/deletemycommands - Delete bot commands by scope/language (admin only)\n"
@@ -3103,6 +3124,37 @@ async def cmd_set_my_commands(message: Message):
 
     await message.answer(
         format_set_my_commands_result(parsed),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setmyname"))
+async def cmd_set_my_name(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_my_name_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_MY_NAME_USAGE, parse_mode="HTML")
+        return
+
+    name, language_code = parsed
+    try:
+        await perform_set_my_name(
+            message.bot,
+            name=name,
+            language_code=language_code,
+        )
+    except SetMyNameValidationError as exc:
+        await message.answer(f"Could not set bot name: {exc}")
+        return
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not set bot name: {exc}")
+        return
+
+    await message.answer(
+        format_set_my_name_result(name=name, language_code=language_code),
         parse_mode="HTML",
     )
 
@@ -6046,6 +6098,31 @@ def _parse_set_my_commands_args(text: str):
         parsed.append(BotCommand(command=command, description=description))
 
     return parsed
+
+
+def _parse_set_my_name_args(text: str):
+    """Parse ``/setmyname`` args into name and optional language code."""
+    parts = (text or "").split(maxsplit=1)
+    if len(parts) != 2:
+        return None
+
+    raw = parts[1].strip()
+    if not raw:
+        return "", None
+
+    language_code = None
+    language_match = re.search(r"\s+language=([A-Za-z0-9_-]+)\s*$", raw)
+    if language_match:
+        language_code = language_match.group(1)
+        raw = raw[: language_match.start()].strip()
+
+    if raw == "--clear":
+        return "", language_code
+
+    if len(raw) > SET_MY_NAME_LIMIT:
+        return None
+
+    return raw, language_code
 
 
 def _parse_delete_my_commands_args(text: str):

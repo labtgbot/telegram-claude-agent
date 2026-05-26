@@ -13,6 +13,7 @@ from bot.handlers.chat import router as chat_router
 from bot.handlers.inline import router as inline_router
 from bot.middlewares.logging import LoggingMiddleware
 from bot.middlewares.rate_limit import RateLimitMiddleware
+from bot.services.set_my_name import sync_configured_bot_name
 from bot.utils.storage import storage
 
 # Logging configuration
@@ -44,6 +45,11 @@ async def on_startup():
     global polling_task
     # Ensure bot username is cached
     await bot.get_me()
+    await sync_configured_bot_name(
+        bot,
+        name=settings.telegram_bot_name,
+        language_code=settings.telegram_bot_name_language_code,
+    )
     if settings.telegram_webhook_url:
         await bot.set_webhook(
             url=settings.telegram_webhook_url,

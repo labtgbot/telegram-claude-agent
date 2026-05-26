@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     telegram_admin_chat_ids: str = ""
     telegram_chat_action_enabled: bool = True
     telegram_message_draft_enabled: bool = False
+    telegram_bot_name: Optional[str] = None
+    telegram_bot_name_language_code: Optional[str] = None
 
     api_secret_token: Optional[str] = None
     rate_limit_requests_per_minute: int = 60
