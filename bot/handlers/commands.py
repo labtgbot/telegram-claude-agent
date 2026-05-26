@@ -57,6 +57,10 @@ from bot.services.set_message_reaction import (
     REACTION_EMOJI,
     perform_set_message_reaction,
 )
+from bot.services.set_chat_administrator_custom_title import (
+    format_set_chat_administrator_custom_title_result,
+    perform_set_chat_administrator_custom_title,
+)
 from bot.services.set_user_emoji_status import perform_set_user_emoji_status
 from bot.services.webhook_delete import delete_webhook
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
@@ -523,6 +527,18 @@ RESTRICT_CHAT_MEMBER_USAGE = (
     "future as permanent."
 )
 
+SET_CHAT_ADMINISTRATOR_CUSTOM_TITLE_USAGE = (
+    "<b>setchatadministratortitle usage</b>\n"
+    "Sets a custom title for an administrator in the specified supergroup. "
+    "The bot must be an administrator with the "
+    "<code>can_promote_members</code> right in the target chat. This command "
+    "is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setchatadministratortitle &lt;chat_id&gt; "
+    "&lt;user_id&gt; &lt;custom_title&gt;</code>\n"
+    "The <code>custom_title</code> may contain spaces."
+)
+
 MEDIA_GROUP_CAPTION_LIMIT = 1024
 
 MEDIA_GROUP_MIN_ITEMS = 2
@@ -598,6 +614,7 @@ async def cmd_help(message: Message):
         "/banchatmember - Ban a user from a chat (admin only)\n"
         "/unbanchatmember - Unban a user from a chat (admin only)\n"
         "/restrictchatmember - Restrict a user in a chat (admin only)\n"
+        "/setchatadministratortitle - Set a chat administrator custom title (admin only)\n"
         "/react - Set or remove a reaction on a message in this chat (admin only)\n"
         "/setemojistatus - Set or remove the emoji status of a user (admin only)\n"
         "/clear - Clear conversation history\n"
@@ -1634,6 +1651,43 @@ async def cmd_restrict_chat_member(message: Message):
             permissions=permissions,
             until_date=until_date,
             use_independent_chat_permissions=use_independent_chat_permissions,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setchatadministratortitle"))
+async def cmd_set_chat_administrator_custom_title(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_chat_administrator_custom_title_args(message.text or "")
+    if parsed is None:
+        await message.answer(
+            SET_CHAT_ADMINISTRATOR_CUSTOM_TITLE_USAGE,
+            parse_mode="HTML",
+        )
+        return
+
+    chat_id, user_id, custom_title = parsed
+
+    try:
+        await perform_set_chat_administrator_custom_title(
+            message.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+            custom_title=custom_title,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not set the administrator custom title: {exc}")
+        return
+
+    await message.answer(
+        format_set_chat_administrator_custom_title_result(
+            chat_id=chat_id,
+            user_id=user_id,
+            custom_title=custom_title,
         ),
         parse_mode="HTML",
     )
@@ -2724,3 +2778,22 @@ def _parse_restrict_chat_member_args(text: str):
         until_date,
         use_independent_chat_permissions,
     )
+
+
+def _parse_set_chat_administrator_custom_title_args(text: str):
+    """Parse ``/setchatadministratortitle`` args into ``(chat_id, user_id, title)``."""
+    parts = (text or "").split(maxsplit=3)
+    if len(parts) < 4:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+        user_id = int(parts[2])
+    except ValueError:
+        return None
+
+    custom_title = parts[3].strip()
+    if not custom_title:
+        return None
+
+    return chat_id, user_id, custom_title
