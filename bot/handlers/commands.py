@@ -21,6 +21,10 @@ from bot.services.decline_chat_join_request import (
     format_decline_chat_join_request_result,
     perform_decline_chat_join_request,
 )
+from bot.services.delete_chat_photo import (
+    format_delete_chat_photo_result,
+    perform_delete_chat_photo,
+)
 from bot.services.copy_message import perform_copy_message
 from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
@@ -629,6 +633,16 @@ SET_CHAT_PERMISSIONS_USAGE = (
     "text and common media messages; <code>open</code> restores common member "
     "permissions including invites, pins and topic management. Telegram does "
     "not change administrator permissions with this method."
+)
+
+DELETE_CHAT_PHOTO_USAGE = (
+    "<b>deletechatphoto usage</b>\n"
+    "Deletes the current photo from the specified group or supergroup. The bot "
+    "must be an administrator with the right to change chat information in the "
+    "target chat. This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/deletechatphoto &lt;chat_id&gt;</code>\n"
+    "Rollback is manual: set a new chat photo in Telegram chat administration."
 )
 
 PROMOTE_CHAT_MEMBER_USAGE = (
@@ -1987,6 +2001,29 @@ async def cmd_set_chat_permissions(message: Message):
             permissions=permissions,
             use_independent_chat_permissions=use_independent_chat_permissions,
         ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("deletechatphoto"))
+async def cmd_delete_chat_photo(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    chat_id = _parse_delete_chat_photo_args(message.text or "")
+    if chat_id is None:
+        await message.answer(DELETE_CHAT_PHOTO_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        await perform_delete_chat_photo(message.bot, chat_id=chat_id)
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not delete the chat photo: {exc}")
+        return
+
+    await message.answer(
+        format_delete_chat_photo_result(chat_id=chat_id),
         parse_mode="HTML",
     )
 
@@ -3626,6 +3663,18 @@ def _parse_promote_chat_member_args(text: str):
 
 def _parse_export_chat_invite_link_args(text: str):
     """Parse ``/exportchatinvitelink`` args into ``chat_id``."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
+
+
+def _parse_delete_chat_photo_args(text: str):
+    """Parse ``/deletechatphoto`` args into ``chat_id``."""
     parts = (text or "").split()
     if len(parts) != 2:
         return None
