@@ -184,6 +184,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/approvechatjoinrequest <chat_id> <user_id>` – Approve a pending join request where the bot has `can_invite_users` (admin only).
 - `/declinechatjoinrequest <chat_id> <user_id>` – Decline a pending join request where the bot has `can_invite_users` (admin only).
 - `/exportchatinvitelink <chat_id>` – Export a new primary invite link for a group, supergroup, or channel where the bot has `can_invite_users` (admin only).
+- `/leavechat <chat_id> confirm` – Make the bot leave a group, supergroup, or channel (admin only, requires confirmation).
 - `/createchatinvitelink <chat_id> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Create an additional invite link where the bot has `can_invite_users` (admin only).
 - `/editchatinvitelink <chat_id> <invite_link> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Edit an existing non-primary invite link where the bot has `can_invite_users` (admin only).
 - `/revokechatinvitelink <chat_id> <invite_link>` – Revoke an invite link created by the bot where the bot has `can_invite_users` (admin only).
@@ -1239,6 +1240,30 @@ UI or rerun the command to rotate the primary link again.
 
 Because the command exposes an access link to a chat, it is guarded like the
 other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
+### Leave chat
+
+The `/leavechat <chat_id> confirm` admin command calls Telegram Bot API
+`leaveChat` through aiogram's typed API. It removes the bot from a group,
+supergroup or channel where the bot is currently a member. The confirmation
+argument is mandatory because the action stops updates from that chat until the
+bot is added again.
+
+The method takes only the target `chat_id` and returns `True` on success. It
+does not require the bot to hold administrator rights, but the bot must be a
+current member of the target chat. No special update subscription is required
+because the scenario is initiated by a normal Telegram message update.
+Telegram errors such as unknown chats, missing membership, kicks or rate limits
+are reported back to the admin chat. Rollback is manual: add the bot to the
+chat again and restore any required administrator rights.
+
+Because the command changes bot membership, it is guarded like the other
+destructive admin commands:
 
 - it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
   **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`

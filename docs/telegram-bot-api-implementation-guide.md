@@ -953,8 +953,16 @@ Area label: `area:chat-admin`. Priority baseline: `priority:P2`
 - Title: `telegram-api: реализовать leaveChat`
 - Official docs: https://core.telegram.org/bots/api#leavechat
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:chat-admin`, `priority:P2`, `stage:S1-spec`
+- Status: implemented in PR #229 as restricted admin `/leavechat` command with confirmation.
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Добавить поддержку `leaveChat` в область: администрирование групп/супергрупп, invite links, join requests, закрепы, права участников и metadata чатов. Определить конкретный сценарий: админские команды с проверкой прав инициатора и конфигурационным deny-by-default режимом.
+- Implementation notes: `/leavechat <chat_id> confirm` вызывает typed aiogram API
+  `Bot.leave_chat(chat_id=...)`. Метод принимает только `chat_id` и возвращает
+  `True`; бот должен быть текущим участником группы, супергруппы или канала, но
+  отдельные administrator rights для самого `leaveChat` не требуются. Команда
+  закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback, требует `confirm`,
+  использует обычный message update и возвращает ошибки Telegram оператору.
+  Rollback ручной: добавить бота обратно и восстановить нужные права.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API

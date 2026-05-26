@@ -48,6 +48,7 @@ from bot.services.export_chat_invite_link import (
     format_export_chat_invite_link_result,
     perform_export_chat_invite_link,
 )
+from bot.services.leave_chat import format_leave_chat_result, perform_leave_chat
 from bot.services.create_chat_invite_link import (
     CreateChatInviteLinkError,
     format_create_chat_invite_link_result,
@@ -778,6 +779,27 @@ EXPORT_CHAT_INVITE_LINK_USAGE = (
     "Usage: <code>/exportchatinvitelink &lt;chat_id&gt;</code>"
 )
 
+LEAVE_CHAT_CONFIRM_KEYWORD = "confirm"
+
+LEAVE_CHAT_USAGE = (
+    "<b>leavechat usage</b>\n"
+    "Makes the bot leave the specified group, supergroup or channel via "
+    "Telegram <code>leaveChat</code>. The bot must currently be a member of "
+    "the target chat. This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/leavechat &lt;chat_id&gt; confirm</code>\n"
+    "Rollback is manual: add the bot to the chat again and restore required "
+    "administrator rights."
+)
+
+LEAVE_CHAT_WARNING = (
+    "<b>leavechat confirmation required</b>\n"
+    "This removes the bot from the target group, supergroup or channel. After "
+    "a successful call the bot stops receiving updates from that chat until "
+    "someone adds it again and restores any required administrator rights.\n"
+    "Run <code>/leavechat &lt;chat_id&gt; confirm</code> to proceed."
+)
+
 CREATE_CHAT_INVITE_LINK_USAGE = (
     "<b>createchatinvitelink usage</b>\n"
     "Creates an additional invite link for the specified group, supergroup or "
@@ -955,6 +977,7 @@ async def cmd_help(message: Message):
         "/approvechatjoinrequest - Approve a pending chat join request (admin only)\n"
         "/declinechatjoinrequest - Decline a pending chat join request (admin only)\n"
         "/exportchatinvitelink - Export a new primary chat invite link (admin only)\n"
+        "/leavechat - Make the bot leave a chat (admin only)\n"
         "/editchatinvitelink - Edit a non-primary chat invite link (admin only)\n"
         "/revokechatinvitelink - Revoke a chat invite link (admin only)\n"
         "/editchatsubscriptioninvitelink - Edit a subscription invite link (admin only)\n"
@@ -2330,6 +2353,34 @@ async def cmd_export_chat_invite_link(message: Message):
             chat_id=chat_id,
             invite_link=invite_link,
         ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("leavechat"))
+async def cmd_leave_chat(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_leave_chat_args(message.text or "")
+    if parsed is None:
+        await message.answer(LEAVE_CHAT_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, confirmed = parsed
+    if not confirmed:
+        await message.answer(LEAVE_CHAT_WARNING, parse_mode="HTML")
+        return
+
+    try:
+        await perform_leave_chat(message.bot, chat_id=chat_id)
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not leave the chat: {exc}")
+        return
+
+    await message.answer(
+        format_leave_chat_result(chat_id=chat_id),
         parse_mode="HTML",
     )
 
@@ -4061,6 +4112,29 @@ def _parse_decline_chat_join_request_args(text: str):
         return None
 
     return chat_id, user_id
+
+
+def _parse_leave_chat_args(text: str):
+    """Parse ``/leavechat`` args into ``chat_id`` and confirmation state."""
+    parts = (text or "").split()
+    if len(parts) not in {2, 3}:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    if chat_id == 0:
+        return None
+
+    confirmed = False
+    if len(parts) == 3:
+        if parts[2].lower() != LEAVE_CHAT_CONFIRM_KEYWORD:
+            return None
+        confirmed = True
+
+    return chat_id, confirmed
 
 
 def _parse_create_chat_invite_link_args(text: str):
