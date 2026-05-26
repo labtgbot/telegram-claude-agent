@@ -67,6 +67,10 @@ from bot.services.get_my_name import (
     format_get_my_name_result,
     perform_get_my_name,
 )
+from bot.services.get_my_description import (
+    format_get_my_description_result,
+    perform_get_my_description,
+)
 from bot.services.get_my_commands import (
     format_get_my_commands_result,
     perform_get_my_commands,
@@ -1057,6 +1061,19 @@ GET_MY_NAME_USAGE = (
     "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
     "Usage: <code>/getmyname [language=&lt;code&gt;]</code>\n"
     "Example: <code>/getmyname language=en</code>"
+)
+
+GET_MY_DESCRIPTION_USAGE = (
+    "<b>getmydescription usage</b>\n"
+    "Fetches the bot description shown in Telegram clients via "
+    "<code>getMyDescription</code> for the default or selected language. Use "
+    "this to verify the actual Telegram profile after startup sync, "
+    "<code>/setmydescription</code> or BotFather changes. The method is "
+    "read-only, does not require chat administrator rights or update "
+    "subscriptions, but this command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/getmydescription [language=&lt;code&gt;]</code>\n"
+    "Example: <code>/getmydescription language=en</code>"
 )
 
 DELETE_MY_COMMANDS_USAGE = (
@@ -3253,6 +3270,32 @@ async def cmd_get_my_name(message: Message):
 
     await message.answer(
         format_get_my_name_result(bot_name, language_code=parsed),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("getmydescription"))
+async def cmd_get_my_description(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_get_my_description_args(message.text or "")
+    if parsed is False:
+        await message.answer(GET_MY_DESCRIPTION_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        bot_description = await perform_get_my_description(
+            message.bot,
+            language_code=parsed,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not get bot description: {exc}")
+        return
+
+    await message.answer(
+        format_get_my_description_result(bot_description, language_code=parsed),
         parse_mode="HTML",
     )
 
@@ -6250,6 +6293,22 @@ def _parse_set_my_description_args(text: str):
 
 def _parse_get_my_name_args(text: str):
     """Parse ``/getmyname`` args into optional language code."""
+    parts = (text or "").split()
+    if not parts:
+        return False
+    if len(parts) == 1:
+        return None
+    if len(parts) != 2 or not parts[1].startswith("language="):
+        return False
+
+    language_code = parts[1].split("=", maxsplit=1)[1].strip()
+    if not language_code or not _is_valid_language_code(language_code):
+        return False
+    return language_code
+
+
+def _parse_get_my_description_args(text: str):
+    """Parse ``/getmydescription`` args into optional language code."""
     parts = (text or "").split()
     if not parts:
         return False
