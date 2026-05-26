@@ -387,6 +387,37 @@ It is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
 is empty, the command is disabled. The global rate-limit middleware still
 applies.
 
+### Delete bot commands
+
+The restricted `/deletemycommands` command calls Telegram Bot API
+`deleteMyCommands` through aiogram's typed `Bot.delete_my_commands()` wrapper.
+It clears the command menu for the default or selected scope/language before a
+fresh `/setmycommands` synchronization.
+
+Usage: `/deletemycommands [scope=<scope>] [chat_id=<id>] [user_id=<id>] [language=<code>]`
+
+Examples:
+
+- `/deletemycommands`
+- `/deletemycommands scope=chat chat_id=-100123 language=en`
+- `/deletemycommands scope=chat_member chat_id=-100123 user_id=123456 language=uk`
+
+Supported scopes: `default`, `all_private_chats`, `all_group_chats`,
+`all_chat_administrators`, `chat`, `chat_administrators`, `chat_member`.
+
+- `chat` and `chat_administrators` require `chat_id`;
+- `chat_member` requires both `chat_id` and `user_id`;
+- `language` is optional and targets a localized command menu;
+- the bot does not need chat administrator rights, but the command changes the
+  bot's public UI and is guarded like the other admin commands;
+- rollback is to run `/setmycommands` again for the intended scope/language or
+  restore commands via BotFather.
+
+It is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+**not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+is empty, the command is disabled. The global rate-limit middleware still
+applies.
+
 `forwardMessage` forwards a single message; forwarding a whole album as a group
 is the job of `forwardMessages`, exposed as `/forwards`.
 
