@@ -57,6 +57,10 @@ from bot.services.set_my_name import (
     format_set_my_name_result,
     perform_set_my_name,
 )
+from bot.services.get_my_name import (
+    format_get_my_name_result,
+    perform_get_my_name,
+)
 from bot.services.get_my_commands import (
     format_get_my_commands_result,
     perform_get_my_commands,
@@ -1022,6 +1026,19 @@ SET_MY_NAME_USAGE = (
     f"The name is limited to {SET_MY_NAME_LIMIT} characters."
 )
 
+GET_MY_NAME_USAGE = (
+    "<b>getmyname usage</b>\n"
+    "Fetches the bot display name shown in Telegram clients via "
+    "<code>getMyName</code> for the default or selected language. Use this to "
+    "verify the actual Telegram profile after startup sync, "
+    "<code>/setmyname</code> or BotFather changes. The method is read-only, "
+    "does not require chat administrator rights or update subscriptions, but "
+    "this command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/getmyname [language=&lt;code&gt;]</code>\n"
+    "Example: <code>/getmyname language=en</code>"
+)
+
 DELETE_MY_COMMANDS_USAGE = (
     "<b>deletemycommands usage</b>\n"
     "Deletes the bot command list shown in Telegram clients via "
@@ -1548,6 +1565,7 @@ async def cmd_help(message: Message):
         "/setchatdescription - Set or clear a chat description (admin only)\n"
         "/setchattitle - Set a group, supergroup or channel title (admin only)\n"
         "/setmyname - Set or clear the bot display name (admin only)\n"
+        "/getmyname - Fetch the bot display name (admin only)\n"
         "/setmycommands - Set the bot command list shown in Telegram clients (admin only)\n"
         "/getmycommands - Fetch and diagnose the bot command list (admin only)\n"
         "/deletemycommands - Delete bot commands by scope/language (admin only)\n"
@@ -3155,6 +3173,32 @@ async def cmd_set_my_name(message: Message):
 
     await message.answer(
         format_set_my_name_result(name=name, language_code=language_code),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("getmyname"))
+async def cmd_get_my_name(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_get_my_name_args(message.text or "")
+    if parsed is False:
+        await message.answer(GET_MY_NAME_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        bot_name = await perform_get_my_name(
+            message.bot,
+            language_code=parsed,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not get bot name: {exc}")
+        return
+
+    await message.answer(
+        format_get_my_name_result(bot_name, language_code=parsed),
         parse_mode="HTML",
     )
 
@@ -6123,6 +6167,22 @@ def _parse_set_my_name_args(text: str):
         return None
 
     return raw, language_code
+
+
+def _parse_get_my_name_args(text: str):
+    """Parse ``/getmyname`` args into optional language code."""
+    parts = (text or "").split()
+    if not parts:
+        return False
+    if len(parts) == 1:
+        return None
+    if len(parts) != 2 or not parts[1].startswith("language="):
+        return False
+
+    language_code = parts[1].split("=", maxsplit=1)[1].strip()
+    if not language_code or not _is_valid_language_code(language_code):
+        return False
+    return language_code
 
 
 def _parse_delete_my_commands_args(text: str):

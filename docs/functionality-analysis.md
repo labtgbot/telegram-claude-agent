@@ -64,11 +64,11 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `unbanChatMember`, `restrictChatMember`, `promoteChatMember`,
 `approveChatJoinRequest`, `createChatInviteLink`, `editChatInviteLink`,
 `setChatPhoto`, `deleteChatPhoto`, `pinChatMessage`, `unpinChatMessage`,
-`unpinAllChatMessages`, `getChatMember`, `getUserPersonalChatMessages` и
+`unpinAllChatMessages`, `getChatMember`, `getUserPersonalChatMessages`,
 `getForumTopicIconStickers`, `editForumTopic`, `editGeneralForumTopic`,
 `closeForumTopic`, `closeGeneralForumTopic`, `reopenForumTopic`,
 `unpinAllForumTopicMessages`, `unpinAllGeneralForumTopicMessages`,
-`unhideGeneralForumTopic`, `setMyName`; остается 115 пока не
+`unhideGeneralForumTopic`, `setMyName`, `getMyName`; остается 114 пока не
 интегрированных метода.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
@@ -85,6 +85,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `getWebhookInfo` | `bot/services/webhook_info.py`, `/webhook` в `bot/handlers/commands.py` | Админская диагностика статуса webhook, pending updates, `allowed_updates` и последних ошибок доставки. |
 | `setMyCommands` | `bot/services/set_my_commands.py`, `/setmycommands` в `bot/handlers/commands.py` | Admin-flow синхронизации default command list, отображаемого в Telegram clients, через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback, принимает список `command:description`, валидирует лимиты Telegram (0-100 команд, имена 1-32 lowercase/digit/underscore, описания 1-256) до обращения к Telegram, а ошибки Telegram возвращаются оператору. |
 | `setMyName` | `bot/services/set_my_name.py`, `/setmyname` в `bot/handlers/commands.py`, startup sync в `bot/main.py` | Admin/config-flow синхронизации default или localized display name бота через typed aiogram API `Bot.set_my_name`; при startup вызывается только если задан `TELEGRAM_BOT_NAME`, optional `TELEGRAM_BOT_NAME_LANGUAGE_CODE` задает локаль, команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, имя валидируется по лимиту Telegram 0-64 символа, пустая строка очищает выбранное имя, специальных update types и chat administrator rights не требуется, так как метод меняет профиль самого бота; structured logs пишут только длину имени и наличие language code, rollback выполняется повторной установкой прежнего имени, очисткой env sync или через BotFather. |
+| `getMyName` | `bot/services/get_my_name.py`, `/getmyname` в `bot/handlers/commands.py`, startup audit в `bot/main.py` | Read-only admin/config diagnostic для проверки default или localized display name бота через typed aiogram API `Bot.get_my_name`; метод принимает только optional `language_code` и возвращает `BotName`, не требует chat administrator rights и специальных update types, а команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке; startup audit читает фактическое имя после optional `TELEGRAM_BOT_NAME` sync, structured logs пишут только длину имени и наличие language code, ошибки Telegram возвращаются оператору или прерывают startup как операционная misconfiguration. |
 | `deleteMyCommands` | `bot/services/delete_my_commands.py`, `/deletemycommands` в `bot/handlers/commands.py` | Admin-flow безопасной очистки command menu перед повторной синхронизацией через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback, принимает optional `scope`, `chat_id`, `user_id` и `language`, валидирует совместимость scope-параметров до обращения к Telegram, не требует chat administrator rights, а ошибки Telegram возвращаются оператору. |
 | `getMyCommands` | `bot/services/get_my_commands.py`, `/getmycommands` в `bot/handlers/commands.py` | Read-only admin-diagnostic проверки фактического command menu через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback, принимает те же optional `scope`, `chat_id`, `user_id` и `language`, валидирует совместимость scope-параметров до обращения к Telegram, не требует chat administrator rights и не вызывает `free-claude-code`; сервис умеет сравнивать actual commands с ожидаемой конфигурацией и выводить missing, unexpected и description mismatch диагностику, а ошибки Telegram возвращаются оператору. |
 | `logOut` | `bot/services/log_out.py`, `/logout` в `bot/handlers/commands.py` | Защищенный admin-flow выхода из cloud Bot API перед запуском local Bot API server, с обязательным подтверждением. |
@@ -195,7 +196,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 1. Lifecycle и диагностика: явная настройка `allowed_updates`,
    диагностика конфликтов между webhook и long polling.
 2. Профиль и команды бота: `setMyCommands`, `deleteMyCommands`,
-   `getMyCommands`, `setMyName` (уже интегрирован), `getMyName`, `setMyDescription`,
+   `getMyCommands`, `setMyName`, `getMyName` (уже интегрированы), `setMyDescription`,
    `getMyDescription`, `setMyShortDescription`, `getMyShortDescription`,
    `setMyProfilePhoto`, `removeMyProfilePhoto`, `setChatMenuButton`,
    `getChatMenuButton`, `setMyDefaultAdministratorRights`,
@@ -1638,9 +1639,9 @@ admin-командам `/webhook` и `/deletewebhook`. Для диагности
 fallback не применяется: команды требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`,
 иначе они отключены. Автоматический `typing…`-индикатор (управляемый
 `TELEGRAM_CHAT_ACTION_ENABLED`), draft-стриминг (управляемый
-`TELEGRAM_MESSAGE_DRAFT_ENABLED`) и startup sync имени бота (управляемый
-`TELEGRAM_BOT_NAME`/`TELEGRAM_BOT_NAME_LANGUAGE_CODE`) admin-прав не требуют и работают для обычных
-пользователей в уже разрешенных чатах.
+`TELEGRAM_MESSAGE_DRAFT_ENABLED`) и startup sync/audit имени бота (управляемый
+`TELEGRAM_BOT_NAME`/`TELEGRAM_BOT_NAME_LANGUAGE_CODE`) admin-прав не требуют и
+работают для обычных пользователей в уже разрешенных чатах.
 
 ## Безопасность и ограничения доступа
 
