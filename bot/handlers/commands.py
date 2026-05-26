@@ -16,6 +16,10 @@ from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
 from bot.services.forward_messages import perform_forward_messages
 from bot.services.log_out import perform_log_out
+from bot.services.export_chat_invite_link import (
+    format_export_chat_invite_link_result,
+    perform_export_chat_invite_link,
+)
 from bot.services.promote_chat_member import (
     format_promote_result,
     perform_promote_chat_member,
@@ -606,6 +610,17 @@ PROMOTE_CHAT_MEMBER_USAGE = (
     "<code>demote</code> clears common administrator rights."
 )
 
+EXPORT_CHAT_INVITE_LINK_USAGE = (
+    "<b>exportchatinvitelink usage</b>\n"
+    "Exports a new primary invite link for the specified group, supergroup or "
+    "channel. The bot must be an administrator with the "
+    "<code>can_invite_users</code> right in the target chat. Telegram revokes "
+    "the previously generated primary invite link when this method succeeds. "
+    "This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/exportchatinvitelink &lt;chat_id&gt;</code>"
+)
+
 SET_CHAT_ADMINISTRATOR_CUSTOM_TITLE_USAGE = (
     "<b>setchatadministratortitle usage</b>\n"
     "Sets a custom title for an administrator in the specified supergroup. "
@@ -709,6 +724,7 @@ async def cmd_help(message: Message):
         "/restrictchatmember - Restrict a user in a chat (admin only)\n"
         "/setchatpermissions - Set default chat permissions (admin only)\n"
         "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
+        "/exportchatinvitelink - Export a new primary chat invite link (admin only)\n"
         "/setchatadministratortitle - Set a chat administrator custom title (admin only)\n"
         "/setchatmembertag - Set or clear a chat member tag (admin only)\n"
         "/react - Set or remove a reaction on a message in this chat (admin only)\n"
@@ -1875,6 +1891,35 @@ async def cmd_promote_chat_member(message: Message):
             user_id=user_id,
             preset=preset,
             rights=rights,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("exportchatinvitelink"))
+async def cmd_export_chat_invite_link(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    chat_id = _parse_export_chat_invite_link_args(message.text or "")
+    if chat_id is None:
+        await message.answer(EXPORT_CHAT_INVITE_LINK_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        invite_link = await perform_export_chat_invite_link(
+            message.bot,
+            chat_id=chat_id,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not export the chat invite link: {exc}")
+        return
+
+    await message.answer(
+        format_export_chat_invite_link_result(
+            chat_id=chat_id,
+            invite_link=invite_link,
         ),
         parse_mode="HTML",
     )
@@ -3237,6 +3282,18 @@ def _parse_promote_chat_member_args(text: str):
         return None
 
     return chat_id, user_id, preset, rights
+
+
+def _parse_export_chat_invite_link_args(text: str):
+    """Parse ``/exportchatinvitelink`` args into ``chat_id``."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
 
 
 def _parse_set_chat_administrator_custom_title_args(text: str):

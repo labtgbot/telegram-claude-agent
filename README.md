@@ -174,6 +174,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/restrictchatmember <chat_id> <user_id> <mute|readonly|unrestrict> [until_date_unix] [independent=true|false]` – Restrict or restore a group/supergroup member where the bot has `can_restrict_members` (admin only).
 - `/setchatpermissions <chat_id> <closed|text|media|open> [independent=true|false]` – Set default group/supergroup member permissions where the bot has `can_restrict_members` (admin only).
 - `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` – Promote or demote a group, supergroup, or channel member where the bot has `can_promote_members` (admin only).
+- `/exportchatinvitelink <chat_id>` – Export a new primary invite link for a group, supergroup, or channel where the bot has `can_invite_users` (admin only).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics and lifecycle
@@ -1101,6 +1102,34 @@ other admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Export chat invite link
+
+The `/exportchatinvitelink <chat_id>` admin command calls Telegram Bot API
+`exportChatInviteLink` through aiogram's typed API. It is intended for trusted
+operations chats when moderators need to rotate and retrieve the primary invite
+link for a group, supergroup or channel.
+
+The command takes only the target `chat_id`. When Telegram succeeds, it returns
+the new primary invite link and revokes the previously generated primary invite
+link. Existing non-primary invite links created separately in Telegram are not
+managed by this command.
+
+The bot must already be an administrator in the target chat with
+`can_invite_users`. No special update subscription is required because the
+scenario is initiated by a normal Telegram message update. Telegram permission
+errors such as missing admin rights, unknown chats, unsupported chat types or
+insufficient invite-link rights are reported back to the admin chat. Rollback is
+manual: create or export another invite link in Telegram's chat administration
+UI or rerun the command to rotate the primary link again.
+
+Because the command exposes an access link to a chat, it is guarded like the
+other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Group privacy mode
 
 When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
@@ -1240,6 +1269,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/restrictchatmember` command changes a user's permissions in a target group or supergroup, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
 - The `/setchatpermissions` command changes default permissions for all non-administrator members in a target group or supergroup, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
 - The `/promotechatmember` command changes a user's administrator privileges in a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_promote_members` in the target chat.
+- The `/exportchatinvitelink` command rotates and exposes the primary invite link for a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work
