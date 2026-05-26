@@ -171,6 +171,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/banchatmember <chat_id> <user_id> [until_date_unix] [revoke=true|false]` – Ban a user from a group, supergroup, or channel where the bot has `can_restrict_members` (admin only).
 - `/unbanchatmember <chat_id> <user_id> [only_if_banned=true|false]` – Unban a user from a group, supergroup, or channel where the bot has `can_restrict_members` (admin only).
 - `/restrictchatmember <chat_id> <user_id> <mute|readonly|unrestrict> [until_date_unix] [independent=true|false]` – Restrict or restore a group/supergroup member where the bot has `can_restrict_members` (admin only).
+- `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` – Promote or demote a group, supergroup, or channel member where the bot has `can_promote_members` (admin only).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics and lifecycle
@@ -997,6 +998,34 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+The `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` admin
+command calls Telegram Bot API `promoteChatMember` through aiogram's typed API.
+It is intended for trusted operators to promote or demote members in groups,
+supergroups and channels without exposing this power to ordinary chats.
+
+The target `chat_id`, `user_id`, and preset are required. `moderator` grants
+common moderation rights (`can_manage_chat`, `can_delete_messages`,
+`can_manage_video_chats`, `can_restrict_members`) but does not grant the ability
+to promote other members. `manager` also grants common management rights such as
+`can_change_info`, `can_invite_users`, `can_pin_messages` and
+`can_manage_topics`. `demote` clears the common administrator rights that the
+command manages.
+
+The bot must already be an administrator in the target chat with
+`can_promote_members`, and it can only grant rights that it has itself. No
+special update subscription is required because the command is initiated by a
+normal Telegram message update. Telegram permission errors such as missing admin
+rights, insufficient grantable rights, unknown chats, or users that cannot be
+promoted are reported back to the admin chat.
+
+Because the command changes administrator privileges, it is guarded like the
+other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Group privacy mode
 
 When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
@@ -1133,6 +1162,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/banchatmember` command removes a user from a target chat and can revoke their previous messages, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
 - The `/unbanchatmember` command restores access to a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
 - The `/restrictchatmember` command changes a user's permissions in a target group or supergroup, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
+- The `/promotechatmember` command changes a user's administrator privileges in a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_promote_members` in the target chat.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work

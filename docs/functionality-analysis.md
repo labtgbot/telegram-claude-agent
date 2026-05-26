@@ -60,8 +60,9 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup`, `sendVenue`,
 `sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `sendChatAction`,
 `sendMessageDraft`, `getUserProfilePhotos`, `setMessageReaction`,
-`setUserEmojiStatus`, `getUserProfileAudios` и `banChatMember`
-остается 138 пока не интегрированных методов.
+`setUserEmojiStatus`, `getUserProfileAudios`, `banChatMember`,
+`unbanChatMember`, `restrictChatMember` и `promoteChatMember`
+остается 135 пока не интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -106,6 +107,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `banChatMember` | `bot/services/ban_chat_member.py`, `/banchatmember` в `bot/handlers/commands.py` | Admin-flow блокировки пользователя в группе, супергруппе или канале по `chat_id` и `user_id`, через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback, бот должен быть администратором целевого чата с правом `can_restrict_members`; опциональные `until_date_unix` и `revoke=true|false` управляют временной блокировкой и удалением сообщений, а ошибки Telegram возвращаются оператору. |
 | `unbanChatMember` | `bot/services/unban_chat_member.py`, `/unbanchatmember` в `bot/handlers/commands.py` | Admin-flow разблокировки пользователя в группе, супергруппе или канале по `chat_id` и `user_id`, через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_restrict_members`; опциональный `only_if_banned=true|false` передается как `only_if_banned`, а ошибки Telegram возвращаются оператору. |
 | `restrictChatMember` | `bot/services/restrict_chat_member.py`, `/restrictchatmember` в `bot/handlers/commands.py` | Admin-flow ограничения или восстановления прав пользователя в группе/супергруппе по `chat_id`, `user_id` и preset (`mute`, `readonly`, `unrestrict`), через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_restrict_members`; опциональные `until_date_unix` и `independent=true|false` управляют сроком ограничения и `use_independent_chat_permissions`, а ошибки Telegram возвращаются оператору. |
+| `promoteChatMember` | `bot/services/promote_chat_member.py`, `/promotechatmember` в `bot/handlers/commands.py` | Admin-flow повышения или понижения пользователя в группе, супергруппе или канале по `chat_id`, `user_id` и preset (`moderator`, `manager`, `demote`), через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_promote_members` и может выдавать только свои права; ошибки Telegram возвращаются оператору. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -230,6 +232,18 @@ issue-карточек в
 - `/document <url_or_file_id> [caption]` отправляет файл в текущий чат как
   Telegram-документ по URL или `file_id` — для больших текстовых, PDF или
   исходных артефактов, когда текстовый ответ не подходит;
+- `/banchatmember <chat_id> <user_id> [until_date_unix] [revoke=true|false]`
+  блокирует пользователя в группе, супергруппе или канале из разрешенного
+  admin-чата;
+- `/unbanchatmember <chat_id> <user_id> [only_if_banned=true|false]`
+  разблокирует пользователя в группе, супергруппе или канале из разрешенного
+  admin-чата;
+- `/restrictchatmember <chat_id> <user_id> <mute|readonly|unrestrict>
+  [until_date_unix] [independent=true|false]` ограничивает или восстанавливает
+  права пользователя в группе или супергруппе из разрешенного admin-чата;
+- `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` повышает
+  или понижает пользователя в группе, супергруппе или канале из разрешенного
+  admin-чата;
 - `/clear` очищает историю разговора для пары `(chat_id, user_id)`.
 
 Важная деталь: выбранная через `/model <model_id>` модель сохраняется в
@@ -1604,6 +1618,10 @@ logging. Фактическая детализация логов зависит
   парсинг `chat_id`, `user_id`, preset, `until_date_unix`,
   `independent=true|false` и validation path для неверных аргументов
   `/restrictchatmember`;
+- вызов typed aiogram `promote_chat_member()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), строгий admin allowlist,
+  парсинг `chat_id`, `user_id`, preset (`moderator`, `manager`, `demote`) и
+  validation path для неверных аргументов `/promotechatmember`;
 - вызов typed aiogram `send_document()`, обработку Telegram API ошибок
   (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
   document-аргумента и caption с пробелами, validation path для слишком длинного

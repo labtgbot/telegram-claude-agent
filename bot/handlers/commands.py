@@ -15,6 +15,10 @@ from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
 from bot.services.forward_messages import perform_forward_messages
 from bot.services.log_out import perform_log_out
+from bot.services.promote_chat_member import (
+    format_promote_result,
+    perform_promote_chat_member,
+)
 from bot.services.send_animation import perform_send_animation
 from bot.services.send_audio import perform_send_audio
 from bot.services.send_chat_action import (
@@ -527,6 +531,20 @@ RESTRICT_CHAT_MEMBER_USAGE = (
     "future as permanent."
 )
 
+PROMOTE_CHAT_MEMBER_USAGE = (
+    "<b>promotechatmember usage</b>\n"
+    "Promotes or demotes a user in the specified group, supergroup or channel. "
+    "The bot must be an administrator with the "
+    "<code>can_promote_members</code> right in the target chat. This command "
+    "is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/promotechatmember &lt;chat_id&gt; &lt;user_id&gt; "
+    "&lt;moderator|manager|demote&gt;</code>\n"
+    "Presets: <code>moderator</code> grants common moderation rights; "
+    "<code>manager</code> also grants invite, pin and topic rights; "
+    "<code>demote</code> clears common administrator rights."
+)
+
 SET_CHAT_ADMINISTRATOR_CUSTOM_TITLE_USAGE = (
     "<b>setchatadministratortitle usage</b>\n"
     "Sets a custom title for an administrator in the specified supergroup. "
@@ -614,6 +632,7 @@ async def cmd_help(message: Message):
         "/banchatmember - Ban a user from a chat (admin only)\n"
         "/unbanchatmember - Unban a user from a chat (admin only)\n"
         "/restrictchatmember - Restrict a user in a chat (admin only)\n"
+        "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
         "/setchatadministratortitle - Set a chat administrator custom title (admin only)\n"
         "/react - Set or remove a reaction on a message in this chat (admin only)\n"
         "/setemojistatus - Set or remove the emoji status of a user (admin only)\n"
@@ -1651,6 +1670,41 @@ async def cmd_restrict_chat_member(message: Message):
             permissions=permissions,
             until_date=until_date,
             use_independent_chat_permissions=use_independent_chat_permissions,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("promotechatmember"))
+async def cmd_promote_chat_member(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_promote_chat_member_args(message.text or "")
+    if parsed is None:
+        await message.answer(PROMOTE_CHAT_MEMBER_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, user_id, preset, rights = parsed
+
+    try:
+        await perform_promote_chat_member(
+            message.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+            rights=rights,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not promote the user: {exc}")
+        return
+
+    await message.answer(
+        format_promote_result(
+            chat_id=chat_id,
+            user_id=user_id,
+            preset=preset,
+            rights=rights,
         ),
         parse_mode="HTML",
     )
@@ -2778,6 +2832,80 @@ def _parse_restrict_chat_member_args(text: str):
         until_date,
         use_independent_chat_permissions,
     )
+
+
+def _promote_rights_for_preset(preset: str):
+    from aiogram.types import ChatAdministratorRights
+
+    if preset == "moderator":
+        return ChatAdministratorRights(
+            is_anonymous=False,
+            can_manage_chat=True,
+            can_delete_messages=True,
+            can_manage_video_chats=True,
+            can_restrict_members=True,
+            can_promote_members=False,
+            can_change_info=False,
+            can_invite_users=False,
+            can_post_stories=False,
+            can_edit_stories=False,
+            can_delete_stories=False,
+            can_pin_messages=False,
+            can_manage_topics=False,
+        )
+    if preset == "manager":
+        return ChatAdministratorRights(
+            is_anonymous=False,
+            can_manage_chat=True,
+            can_delete_messages=True,
+            can_manage_video_chats=True,
+            can_restrict_members=True,
+            can_promote_members=False,
+            can_change_info=True,
+            can_invite_users=True,
+            can_post_stories=False,
+            can_edit_stories=False,
+            can_delete_stories=False,
+            can_pin_messages=True,
+            can_manage_topics=True,
+        )
+    if preset == "demote":
+        return ChatAdministratorRights(
+            is_anonymous=False,
+            can_manage_chat=False,
+            can_delete_messages=False,
+            can_manage_video_chats=False,
+            can_restrict_members=False,
+            can_promote_members=False,
+            can_change_info=False,
+            can_invite_users=False,
+            can_post_stories=False,
+            can_edit_stories=False,
+            can_delete_stories=False,
+            can_pin_messages=False,
+            can_manage_topics=False,
+        )
+    return None
+
+
+def _parse_promote_chat_member_args(text: str):
+    """Parse ``/promotechatmember`` args for admin-only promotions."""
+    parts = (text or "").split()
+    if len(parts) != 4:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+        user_id = int(parts[2])
+    except ValueError:
+        return None
+
+    preset = parts[3].strip().lower()
+    rights = _promote_rights_for_preset(preset)
+    if rights is None:
+        return None
+
+    return chat_id, user_id, preset, rights
 
 
 def _parse_set_chat_administrator_custom_title_args(text: str):
