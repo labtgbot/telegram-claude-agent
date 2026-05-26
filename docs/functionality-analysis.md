@@ -168,11 +168,13 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 - `callback_query`: распознается только middleware для логирования и rate
   limiting, но отдельного handler нет.
 
-Текущий `TELEGRAM_GUEST_MODE_ENABLED` не является официальным Telegram Bot API
-Guest Mode из Bot API 10.0. В коде это локальная политика для групп: если бот
+`TELEGRAM_GUEST_MODE_ENABLED` сохраняет локальную политику для групп: если бот
 уже находится в группе и к нему обратились mention/reply, история группы не
-прикладывается к запросу в proxy. Официальные `guest_message`,
-`Message.guest_query_id` и `answerGuestQuery` сейчас не интегрированы.
+прикладывается к запросу в proxy. Официальный Telegram Guest Mode из Bot API
+10.0 также поддержан на уровне ответа: когда входящее сообщение содержит
+`Message.guest_query_id`, финальный ответ Claude отправляется через raw
+`answerGuestQuery`, что позволяет отвечать на guest query без членства бота в
+целевом чате.
 
 ### Что не интегрировано для максимальных возможностей
 
@@ -1349,9 +1351,10 @@ Telegram отображает подпись альбома. Тип провер
 
 При включенном `TELEGRAM_GUEST_MODE_ENABLED` история в группах не используется:
 в proxy отправляется только текущий запрос. Это снижает риск утечки контекста
-между участниками группы. Это не поддержка официального Telegram Guest Mode,
-где бот может отвечать через `answerGuestQuery` на `guest_message`, не являясь
-полноценным участником чата.
+между участниками группы. Если Telegram присылает официальный Guest Mode update
+с `Message.guest_query_id`, финальный ответ отправляется через
+`answerGuestQuery`, поэтому бот может вернуть ответ на `guest_message`, не
+являясь полноценным участником чата.
 
 ### Изображения
 
@@ -1786,5 +1789,5 @@ python -m pytest -v
 8. Добавить ограничения и диагностику для входных файлов и optional voice
    dependencies.
 9. Добавить следующий слой Telegram API: `sendChatAction`, `setMyCommands`,
-   `answerCallbackQuery`, полноценный `answerInlineQuery`, `answerGuestQuery`
-   и rich outbound media методы.
+   `answerCallbackQuery`, полноценный `answerInlineQuery` и rich outbound media
+   методы.
