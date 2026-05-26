@@ -205,6 +205,10 @@ from bot.services.get_user_personal_chat_messages import (
     format_get_user_personal_chat_messages_result,
     perform_get_user_personal_chat_messages,
 )
+from bot.services.get_user_chat_boosts import (
+    format_get_user_chat_boosts_result,
+    perform_get_user_chat_boosts,
+)
 from bot.services.get_chat_member_count import (
     format_get_chat_member_count_result,
     perform_get_chat_member_count,
@@ -1138,6 +1142,15 @@ GET_USER_PERSONAL_CHAT_MESSAGES_USAGE = (
     f"{GET_USER_PERSONAL_CHAT_MESSAGES_MAX_LIMIT}."
 )
 
+GET_USER_CHAT_BOOSTS_USAGE = (
+    "<b>userchatboosts usage</b>\n"
+    "Fetches boosts that a user added to a chat through "
+    "<code>getUserChatBoosts</code>. The bot must be an administrator in the "
+    "target chat, and this command is deny-by-default: it only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/userchatboosts &lt;chat_id&gt; &lt;user_id&gt;</code>"
+)
+
 LEAVE_CHAT_CONFIRM_KEYWORD = "confirm"
 
 LEAVE_CHAT_USAGE = (
@@ -1322,6 +1335,7 @@ async def cmd_help(message: Message):
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
         "/userpersonalchatmessages - Fetch user personal chat messages (admin only)\n"
+        "/userchatboosts - Fetch boosts a user added to a chat (admin only)\n"
         "/getchat - Fetch chat metadata from Telegram (admin only)\n"
         "/getchatmember - Fetch a chat member status from Telegram (admin only)\n"
         "/getchatmembercount - Fetch chat member count from Telegram (admin only)\n"
@@ -3416,6 +3430,42 @@ async def cmd_get_user_personal_chat_messages(message: Message):
     )
 
 
+@router.message(Command("userchatboosts"))
+async def cmd_get_user_chat_boosts(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_get_user_chat_boosts_args(message.text or "")
+    if parsed is None:
+        await message.answer(
+            GET_USER_CHAT_BOOSTS_USAGE,
+            parse_mode="HTML",
+        )
+        return
+
+    chat_id, user_id = parsed
+
+    try:
+        boosts = await perform_get_user_chat_boosts(
+            message.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not get user chat boosts: {exc}")
+        return
+
+    await message.answer(
+        format_get_user_chat_boosts_result(
+            chat_id=chat_id,
+            user_id=user_id,
+            boosts=boosts,
+        ),
+        parse_mode="HTML",
+    )
+
+
 @router.message(Command("leavechat"))
 async def cmd_leave_chat(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -5337,6 +5387,30 @@ def _parse_get_user_personal_chat_messages_args(text: str):
         return None
 
     return user_id, limit
+
+
+def _parse_get_user_chat_boosts_args(text: str):
+    """Parse ``/userchatboosts`` args into ``chat_id`` and ``user_id``."""
+    parts = (text or "").split()
+    if len(parts) != 3:
+        return None
+
+    chat_id_text = parts[1]
+    chat_id: int | str
+    if chat_id_text.startswith("@"):
+        chat_id = chat_id_text
+    else:
+        try:
+            chat_id = int(chat_id_text)
+        except ValueError:
+            return None
+
+    try:
+        user_id = int(parts[2])
+    except ValueError:
+        return None
+
+    return chat_id, user_id
 
 
 def _parse_delete_chat_photo_args(text: str):
