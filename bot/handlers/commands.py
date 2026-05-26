@@ -134,6 +134,12 @@ from bot.services.get_forum_topic_icon_stickers import (
     format_forum_topic_icon_stickers,
     perform_get_forum_topic_icon_stickers,
 )
+from bot.services.create_forum_topic import (
+    CreateForumTopicError,
+    FORUM_TOPIC_NAME_LIMIT as CREATE_FORUM_TOPIC_NAME_LIMIT,
+    format_create_forum_topic_result,
+    perform_create_forum_topic,
+)
 from bot.services.edit_forum_topic import (
     EditForumTopicError,
     FORUM_TOPIC_NAME_LIMIT,
@@ -904,6 +910,19 @@ FORUM_TOPIC_ICON_STICKERS_USAGE = (
     "Usage: <code>/forumtopiciconstickers</code>"
 )
 
+CREATE_FORUM_TOPIC_USAGE = (
+    "<b>createforumtopic usage</b>\n"
+    "Creates a forum topic in a supergroup through "
+    "<code>createForumTopic</code>. The bot must be an administrator with the "
+    "right to manage topics in the target supergroup. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/createforumtopic &lt;chat_id&gt; &lt;name&gt; "
+    "[icon_color=&lt;rgb_int&gt;] [icon_custom_emoji_id=&lt;id&gt;]</code>\n"
+    f"The name is required and limited to "
+    f"{CREATE_FORUM_TOPIC_NAME_LIMIT} characters."
+)
+
 EDIT_FORUM_TOPIC_USAGE = (
     "<b>editforumtopic usage</b>\n"
     "Edits a forum topic in a supergroup through "
@@ -1119,6 +1138,7 @@ async def cmd_help(message: Message):
         "/getchatmembercount - Fetch chat member count from Telegram (admin only)\n"
         "/getchatadministrators - Fetch chat administrators from Telegram (admin only)\n"
         "/forumtopiciconstickers - Fetch available forum topic icon stickers (admin only)\n"
+        "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
         "/banchatmember - Ban a user from a chat (admin only)\n"
         "/banchatsenderchat - Ban a sender chat from a chat (admin only)\n"
@@ -2753,6 +2773,43 @@ async def cmd_edit_forum_topic(message: Message):
             chat_id=chat_id,
             message_thread_id=message_thread_id,
             name=name,
+            icon_custom_emoji_id=icon_custom_emoji_id,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("createforumtopic"))
+async def cmd_create_forum_topic(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_create_forum_topic_args(message.text or "")
+    if parsed is None:
+        await message.answer(CREATE_FORUM_TOPIC_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, name, icon_color, icon_custom_emoji_id = parsed
+
+    try:
+        topic = await perform_create_forum_topic(
+            message.bot,
+            chat_id=chat_id,
+            name=name,
+            icon_color=icon_color,
+            icon_custom_emoji_id=icon_custom_emoji_id,
+        )
+    except CreateForumTopicError as exc:
+        await message.answer(f"Could not create forum topic: {exc}")
+        return
+
+    await message.answer(
+        format_create_forum_topic_result(
+            chat_id=chat_id,
+            name=name,
+            topic=topic,
+            icon_color=icon_color,
             icon_custom_emoji_id=icon_custom_emoji_id,
         ),
         parse_mode="HTML",
@@ -4486,6 +4543,40 @@ def _parse_edit_forum_topic_args(text: str):
         return None
 
     return chat_id, message_thread_id, name, icon_custom_emoji_id
+
+
+def _parse_create_forum_topic_args(text: str):
+    """Parse ``/createforumtopic`` args into createForumTopic parameters."""
+    parts = (text or "").split()
+    if len(parts) < 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    name = parts[2]
+    icon_color = None
+    icon_custom_emoji_id = None
+    for part in parts[3:]:
+        key, sep, value = part.partition("=")
+        if not sep or not value:
+            return None
+        if key == "icon_color":
+            try:
+                icon_color = int(value)
+            except ValueError:
+                return None
+        elif key == "icon_custom_emoji_id":
+            icon_custom_emoji_id = value
+        else:
+            return None
+
+    if not name or len(name) > CREATE_FORUM_TOPIC_NAME_LIMIT:
+        return None
+
+    return chat_id, name, icon_color, icon_custom_emoji_id
 
 
 def _parse_get_user_personal_chat_messages_args(text: str):
