@@ -14,6 +14,7 @@ from bot.handlers.inline import router as inline_router
 from bot.middlewares.logging import LoggingMiddleware
 from bot.middlewares.rate_limit import RateLimitMiddleware
 from bot.services.get_my_name import audit_configured_bot_name
+from bot.services.set_my_description import sync_configured_bot_description
 from bot.services.set_my_name import sync_configured_bot_name
 from bot.utils.storage import storage
 
@@ -54,6 +55,11 @@ async def on_startup():
     await audit_configured_bot_name(
         bot,
         language_code=settings.telegram_bot_name_language_code,
+    )
+    await sync_configured_bot_description(
+        bot,
+        description=settings.telegram_bot_description,
+        language_code=settings.telegram_bot_description_language_code,
     )
     if settings.telegram_webhook_url:
         await bot.set_webhook(
