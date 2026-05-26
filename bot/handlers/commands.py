@@ -222,6 +222,11 @@ from bot.services.get_business_connection import (
     format_business_connection,
     perform_get_business_connection,
 )
+from bot.services.get_managed_bot_token import (
+    GetManagedBotTokenError,
+    format_managed_bot_token,
+    perform_get_managed_bot_token,
+)
 from bot.services.set_message_reaction import (
     REACTION_EMOJI,
     perform_set_message_reaction,
@@ -640,6 +645,18 @@ BUSINESS_CONNECTION_USAGE = (
     "The id must come from a live business connection update or another "
     "trusted operator source. This command is unavailable unless "
     "<code>TELEGRAM_ADMIN_CHAT_IDS</code> contains the current chat."
+)
+
+MANAGED_BOT_TOKEN_USAGE = (
+    "<b>managedbottoken usage</b>\n"
+    "Fetches Telegram <code>getManagedBotToken</code> for a managed bot by "
+    "its user id. This returns a live bot token, so the command is admin-only, "
+    "disabled unless <code>TELEGRAM_ADMIN_CHAT_IDS</code> contains the current "
+    "chat, and keeps the token out of structured logs.\n"
+    "Usage: <code>/managedbottoken &lt;managed_bot_user_id&gt;</code>\n"
+    "The id must come from a trusted <code>managed_bot</code> update, "
+    "<code>managed_bot_created</code> message, or another operator-controlled "
+    "source. Telegram allows only the manager/owner flow to access the token."
 )
 
 USER_PROFILE_PHOTOS_USAGE = (
@@ -1331,6 +1348,7 @@ async def cmd_help(message: Message):
         "/chataction - Show a chat action (e.g. typing…) in this chat (admin only)\n"
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
+        "/managedbottoken - Fetch a managed bot token by user id (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
@@ -2303,6 +2321,33 @@ async def cmd_business_connection(message: Message):
         return
 
     await message.answer(format_business_connection(connection), parse_mode="HTML")
+
+
+@router.message(Command("managedbottoken"))
+async def cmd_managed_bot_token(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    user_id = _parse_managed_bot_token_args(message.text or "")
+    if user_id is None:
+        await message.answer(MANAGED_BOT_TOKEN_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        token = await perform_get_managed_bot_token(
+            message.bot,
+            user_id=user_id,
+        )
+    except GetManagedBotTokenError as exc:
+        await message.answer(f"Could not fetch the managed bot token: {exc}")
+        return
+
+    await message.answer(
+        format_managed_bot_token(user_id=user_id, token=token),
+        parse_mode="HTML",
+    )
+
 
 @router.message(Command("userprofilephotos"))
 async def cmd_user_profile_photos(message: Message):
@@ -4521,6 +4566,22 @@ def _parse_business_connection_args(text: str) -> str | None:
 
     business_connection_id = parts[1].strip()
     return business_connection_id or None
+
+
+def _parse_managed_bot_token_args(text: str) -> int | None:
+    """Parse ``/managedbottoken`` args into managed bot ``user_id``."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+
+    if user_id <= 0:
+        return None
+    return user_id
 
 
 def _parse_user_profile_photos_args(text: str):
