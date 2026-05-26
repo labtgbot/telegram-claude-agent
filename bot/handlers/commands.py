@@ -187,6 +187,11 @@ from bot.services.unpin_all_forum_topic_messages import (
     format_unpin_all_forum_topic_messages_result,
     perform_unpin_all_forum_topic_messages,
 )
+from bot.services.unpin_all_general_forum_topic_messages import (
+    UnpinAllGeneralForumTopicMessagesError,
+    format_unpin_all_general_forum_topic_messages_result,
+    perform_unpin_all_general_forum_topic_messages,
+)
 from bot.services.get_user_personal_chat_messages import (
     GET_USER_PERSONAL_CHAT_MESSAGES_MAX_LIMIT,
     GET_USER_PERSONAL_CHAT_MESSAGES_MIN_LIMIT,
@@ -1068,6 +1073,18 @@ UNPIN_ALL_FORUM_TOPIC_MESSAGES_USAGE = (
     "<code>/pinchatmessage</code>."
 )
 
+UNPIN_ALL_GENERAL_FORUM_TOPIC_MESSAGES_USAGE = (
+    "<b>unpinallgeneralforumtopicmessages usage</b>\n"
+    "Unpins all pinned messages in the General forum topic through "
+    "<code>unpinAllGeneralForumTopicMessages</code>. The bot must be an "
+    "administrator with the right to manage topics in the target supergroup. "
+    "This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/unpinallgeneralforumtopicmessages &lt;chat_id&gt;</code>\n"
+    "Rollback is manual: pin required General topic messages again in "
+    "Telegram or with <code>/pinchatmessage</code>."
+)
+
 GET_USER_PERSONAL_CHAT_MESSAGES_USAGE = (
     "<b>userpersonalchatmessages usage</b>\n"
     "Fetches recent messages from the personal chat between a user and this "
@@ -1279,6 +1296,7 @@ async def cmd_help(message: Message):
         "/reopengeneralforumtopic - Reopen the General forum topic in a supergroup (admin only)\n"
         "/deleteforumtopic - Delete a forum topic in a supergroup (admin only)\n"
         "/unpinallforumtopicmessages - Unpin all pinned messages in a forum topic (admin only)\n"
+        "/unpinallgeneralforumtopicmessages - Unpin all pinned messages in the General forum topic (admin only)\n"
         "/banchatmember - Ban a user from a chat (admin only)\n"
         "/banchatsenderchat - Ban a sender chat from a chat (admin only)\n"
         "/unbanchatmember - Unban a user from a chat (admin only)\n"
@@ -3193,6 +3211,37 @@ async def cmd_unpin_all_forum_topic_messages(message: Message):
     )
 
 
+@router.message(Command("unpinallgeneralforumtopicmessages"))
+async def cmd_unpin_all_general_forum_topic_messages(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    chat_id = _parse_unpin_all_general_forum_topic_messages_args(message.text or "")
+    if chat_id is None:
+        await message.answer(
+            UNPIN_ALL_GENERAL_FORUM_TOPIC_MESSAGES_USAGE,
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        await perform_unpin_all_general_forum_topic_messages(
+            message.bot,
+            chat_id=chat_id,
+        )
+    except UnpinAllGeneralForumTopicMessagesError as exc:
+        await message.answer(
+            f"Could not unpin all General forum topic messages: {exc}"
+        )
+        return
+
+    await message.answer(
+        format_unpin_all_general_forum_topic_messages_result(chat_id=chat_id),
+        parse_mode="HTML",
+    )
+
+
 @router.message(Command("userpersonalchatmessages"))
 async def cmd_get_user_personal_chat_messages(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -5080,6 +5129,18 @@ def _parse_unpin_all_forum_topic_messages_args(text: str):
         return None
 
     return chat_id, message_thread_id
+
+
+def _parse_unpin_all_general_forum_topic_messages_args(text: str):
+    """Parse ``/unpinallgeneralforumtopicmessages`` args."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
 
 
 def _parse_get_user_personal_chat_messages_args(text: str):
