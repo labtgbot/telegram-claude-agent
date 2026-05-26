@@ -10,7 +10,7 @@ A professional Telegram bot agent that integrates with [free-claude-code](https:
 - Support for streaming responses with real-time updates
 - Group privacy mode for mention/reply interactions without shared history
 - Handle media: images, documents (PDF, TXT, DOCX), voice messages (with Whisper transcription)
-- Core commands: /start, /help, /model, /settings, /clear
+- Core commands: /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /clear
 - Built-in rate limiting and security (webhook secret token)
 - Structured logging with structlog
 - Optional Redis caching (not implemented, but architecture ready)
@@ -64,7 +64,7 @@ TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 TELEGRAM_WEBHOOK_URL=https://your-domain.com/webhook  # optional; if empty, uses polling
 TELEGRAM_GUEST_MODE_ENABLED=true
 TELEGRAM_ALLOWED_CHAT_IDS=  # optional whitelist
-TELEGRAM_ADMIN_CHAT_IDS=  # optional diagnostics command allowlist
+TELEGRAM_ADMIN_CHAT_IDS=  # optional admin webhook command allowlist
 TELEGRAM_CHAT_ACTION_ENABLED=true  # show "typing…" while a request is handled
 TELEGRAM_MESSAGE_DRAFT_ENABLED=false  # stream replies via ephemeral drafts (private chats only)
 
@@ -84,7 +84,7 @@ LOG_LEVEL=INFO
 - `TELEGRAM_WEBHOOK_URL` – if set, the bot will use webhook mode; otherwise, it uses long polling.
 - `TELEGRAM_GUEST_MODE_ENABLED` – enable no-history group privacy mode for mentioned/replied messages (`true`/`false`).
 - `TELEGRAM_ALLOWED_CHAT_IDS` – optional comma-separated list of chat IDs to restrict operation.
-- `TELEGRAM_ADMIN_CHAT_IDS` – optional comma-separated list of chat IDs allowed to run admin diagnostics commands. If empty, diagnostics fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if both are empty, diagnostics commands are disabled.
+- `TELEGRAM_ADMIN_CHAT_IDS` – optional comma-separated list of chat IDs allowed to run admin commands. Diagnostics like `/webhook` and lifecycle commands like `/deletewebhook` fall back to `TELEGRAM_ALLOWED_CHAT_IDS` when empty; destructive commands like `/logout` require this list and do not fall back. If both lists are empty, admin commands are disabled.
 - `TELEGRAM_CHAT_ACTION_ENABLED` – whether to show a `typing…` chat action while Claude/proxy handles a request (`true`/`false`, default `true`). Set to `false` to keep the chat silent during processing.
 - `TELEGRAM_MESSAGE_DRAFT_ENABLED` – whether to stream replies through ephemeral `sendMessageDraft` previews instead of repeatedly editing a message while Claude generates the answer (`true`/`false`, default `false`). Telegram limits the method to private chats, so other chats keep edit-based streaming.
 - `API_SECRET_TOKEN` – secret token for verifying webhook requests (highly recommended for webhook mode).
@@ -142,6 +142,8 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/model` – Show current model and list available models. Use `/model <model_id>` to switch.
 - `/settings` – Display your current settings.
 - `/webhook` – Show webhook diagnostics for allowed admin chats.
+- `/deletewebhook [drop_pending_updates=true|false]` – Delete the webhook for
+  allowed admin chats; pending updates are kept by default.
 - `/logout` – Log the bot out of the cloud Bot API server (admin only, requires confirmation).
 - `/close` – Close the bot instance on the current Bot API server (admin only, requires confirmation).
 - `/forward` – Forward a message from another chat into this chat for support/moderation review (admin only).
@@ -168,7 +170,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/mediagroup` – Send 2-10 media items into this chat as a single album (media group) via URLs or file_ids (admin only).
 - `/clear` – Clear your conversation history.
 
-### Webhook diagnostics
+### Webhook diagnostics and lifecycle
 
 The restricted `/webhook` command calls Telegram Bot API `getWebhookInfo`
 through aiogram's typed API. It requires no Telegram method parameters and
@@ -176,16 +178,26 @@ shows the current webhook status, webhook URL, pending update count,
 `allowed_updates`, certificate flag, connection limit, and the latest delivery
 or synchronization error reported by Telegram.
 
-Use `TELEGRAM_ADMIN_CHAT_IDS` to restrict this operational output to private
-admin chats or trusted operations groups. If `TELEGRAM_ADMIN_CHAT_IDS` is empty,
-the command falls back to `TELEGRAM_ALLOWED_CHAT_IDS`. If both lists are empty,
-the diagnostics command is disabled. The global rate-limit middleware still
-applies to the command.
+The restricted `/deletewebhook` command calls Telegram Bot API `deleteWebhook`
+through aiogram's typed API before switching the bot back to long polling or a
+local Bot API server. It accepts one optional argument:
+`drop_pending_updates=true|false`. The default is `false`, so pending updates
+are kept unless an administrator explicitly asks Telegram to drop them.
+
+Both commands require only a valid bot token; no chat administrator rights or
+special update subscriptions are required. Use `TELEGRAM_ADMIN_CHAT_IDS` to
+restrict this operational output and lifecycle control to private admin chats
+or trusted operations groups. If `TELEGRAM_ADMIN_CHAT_IDS` is empty, the
+commands fall back to `TELEGRAM_ALLOWED_CHAT_IDS`. If both lists are empty,
+admin webhook commands are disabled. The global rate-limit middleware still
+applies to these commands.
 
 When the bot is running in long polling mode, Telegram returns webhook info with
-an empty `url`, which the command displays as disabled. This command does not
-change webhook state; rollback is simply removing the command allowlist or
-stopping use of `/webhook`.
+an empty `url`, which `/webhook` displays as disabled. `/deletewebhook` changes
+Telegram delivery state but does not call `free-claude-code`; rollback is
+setting `TELEGRAM_WEBHOOK_URL` again and restarting the bot, or re-registering
+the webhook with `setWebhook`. If `drop_pending_updates=true` was used, already
+dropped updates cannot be recovered from Telegram.
 
 ### Log out from the cloud Bot API
 
@@ -951,11 +963,12 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /checklist, /mediagroup, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /checklist, /mediagroup, /clear
 │   │   ├── chat.py             # Text and media message handler (shows typing… while processing)
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
 │   │   ├── claude_proxy.py     # Client for free-claude-code API
+│   │   ├── webhook_delete.py   # Telegram webhook lifecycle operations
 │   │   ├── webhook_info.py     # Telegram webhook diagnostics formatting
 │   │   ├── log_out.py          # Telegram logOut lifecycle helper
 │   │   ├── close.py            # Telegram close lifecycle helper
@@ -1011,7 +1024,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - Use HTTPS for your webhook URL.
 - Keep your `FREE_CLAUDE_AUTH_TOKEN` and `TELEGRAM_BOT_TOKEN` secret; do not commit them to version control.
 - The `TELEGRAM_ALLOWED_CHAT_IDS` setting can restrict operation to specific chats.
-- The `/webhook` diagnostics command can expose webhook URL and delivery errors, so restrict it with `TELEGRAM_ADMIN_CHAT_IDS`.
+- The `/webhook` diagnostics command can expose webhook URL and delivery errors, and `/deletewebhook` changes update delivery state, so restrict both with `TELEGRAM_ADMIN_CHAT_IDS`.
 - The `/logout` command is destructive (it logs the bot out of the cloud Bot API for 10 minutes), so it requires `TELEGRAM_ADMIN_CHAT_IDS` and explicit `/logout confirm`.
 - The `/close` command is destructive (it closes the running bot instance on the current Bot API server), so it requires `TELEGRAM_ADMIN_CHAT_IDS` and explicit `/close confirm`.
 - The `/forward` command relays a message from another chat into the admin chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and protects the forwarded copy from re-forwarding by default.

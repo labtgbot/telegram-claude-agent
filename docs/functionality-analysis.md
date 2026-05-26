@@ -54,13 +54,13 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 описан в
 [telegram-bot-api-implementation-guide.md](telegram-bot-api-implementation-guide.md):
 в нем 169 карточек методов с labels, stages, scope и acceptance criteria;
-после внедрения `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
+после внедрения `deleteWebhook`, `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
 `sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
 `sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup`, `sendVenue`,
 `sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `sendChatAction` и
 `sendMessageDraft`
-остается 144 пока не интегрированных методов.
+остается 143 пока не интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -72,6 +72,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `getMe` | `bot/main.py`, `bot/handlers/chat.py` | Кеширование данных бота при startup и получение username для определения mention/reply в группах. |
 | `getUpdates` | `dp.start_polling()` в `bot/main.py` | Непрямое использование через aiogram long polling, когда `TELEGRAM_WEBHOOK_URL` не задан. |
 | `setWebhook` | `bot/main.py` | Регистрация webhook URL и optional `secret_token` при наличии `TELEGRAM_WEBHOOK_URL`. |
+| `deleteWebhook` | `bot/services/webhook_delete.py`, `/deletewebhook` в `bot/handlers/commands.py` | Админское удаление webhook перед переходом на long polling или local Bot API с опциональным `drop_pending_updates`. |
 | `getWebhookInfo` | `bot/services/webhook_info.py`, `/webhook` в `bot/handlers/commands.py` | Админская диагностика статуса webhook, pending updates, `allowed_updates` и последних ошибок доставки. |
 | `logOut` | `bot/services/log_out.py`, `/logout` в `bot/handlers/commands.py` | Защищенный admin-flow выхода из cloud Bot API перед запуском local Bot API server, с обязательным подтверждением. |
 | `close` | `bot/services/close.py`, `/close` в `bot/handlers/commands.py` | Защищенный admin-flow закрытия bot instance перед миграцией между local Bot API серверами, с обязательным подтверждением. |
@@ -126,9 +127,8 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
 покрытия их лучше добавлять не одним большим слоем, а по функциональным
 направлениям:
 
-1. Lifecycle и диагностика: `deleteWebhook`,
-   явная настройка `allowed_updates`, диагностика конфликтов между
-   webhook и long polling.
+1. Lifecycle и диагностика: явная настройка `allowed_updates`,
+   диагностика конфликтов между webhook и long polling.
 2. Профиль и команды бота: `setMyCommands`, `deleteMyCommands`,
    `getMyCommands`, `setMyName`, `getMyName`, `setMyDescription`,
    `getMyDescription`, `setMyShortDescription`, `getMyShortDescription`,
@@ -196,6 +196,8 @@ issue-карточек в
   запросов;
 - `/webhook` показывает диагностику Telegram webhook для разрешенных
   admin/ops чатов;
+- `/deletewebhook [drop_pending_updates=true|false]` удаляет Telegram webhook
+  для разрешенных admin/ops чатов перед переходом на polling или local Bot API;
 - `/logout` выполняет защищенный выход бота из cloud Bot API сервера для
   admin-чатов и требует явного подтверждения `/logout confirm`;
 - `/close` выполняет защищенное закрытие bot instance на текущем Bot API
@@ -251,6 +253,43 @@ bot token и возвращает `WebhookInfo`; если бот использ�
 
 Глобальный `RateLimitMiddleware` применяется к `/webhook` так же, как к другим
 Telegram-командам.
+
+### Webhook lifecycle: deleteWebhook
+
+Команда `/deletewebhook` вызывает typed aiogram API `Bot.delete_webhook()` и
+передает единственный параметр Telegram Bot API `drop_pending_updates`.
+Параметр опционален; без аргументов команда использует безопасное значение
+`false`, то есть Telegram сохраняет pending updates. Чтобы явно удалить
+накопившиеся updates, администратор должен вызвать:
+
+```text
+/deletewebhook drop_pending_updates=true
+```
+
+По официальной документации Telegram `deleteWebhook` возвращает `True` при
+успехе и предназначен для удаления webhook integration перед возвратом к
+`getUpdates`. Метод требует только валидный bot token; отдельные chat admin
+права, новые update types или доступ к `free-claude-code` не нужны. В
+закрепленном `aiogram==3.3.0` есть typed wrapper
+`Bot.delete_webhook(drop_pending_updates: Optional[bool])`, поэтому raw Bot API
+helper не используется.
+
+Из-за destructive operational impact команда закрыта тем же allowlist'ом, что
+и `/webhook`:
+
+- если задан `TELEGRAM_ADMIN_CHAT_IDS`, `/deletewebhook` доступен только этим
+  chat id;
+- если `TELEGRAM_ADMIN_CHAT_IDS` пустой, используется fallback на
+  `TELEGRAM_ALLOWED_CHAT_IDS`;
+- если оба списка пустые, команда отключена и отвечает restricted message.
+
+Privacy impact связан с `drop_pending_updates=true`: Telegram удаляет
+накопленные входящие updates, и их нельзя восстановить. Security impact
+связан с управлением каналом доставки: после удаления webhook бот должен быть
+переведен на polling/local Bot API или webhook нужно зарегистрировать заново.
+Rollback: снова задать `TELEGRAM_WEBHOOK_URL` и перезапустить приложение либо
+вызвать `setWebhook`; rollback не восстанавливает updates, удаленные через
+`drop_pending_updates=true`.
 
 ### logOut
 
@@ -1315,17 +1354,18 @@ fallback'ится на plain text.
 Если список пустой, бот доступен во всех чатах.
 
 `TELEGRAM_ADMIN_CHAT_IDS` парсится тем же способом и ограничивает доступ к
-admin-командам. Для диагностики `/webhook` при пустом списке используется
-fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пустые, диагностика
-недоступна. Для деструктивных `/logout`, `/close`, для message-relay
-`/forward`, `/forwards`, `/copy`, `/copies` и для исходящего медиа `/photo`,
-`/audio`, `/livephoto`, `/document`, `/video`, `/videonote`, `/animation`,
-`/voice`, `/paidmedia`, `/location`, `/venue`, `/poll`, `/contact`, `/dice`,
-`/chataction`, `/messagedraft` и `/checklist` fallback не применяется: команды
-требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены. Автоматический
-`typing…`-индикатор (управляемый `TELEGRAM_CHAT_ACTION_ENABLED`) и draft-стриминг
-(управляемый `TELEGRAM_MESSAGE_DRAFT_ENABLED`) admin-прав не требуют и работают
-для обычных пользователей в уже разрешенных чатах.
+admin-командам `/webhook` и `/deletewebhook`. Для диагностики и lifecycle
+команд при пустом списке используется fallback на `TELEGRAM_ALLOWED_CHAT_IDS`;
+если оба списка пустые, эти команды недоступны. Для деструктивных `/logout`,
+`/close`, для message-relay `/forward`, `/forwards`, `/copy`, `/copies` и для
+исходящего медиа `/photo`, `/audio`, `/livephoto`, `/document`, `/video`,
+`/videonote`, `/animation`, `/voice`, `/paidmedia`, `/location`, `/venue`,
+`/poll`, `/contact`, `/dice`, `/chataction`, `/messagedraft` и `/checklist`
+fallback не применяется: команды требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`,
+иначе они отключены. Автоматический `typing…`-индикатор (управляемый
+`TELEGRAM_CHAT_ACTION_ENABLED`) и draft-стриминг (управляемый
+`TELEGRAM_MESSAGE_DRAFT_ENABLED`) admin-прав не требуют и работают для обычных
+пользователей в уже разрешенных чатах.
 
 ## Безопасность и ограничения доступа
 
@@ -1333,8 +1373,8 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 
 - webhook secret token при заданном `API_SECRET_TOKEN`;
 - optional whitelist чатов через `TELEGRAM_ALLOWED_CHAT_IDS`;
-- admin/ops allowlist для `/webhook` через `TELEGRAM_ADMIN_CHAT_IDS` с
-  fallback на общий whitelist;
+- admin/ops allowlist для `/webhook` и `/deletewebhook` через
+  `TELEGRAM_ADMIN_CHAT_IDS` с fallback на общий whitelist;
 - строгий admin allowlist без fallback и обязательное подтверждение
   `/logout confirm` для деструктивного выхода из cloud Bot API;
 - строгий admin allowlist без fallback и обязательное подтверждение
@@ -1371,8 +1411,9 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 - `API_SECRET_TOKEN` опционален на уровне настроек, хотя для webhook режима он
   практически обязателен;
 - rate limit хранится в памяти и сбрасывается при рестарте;
-- `/webhook` показывает webhook URL и последние ошибки доставки, поэтому его
-  нельзя оставлять доступным в публичных группах;
+- `/webhook` показывает webhook URL и последние ошибки доставки, а
+  `/deletewebhook` меняет состояние доставки updates, поэтому эти команды
+  нельзя оставлять доступными в публичных группах;
 - `/logout` деструктивен (выход из cloud Bot API на 10 минут), поэтому требует
   явного admin allowlist и подтверждения, и его нельзя открывать публично;
 - `/close` деструктивен (закрытие bot instance на текущем Bot API сервере),
@@ -1415,6 +1456,10 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 `fetch_webhook_info()` логирует `webhook_info_fetched` с агрегированными
 полями статуса без webhook URL и текста delivery error. При ошибке Telegram API
 логируется `webhook_info_fetch_failed` с типом исключения.
+
+`delete_webhook()` логирует `webhook_deleted` с флагом
+`drop_pending_updates` и boolean результатом без bot token или webhook URL. При
+ошибке Telegram API логируется `webhook_delete_failed` с типом исключения.
 
 `perform_log_out()` логирует `bot_logged_out` с результатом успешного вызова;
 при ошибке Telegram API логируется `bot_log_out_failed` с типом исключения.
@@ -1499,6 +1544,9 @@ logging. Фактическая детализация логов зависит
 - `ClaudeProxyClient.list_models()`, non-streaming и streaming отправку;
 - форматирование `WebhookInfo`, вызов typed aiogram `get_webhook_info()`,
   обработку Telegram API ошибок и allowlist для `/webhook`;
+- вызов typed aiogram `delete_webhook()`, `drop_pending_updates` parsing,
+  обработку Telegram API ошибок, validation path и allowlist для
+  `/deletewebhook`;
 - вызов typed aiogram `log_out()`, обработку Telegram API ошибок, admin
   allowlist и требование подтверждения для `/logout`;
 - вызов typed aiogram `close()`, обработку Telegram API ошибок (включая
@@ -1599,6 +1647,6 @@ python -m pytest -v
    если proxy поддерживает long-lived SSE responses.
 8. Добавить ограничения и диагностику для входных файлов и optional voice
    dependencies.
-9. Добавить следующий слой Telegram API: `deleteWebhook`, `sendChatAction`,
-   `setMyCommands`, `answerCallbackQuery`, полноценный
-   `answerInlineQuery`, `answerGuestQuery` и rich outbound media методы.
+9. Добавить следующий слой Telegram API: `sendChatAction`, `setMyCommands`,
+   `answerCallbackQuery`, полноценный `answerInlineQuery`, `answerGuestQuery`
+   и rich outbound media методы.

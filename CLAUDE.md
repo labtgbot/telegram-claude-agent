@@ -99,7 +99,7 @@ No formal linting setup yet. Consider adding Ruff or Black for consistency.
 | `TELEGRAM_WEBHOOK_URL`                 | Public HTTPS URL for webhook mode               | No       |
 | `TELEGRAM_GUEST_MODE_ENABLED`          | Enable guest mode in groups (true/false)       | No       |
 | `TELEGRAM_ALLOWED_CHAT_IDS`            | Comma-separated whitelist of chat IDs           | No       |
-| `TELEGRAM_ADMIN_CHAT_IDS`              | Comma-separated admin chat IDs for /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /animation, /voice & /paidmedia | No |
+| `TELEGRAM_ADMIN_CHAT_IDS`              | Comma-separated admin chat IDs for /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /animation, /voice & /paidmedia | No |
 | `API_SECRET_TOKEN`                     | Webhook verification secret                     | Yes      |
 | `RATE_LIMIT_REQUESTS_PER_MINUTE`       | Rate limit (default 60)                         | No       |
 | `LOG_LEVEL`                            | Logging level (default INFO)                    | No       |
@@ -145,6 +145,7 @@ When working on this project, you may want to:
 
 - **Test handlers**: Mock aiogram and httpx objects. See existing unit tests for patterns.
 - **Add features**: Follow existing module structure. Place new handlers in `bot/handlers/`, services in `bot/services/`.
+- **Webhook operations**: `/webhook` and `/deletewebhook` are restricted by `TELEGRAM_ADMIN_CHAT_IDS`, with fallback to `TELEGRAM_ALLOWED_CHAT_IDS`.
 - **Modify API calls**: The `ClaudeProxyClient` in `bot/services/claude_proxy.py` is the sole interface to free-claude-code.
 - **Configuration changes**: Update `bot/config.py` (Settings class) if adding new environment variables.
 
