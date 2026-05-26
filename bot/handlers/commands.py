@@ -90,6 +90,10 @@ from bot.services.unban_chat_member import (
     format_unban_result,
     perform_unban_chat_member,
 )
+from bot.services.unban_chat_sender_chat import (
+    format_unban_sender_chat_result,
+    perform_unban_chat_sender_chat,
+)
 from bot.utils.storage import storage
 from bot.services.claude_proxy import ClaudeProxyClient
 
@@ -527,6 +531,20 @@ BAN_CHAT_SENDER_CHAT_USAGE = (
     "sender chat."
 )
 
+UNBAN_CHAT_SENDER_CHAT_USAGE = (
+    "<b>unbanchatsenderchat usage</b>\n"
+    "Unbans a channel chat so it can send messages as itself into the "
+    "specified supergroup or channel again. The bot must be an administrator "
+    "with the <code>can_restrict_members</code> right in the target chat. "
+    "This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/unbanchatsenderchat &lt;chat_id&gt; "
+    "&lt;sender_chat_id&gt;</code>\n"
+    "The <code>chat_id</code> is the target chat. The "
+    "<code>sender_chat_id</code> is the channel chat to unban from posting as "
+    "a sender chat."
+)
+
 UNBAN_CHAT_MEMBER_USAGE = (
     "<b>unbanchatmember usage</b>\n"
     "Unbans a user from the specified group, supergroup or channel. The bot "
@@ -687,6 +705,7 @@ async def cmd_help(message: Message):
         "/banchatmember - Ban a user from a chat (admin only)\n"
         "/banchatsenderchat - Ban a sender chat from a chat (admin only)\n"
         "/unbanchatmember - Unban a user from a chat (admin only)\n"
+        "/unbanchatsenderchat - Unban a sender chat from a chat (admin only)\n"
         "/restrictchatmember - Restrict a user in a chat (admin only)\n"
         "/setchatpermissions - Set default chat permissions (admin only)\n"
         "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
@@ -1712,6 +1731,35 @@ async def cmd_unban_chat_member(message: Message):
 
     await message.answer(
         format_unban_result(chat_id, user_id, only_if_banned),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("unbanchatsenderchat"))
+async def cmd_unban_chat_sender_chat(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_unban_chat_sender_chat_args(message.text or "")
+    if parsed is None:
+        await message.answer(UNBAN_CHAT_SENDER_CHAT_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, sender_chat_id = parsed
+
+    try:
+        await perform_unban_chat_sender_chat(
+            message.bot,
+            chat_id=chat_id,
+            sender_chat_id=sender_chat_id,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not unban the sender chat: {exc}")
+        return
+
+    await message.answer(
+        format_unban_sender_chat_result(chat_id, sender_chat_id),
         parse_mode="HTML",
     )
 
@@ -2866,6 +2914,25 @@ def _parse_ban_chat_member_args(text: str):
 
 def _parse_ban_chat_sender_chat_args(text: str):
     """Parse ``/banchatsenderchat`` args into ``(chat_id, sender_chat_id)``."""
+    parts = (text or "").split()
+    if len(parts) < 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    try:
+        sender_chat_id = int(parts[2])
+    except ValueError:
+        return None
+
+    return chat_id, sender_chat_id
+
+
+def _parse_unban_chat_sender_chat_args(text: str):
+    """Parse ``/unbanchatsenderchat`` args into ``(chat_id, sender_chat_id)``."""
     parts = (text or "").split()
     if len(parts) < 3:
         return None
