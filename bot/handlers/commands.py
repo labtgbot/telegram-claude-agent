@@ -146,6 +146,12 @@ from bot.services.edit_forum_topic import (
     format_edit_forum_topic_result,
     perform_edit_forum_topic,
 )
+from bot.services.edit_general_forum_topic import (
+    EditGeneralForumTopicError,
+    GENERAL_FORUM_TOPIC_NAME_LIMIT,
+    format_edit_general_forum_topic_result,
+    perform_edit_general_forum_topic,
+)
 from bot.services.close_forum_topic import (
     CloseForumTopicError,
     format_close_forum_topic_result,
@@ -956,6 +962,19 @@ EDIT_FORUM_TOPIC_USAGE = (
     f"{FORUM_TOPIC_NAME_LIMIT} characters."
 )
 
+EDIT_GENERAL_FORUM_TOPIC_USAGE = (
+    "<b>editgeneralforumtopic usage</b>\n"
+    "Edits the General forum topic in a supergroup through "
+    "<code>editGeneralForumTopic</code>. The bot must be an administrator "
+    "with the right to manage topics in the target supergroup. This command "
+    "is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/editgeneralforumtopic &lt;chat_id&gt; "
+    "&lt;name&gt;</code>\n"
+    f"The name is required and limited to "
+    f"{GENERAL_FORUM_TOPIC_NAME_LIMIT} characters."
+)
+
 CLOSE_FORUM_TOPIC_USAGE = (
     "<b>closeforumtopic usage</b>\n"
     "Closes a forum topic in a supergroup through "
@@ -1208,8 +1227,10 @@ async def cmd_help(message: Message):
         "/forumtopiciconstickers - Fetch available forum topic icon stickers (admin only)\n"
         "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
+        "/editgeneralforumtopic - Edit the General forum topic in a supergroup (admin only)\n"
         "/closeforumtopic - Close a forum topic in a supergroup (admin only)\n"
         "/reopenforumtopic - Reopen a closed forum topic in a supergroup (admin only)\n"
+        "/deleteforumtopic - Delete a forum topic in a supergroup (admin only)\n"
         "/unpinallforumtopicmessages - Unpin all pinned messages in a forum topic (admin only)\n"
         "/banchatmember - Ban a user from a chat (admin only)\n"
         "/banchatsenderchat - Ban a sender chat from a chat (admin only)\n"
@@ -2845,6 +2866,38 @@ async def cmd_edit_forum_topic(message: Message):
             message_thread_id=message_thread_id,
             name=name,
             icon_custom_emoji_id=icon_custom_emoji_id,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("editgeneralforumtopic"))
+async def cmd_edit_general_forum_topic(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_edit_general_forum_topic_args(message.text or "")
+    if parsed is None:
+        await message.answer(EDIT_GENERAL_FORUM_TOPIC_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, name = parsed
+
+    try:
+        await perform_edit_general_forum_topic(
+            message.bot,
+            chat_id=chat_id,
+            name=name,
+        )
+    except EditGeneralForumTopicError as exc:
+        await message.answer(f"Could not edit General forum topic: {exc}")
+        return
+
+    await message.answer(
+        format_edit_general_forum_topic_result(
+            chat_id=chat_id,
+            name=name,
         ),
         parse_mode="HTML",
     )
@@ -4742,6 +4795,24 @@ def _parse_edit_forum_topic_args(text: str):
         return None
 
     return chat_id, message_thread_id, name, icon_custom_emoji_id
+
+
+def _parse_edit_general_forum_topic_args(text: str):
+    """Parse ``/editgeneralforumtopic`` args into editGeneralForumTopic parameters."""
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) != 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    name = parts[2].strip()
+    if not name or len(name) > GENERAL_FORUM_TOPIC_NAME_LIMIT:
+        return None
+
+    return chat_id, name
 
 
 def _parse_create_forum_topic_args(text: str):

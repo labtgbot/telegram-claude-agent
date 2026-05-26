@@ -195,6 +195,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/forumtopiciconstickers` – Fetch available forum topic icon stickers and their `custom_emoji_id` values (admin only).
 - `/createforumtopic <chat_id> <name> [icon_color=<rgb_int>] [icon_custom_emoji_id=<id>]` – Create a forum topic in a supergroup where the bot can manage topics (admin only).
 - `/editforumtopic <chat_id> <message_thread_id> [name=<text>] [icon_custom_emoji_id=<id>]` – Edit a forum topic in a supergroup where the bot can manage topics (admin only).
+- `/editgeneralforumtopic <chat_id> <name>` – Edit the General forum topic in a supergroup where the bot can manage topics (admin only).
 - `/closeforumtopic <chat_id> <message_thread_id>` – Close a forum topic in a supergroup where the bot can manage topics (admin only).
 - `/reopenforumtopic <chat_id> <message_thread_id>` – Reopen a closed forum topic in a supergroup where the bot can manage topics (admin only).
 - `/deleteforumtopic <chat_id> <message_thread_id>` – Delete a forum topic in a supergroup where the bot can manage topics (admin only).
@@ -1462,6 +1463,32 @@ This command does not call `free-claude-code`, mutates only the addressed forum
 topic and is guarded by `TELEGRAM_ADMIN_CHAT_IDS` with no fallback to
 `TELEGRAM_ALLOWED_CHAT_IDS`. Rollback is operational: run `/editforumtopic`
 again with the previous topic name or icon custom emoji id.
+
+### Edit General forum topic
+
+The `/editgeneralforumtopic` admin command calls Telegram Bot API
+`editGeneralForumTopic` through an isolated raw Bot API helper because the
+project pins `aiogram==3.3.0`. It is intended for trusted operations chats when
+a moderator needs to rename the General topic in a forum-enabled supergroup,
+separate from the normal Claude chat flow and from non-General topic
+management.
+
+Usage:
+
+```text
+/editgeneralforumtopic <chat_id> <name>
+```
+
+The `name` parameter is required and limited to 128 characters. The bot must be
+an administrator in the target supergroup with the right to manage topics. No
+special update subscription is required because the scenario starts from a
+normal admin command message. Telegram transport, rate-limit or API errors are
+reported back to the admin chat.
+
+This command does not call `free-claude-code`, mutates only the General topic
+name in the addressed supergroup, and is guarded by `TELEGRAM_ADMIN_CHAT_IDS`
+with no fallback to `TELEGRAM_ALLOWED_CHAT_IDS`. Rollback is operational: run
+`/editgeneralforumtopic` again with the previous General topic name.
 
 ### Close forum topic
 
