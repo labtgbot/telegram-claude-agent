@@ -25,6 +25,11 @@ from bot.services.delete_chat_photo import (
     format_delete_chat_photo_result,
     perform_delete_chat_photo,
 )
+from bot.services.set_chat_description import (
+    SET_CHAT_DESCRIPTION_LIMIT,
+    format_set_chat_description_result,
+    perform_set_chat_description,
+)
 from bot.services.set_chat_photo import (
     format_set_chat_photo_result,
     perform_set_chat_photo,
@@ -662,6 +667,17 @@ SET_CHAT_PHOTO_USAGE = (
     "use Telegram chat administration."
 )
 
+SET_CHAT_DESCRIPTION_USAGE = (
+    "<b>setchatdescription usage</b>\n"
+    "Sets the description for the specified group, supergroup or channel. The "
+    "bot must be an administrator with the right to change chat information in "
+    "the target chat. This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setchatdescription &lt;chat_id&gt; [description]</code>\n"
+    f"The description may be empty to clear it and is limited to "
+    f"{SET_CHAT_DESCRIPTION_LIMIT} characters."
+)
+
 PROMOTE_CHAT_MEMBER_USAGE = (
     "<b>promotechatmember usage</b>\n"
     "Promotes or demotes a user in the specified group, supergroup or channel. "
@@ -880,6 +896,7 @@ async def cmd_help(message: Message):
         "/restrictchatmember - Restrict a user in a chat (admin only)\n"
         "/setchatpermissions - Set default chat permissions (admin only)\n"
         "/setchatphoto - Set a group or supergroup photo (admin only)\n"
+        "/setchatdescription - Set or clear a chat description (admin only)\n"
         "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
         "/approvechatjoinrequest - Approve a pending chat join request (admin only)\n"
         "/declinechatjoinrequest - Decline a pending chat join request (admin only)\n"
@@ -2071,6 +2088,38 @@ async def cmd_set_chat_photo(message: Message):
 
     await message.answer(
         format_set_chat_photo_result(chat_id=chat_id, photo_path=photo_path),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setchatdescription"))
+async def cmd_set_chat_description(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_chat_description_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_CHAT_DESCRIPTION_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, description = parsed
+
+    try:
+        await perform_set_chat_description(
+            message.bot,
+            chat_id=chat_id,
+            description=description,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not set the chat description: {exc}")
+        return
+
+    await message.answer(
+        format_set_chat_description_result(
+            chat_id=chat_id,
+            description=description,
+        ),
         parse_mode="HTML",
     )
 
@@ -3748,6 +3797,24 @@ def _parse_set_chat_photo_args(text: str):
         return None
 
     return chat_id, photo_path
+
+
+def _parse_set_chat_description_args(text: str):
+    """Parse ``/setchatdescription`` args into ``chat_id`` and ``description``."""
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) < 2:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    description = parts[2].strip() if len(parts) == 3 else ""
+    if len(description) > SET_CHAT_DESCRIPTION_LIMIT:
+        return None
+
+    return chat_id, description
 
 
 def _parse_approve_chat_join_request_args(text: str):
