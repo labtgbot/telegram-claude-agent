@@ -134,6 +134,12 @@ from bot.services.get_forum_topic_icon_stickers import (
     format_forum_topic_icon_stickers,
     perform_get_forum_topic_icon_stickers,
 )
+from bot.services.edit_forum_topic import (
+    EditForumTopicError,
+    FORUM_TOPIC_NAME_LIMIT,
+    format_edit_forum_topic_result,
+    perform_edit_forum_topic,
+)
 from bot.services.get_user_personal_chat_messages import (
     GET_USER_PERSONAL_CHAT_MESSAGES_MAX_LIMIT,
     GET_USER_PERSONAL_CHAT_MESSAGES_MIN_LIMIT,
@@ -898,6 +904,19 @@ FORUM_TOPIC_ICON_STICKERS_USAGE = (
     "Usage: <code>/forumtopiciconstickers</code>"
 )
 
+EDIT_FORUM_TOPIC_USAGE = (
+    "<b>editforumtopic usage</b>\n"
+    "Edits a forum topic in a supergroup through "
+    "<code>editForumTopic</code>. The bot must be an administrator with the "
+    "right to manage topics in the target supergroup. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/editforumtopic &lt;chat_id&gt; &lt;message_thread_id&gt; "
+    "[name=&lt;text&gt;] [icon_custom_emoji_id=&lt;id&gt;]</code>\n"
+    f"Provide at least one editable field. The name is limited to "
+    f"{FORUM_TOPIC_NAME_LIMIT} characters."
+)
+
 GET_USER_PERSONAL_CHAT_MESSAGES_USAGE = (
     "<b>userpersonalchatmessages usage</b>\n"
     "Fetches recent messages from the personal chat between a user and this "
@@ -1100,6 +1119,7 @@ async def cmd_help(message: Message):
         "/getchatmembercount - Fetch chat member count from Telegram (admin only)\n"
         "/getchatadministrators - Fetch chat administrators from Telegram (admin only)\n"
         "/forumtopiciconstickers - Fetch available forum topic icon stickers (admin only)\n"
+        "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
         "/banchatmember - Ban a user from a chat (admin only)\n"
         "/banchatsenderchat - Ban a sender chat from a chat (admin only)\n"
         "/unbanchatmember - Unban a user from a chat (admin only)\n"
@@ -2699,6 +2719,42 @@ async def cmd_forum_topic_icon_stickers(message: Message):
 
     await message.answer(
         format_forum_topic_icon_stickers(stickers),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("editforumtopic"))
+async def cmd_edit_forum_topic(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_edit_forum_topic_args(message.text or "")
+    if parsed is None:
+        await message.answer(EDIT_FORUM_TOPIC_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, message_thread_id, name, icon_custom_emoji_id = parsed
+
+    try:
+        await perform_edit_forum_topic(
+            message.bot,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            name=name,
+            icon_custom_emoji_id=icon_custom_emoji_id,
+        )
+    except EditForumTopicError as exc:
+        await message.answer(f"Could not edit forum topic: {exc}")
+        return
+
+    await message.answer(
+        format_edit_forum_topic_result(
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            name=name,
+            icon_custom_emoji_id=icon_custom_emoji_id,
+        ),
         parse_mode="HTML",
     )
 
@@ -4394,6 +4450,42 @@ def _parse_get_chat_administrators_args(text: str):
         return int(parts[1])
     except ValueError:
         return None
+
+
+def _parse_edit_forum_topic_args(text: str):
+    """Parse ``/editforumtopic`` args into editForumTopic parameters."""
+    parts = (text or "").split()
+    if len(parts) < 4:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+        message_thread_id = int(parts[2])
+    except ValueError:
+        return None
+
+    if message_thread_id <= 0:
+        return None
+
+    name = None
+    icon_custom_emoji_id = None
+    for part in parts[3:]:
+        key, sep, value = part.partition("=")
+        if not sep or not value:
+            return None
+        if key == "name":
+            name = value
+        elif key == "icon_custom_emoji_id":
+            icon_custom_emoji_id = value
+        else:
+            return None
+
+    if name is None and icon_custom_emoji_id is None:
+        return None
+    if name is not None and len(name) > FORUM_TOPIC_NAME_LIMIT:
+        return None
+
+    return chat_id, message_thread_id, name, icon_custom_emoji_id
 
 
 def _parse_get_user_personal_chat_messages_args(text: str):
