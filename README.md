@@ -175,6 +175,9 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/setchatpermissions <chat_id> <closed|text|media|open> [independent=true|false]` – Set default group/supergroup member permissions where the bot has `can_restrict_members` (admin only).
 - `/setchatphoto <chat_id> <photo_path>` – Set a new group/supergroup photo from a local file where the bot can change chat information (admin only).
 - `/deletechatphoto <chat_id>` – Delete the current group/supergroup photo where the bot can change chat information (admin only).
+- `/setchatdescription <chat_id> [description]` – Set or clear a group,
+  supergroup, or channel description where the bot can change chat information
+  (admin only).
 - `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` – Promote or demote a group, supergroup, or channel member where the bot has `can_promote_members` (admin only).
 - `/approvechatjoinrequest <chat_id> <user_id>` – Approve a pending join request where the bot has `can_invite_users` (admin only).
 - `/declinechatjoinrequest <chat_id> <user_id>` – Decline a pending join request where the bot has `can_invite_users` (admin only).
