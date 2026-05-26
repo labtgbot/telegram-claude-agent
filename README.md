@@ -66,6 +66,7 @@ TELEGRAM_GUEST_MODE_ENABLED=true
 TELEGRAM_ALLOWED_CHAT_IDS=  # optional whitelist
 TELEGRAM_ADMIN_CHAT_IDS=  # optional diagnostics command allowlist
 TELEGRAM_CHAT_ACTION_ENABLED=true  # show "typing…" while a request is handled
+TELEGRAM_MESSAGE_DRAFT_ENABLED=false  # stream replies via ephemeral drafts (private chats only)
 
 API_SECRET_TOKEN=random_secret_for_webhook_verification
 RATE_LIMIT_REQUESTS_PER_MINUTE=60
@@ -85,6 +86,7 @@ LOG_LEVEL=INFO
 - `TELEGRAM_ALLOWED_CHAT_IDS` – optional comma-separated list of chat IDs to restrict operation.
 - `TELEGRAM_ADMIN_CHAT_IDS` – optional comma-separated list of chat IDs allowed to run admin diagnostics commands. If empty, diagnostics fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if both are empty, diagnostics commands are disabled.
 - `TELEGRAM_CHAT_ACTION_ENABLED` – whether to show a `typing…` chat action while Claude/proxy handles a request (`true`/`false`, default `true`). Set to `false` to keep the chat silent during processing.
+- `TELEGRAM_MESSAGE_DRAFT_ENABLED` – whether to stream replies through ephemeral `sendMessageDraft` previews instead of repeatedly editing a message while Claude generates the answer (`true`/`false`, default `false`). Telegram limits the method to private chats, so other chats keep edit-based streaming.
 - `API_SECRET_TOKEN` – secret token for verifying webhook requests (highly recommended for webhook mode).
 - `RATE_LIMIT_REQUESTS_PER_MINUTE` – maximum requests per user per minute.
 - `LOG_LEVEL` – logging level (default `INFO`).
@@ -161,6 +163,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/contact` – Send a phone contact (a name with a phone number that can be saved to the address book) into this chat (admin only).
 - `/dice` – Send an animated dice (an emoji that shows a random value) into this chat (admin only).
 - `/chataction` – Show a chat action (a transient status such as `typing…`) in this chat (admin only).
+- `/messagedraft` – Stream an ephemeral message draft (a ~30-second preview shown above the input field) into this private chat (admin only).
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
 - `/mediagroup` – Send 2-10 media items into this chat as a single album (media group) via URLs or file_ids (admin only).
 - `/clear` – Clear your conversation history.
@@ -784,6 +787,50 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Stream an ephemeral message draft
+
+The bot can preview a streaming reply through Telegram Bot API
+`sendMessageDraft` (introduced in Bot API 10.0). Because the pinned
+`aiogram==3.3.0` predates this method and ships no typed wrapper, the request
+goes through an **isolated raw Bot API helper**
+(`bot/services/send_message_draft.py`) that POSTs over `httpx` instead of using a
+typed aiogram method. A message draft is the **ephemeral text shown above the
+input field**: Telegram displays it for about 30 seconds and animates it in place
+when the bot sends a new draft with the same non-zero `draft_id`, so it is an
+alternative to repeatedly calling `editMessageText` while Claude generates the
+answer.
+
+When `TELEGRAM_MESSAGE_DRAFT_ENABLED` is `true` (default `false`) and streaming
+is enabled, the bot uses drafts for the live preview **in private chats only**
+(Telegram limits the method to them): it shows an empty `Thinking…` placeholder,
+refreshes the draft as new text arrives (throttled to avoid flooding the
+endpoint), and then persists the finished answer as a normal message. Group and
+channel chats keep the edit-based streaming. A failed draft preview never breaks
+the reply — the bot logs it and falls back to sending the final message.
+
+The restricted `/messagedraft` command lets an operator trigger a draft on
+demand, mostly for testing:
+
+Usage: `/messagedraft [text]`
+
+- the draft is always shown in the chat where the command was issued, which must
+  be a private chat (Telegram limits the method to them);
+- without an argument an empty `Thinking…` placeholder draft is shown;
+- the text is limited to 4096 characters (the command validates this bound
+  before calling Telegram);
+- the draft text is operator-provided content, so only its length and structural
+  metadata are logged, never the text itself;
+- an invalid request (for example a non-private chat) returns a Telegram error
+  that the command reports back instead of sending.
+
+Because the command makes the bot post a draft, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Send a checklist
 
 The restricted `/checklist` command calls Telegram Bot API `sendChecklist`
@@ -904,7 +951,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /checklist, /mediagroup, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /checklist, /mediagroup, /clear
 │   │   ├── chat.py             # Text and media message handler (shows typing… while processing)
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -932,6 +979,7 @@ telegram-claude-agent/
 │   │   ├── send_dice.py        # Telegram sendDice outbound helper
 │   │   ├── send_chat_action.py # Telegram sendChatAction outbound helper (typing…)
 │   │   ├── send_checklist.py   # Telegram sendChecklist raw Bot API helper
+│   │   ├── send_message_draft.py # Telegram sendMessageDraft raw Bot API helper
 │   │   └── send_media_group.py # Telegram sendMediaGroup outbound helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage
@@ -985,6 +1033,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/contact` command makes the bot post an arbitrary phone contact into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the phone number and the contact's name are kept out of the structured logs.
 - The `/dice` command makes the bot post an animated dice into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/chataction` command makes the bot show a chat action in the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the automatic `typing…` indicator shown while processing a request is independent of this command and is controlled by `TELEGRAM_CHAT_ACTION_ENABLED`.
+- The `/messagedraft` command makes the bot post an ephemeral message draft into the (private) chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the draft text is kept out of the structured logs. The automatic draft-based streaming preview is independent of this command and is controlled by `TELEGRAM_MESSAGE_DRAFT_ENABLED`.
 - The `/checklist` command makes the bot post an arbitrary checklist into the chat on behalf of a connected business account, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the title and task texts are kept out of the structured logs.
 - The `/mediagroup` command makes the bot post an arbitrary album of 2-10 media items into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - Rate limiting helps prevent abuse.

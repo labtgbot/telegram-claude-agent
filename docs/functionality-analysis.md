@@ -58,8 +58,9 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
 `sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
 `sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup`, `sendVenue`,
-`sendPoll`, `sendContact`, `sendDice`, `sendChecklist` и `sendChatAction`
-остается 145 пока не интегрированных методов.
+`sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `sendChatAction` и
+`sendMessageDraft`
+остается 144 пока не интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -95,6 +96,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendDice` | `bot/services/send_dice.py`, `/dice` в `bot/handlers/commands.py` | Admin-flow отправки анимированной кости (dice) — анимированного эмодзи со случайным значением, которое выбирает Telegram — в текущий чат, через typed aiogram API; опциональный emoji ограничен набором 🎲/🎯/🏀/⚽/🎳/🎰 и валидируется до обращения к Telegram, без аргумента отправляется 🎲. |
 | `sendChecklist` | `bot/services/send_checklist.py`, `/checklist` в `bot/handlers/commands.py` | Admin-flow отправки чеклиста (checklist) — озаглавленного списка из 1-30 задач — в текущий чат от имени подключенного business account, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 9.1; требует `business_connection_id`, длины title (до 255) и задач (до 100) и их количество валидируются до обращения к Telegram, а title и тексты задач не пишутся в structured logs. |
 | `sendChatAction` | `bot/services/send_chat_action.py`, `keep_chat_action` в `bot/handlers/chat.py` и `/chataction` в `bot/handlers/commands.py` | Показ chat action (transient-статуса вроде `typing…`) в чате через typed aiogram API. Автоматически показывается и обновляется, пока Claude/proxy обрабатывает входящее сообщение (управляется `TELEGRAM_CHAT_ACTION_ENABLED`); admin-команда `/chataction [action]` запускает action вручную, где action ограничен набором поддерживаемых значений и валидируется до обращения к Telegram. |
+| `sendMessageDraft` | `bot/services/send_message_draft.py`, `handle_streaming_with_draft` в `bot/handlers/chat.py` и `/messagedraft` в `bot/handlers/commands.py` | Стриминг частичного ответа через эфемерный draft preview (временный ~30-секундный предпросмотр) в private chat как альтернатива частым `editMessageText`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; включается флагом `TELEGRAM_MESSAGE_DRAFT_ENABLED` и работает только в private chats, финальный ответ затем сохраняется обычным `sendMessage`. Admin-команда `/messagedraft [text]` запускает draft вручную; `draft_id` обязан быть ненулевым, а длина текста (до 4096) валидируется до обращения к Telegram, и текст draft не пишется в structured logs. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -135,7 +137,8 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `getMyDefaultAdministratorRights`.
 3. Более богатые ответы пользователю: `sendChatAction`,
    `sendChecklist`,
-   `sendMessageDraft`, `setMessageReaction`.
+   `sendMessageDraft`, `setMessageReaction` (из них `sendChatAction`,
+   `sendChecklist` и `sendMessageDraft` уже интегрированы).
 4. Управление сообщениями: `editMessageCaption`, `editMessageMedia`,
    `editMessageLiveLocation`, `stopMessageLiveLocation`,
    `editMessageChecklist`, `editMessageReplyMarkup`, `stopPoll`,
@@ -1095,6 +1098,63 @@ topic/business connection.
 пользователей в рамках уже разрешенных чатов. Глобальный `RateLimitMiddleware`
 применяется к `/chataction` так же, как к другим командам.
 
+### sendMessageDraft
+
+`sendMessageDraft` (Bot API 10.0) стримит частичное сообщение пользователю, пока
+ответ еще генерируется. По официальной документации метод требует `chat_id`
+**private chat** и ненулевой `draft_id`, принимает опциональные `text` (0-4096
+символов после парсинга entities; пустой текст показывает плейсхолдер
+«Thinking…»), `message_thread_id`, `parse_mode`/`entities` и возвращает `True`.
+Draft — **эфемерный**: это временный ~30-секундный предпросмотр, поэтому после
+завершения генерации финальный текст все равно нужно сохранить обычным
+`sendMessage`. Изменения draft с одним и тем же `draft_id` анимируются, поэтому в
+рамках одного ответа переиспользуется единый id. С 1 марта 2026 метод доступен
+всем ботам, а с 8 мая 2026 разрешен пустой `text`.
+
+Поскольку pinned `aiogram==3.3.0` (Bot API 7.0) не имеет typed wrapper для этого
+метода Bot API 10.0, реализация — изолированный raw Bot API helper в
+`bot/services/send_message_draft.py`: он POST-ит JSON на endpoint
+`sendMessageDraft` через `httpx`, не завися от typed aiogram метода. URL берется
+из сессии бота, поэтому local Bot API server тоже поддерживается. Нулевой
+`draft_id` и слишком длинный `text` отклоняются исключением
+`SendMessageDraftError` до обращения к Telegram; transport-ошибки и ответы
+Telegram `ok: false` поднимаются тем же исключением. Текст draft несет
+пользовательский/Claude-контент, поэтому в structured logs пишутся только
+структурные метаданные (чат, `draft_id`, длина текста, признак плейсхолдера и
+forum topic), но не сам текст.
+
+Выбран сценарий из scope issue: использовать эфемерный draft preview как
+альтернативу частым `editMessageText` во время генерации ответа. В
+`bot/handlers/chat.py` функция `handle_streaming_with_draft` сразу показывает
+плейсхолдер «Thinking…», затем по мере генерации обновляет draft частичным
+текстом (обновления throttled до `DRAFT_UPDATE_INTERVAL_SECONDS`, чтобы не
+заваливать эндпоинт мелкими дельтами), а по завершении сохраняет финальный ответ
+обычными `sendMessage`. Ошибки показа эфемерного preview логируются и
+проглатываются, чтобы сбой предпросмотра не ломал сам ответ. Draft-стриминг
+включается флагом `TELEGRAM_MESSAGE_DRAFT_ENABLED` (по умолчанию `false`) и
+применяется только в private chats (метод работает только в них); остальные чаты
+сохраняют прежний edit-based streaming, а при `false` поведение не меняется.
+
+Дополнительно admin-команда `/messagedraft [text]` запускает draft вручную (в
+основном для проверки): без текста показывается плейсхолдер «Thinking…», а
+опциональный текст ограничен 4096 символами с валидацией до обращения к Telegram.
+`draft_id` берется из `message_id` (всегда положительный, значит ненулевой).
+
+`/messagedraft` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- слишком длинный текст отклоняется с сообщением об ошибке и не обращается к
+  Telegram;
+- ошибки Telegram (например, чат не private или отсутствие прав) возвращаются
+  пользователю.
+
+Автоматический draft-стриминг не требует admin-прав и работает для обычных
+пользователей в private chats в рамках уже разрешенных чатов. Глобальный
+`RateLimitMiddleware` применяется к `/messagedraft` так же, как к другим
+командам.
+
 ### sendMediaGroup
 
 Команда `/mediagroup` вызывает typed aiogram API `Bot.send_media_group()` для
@@ -1261,10 +1321,11 @@ fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если оба списка пуст
 `/forward`, `/forwards`, `/copy`, `/copies` и для исходящего медиа `/photo`,
 `/audio`, `/livephoto`, `/document`, `/video`, `/videonote`, `/animation`,
 `/voice`, `/paidmedia`, `/location`, `/venue`, `/poll`, `/contact`, `/dice`,
-`/chataction` и `/checklist` fallback не применяется: команды требуют непустой
-`TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены. Автоматический `typing…`-индикатор
-(управляемый `TELEGRAM_CHAT_ACTION_ENABLED`) admin-прав не требует и работает для
-обычных пользователей в уже разрешенных чатах.
+`/chataction`, `/messagedraft` и `/checklist` fallback не применяется: команды
+требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены. Автоматический
+`typing…`-индикатор (управляемый `TELEGRAM_CHAT_ACTION_ENABLED`) и draft-стриминг
+(управляемый `TELEGRAM_MESSAGE_DRAFT_ENABLED`) admin-прав не требуют и работают
+для обычных пользователей в уже разрешенных чатах.
 
 ## Безопасность и ограничения доступа
 

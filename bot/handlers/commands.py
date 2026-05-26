@@ -29,6 +29,11 @@ from bot.services.send_document import perform_send_document
 from bot.services.send_live_photo import SendLivePhotoError, perform_send_live_photo
 from bot.services.send_location import perform_send_location
 from bot.services.send_media_group import perform_send_media_group
+from bot.services.send_message_draft import (
+    MESSAGE_DRAFT_TEXT_LIMIT,
+    SendMessageDraftError,
+    perform_send_message_draft,
+)
 from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
 from bot.services.send_photo import perform_send_photo
 from bot.services.send_poll import perform_send_poll
@@ -336,6 +341,17 @@ CHAT_ACTION_USAGE = (
     "action must be one of: " + ", ".join(CHAT_ACTIONS) + "."
 )
 
+MESSAGE_DRAFT_USAGE = (
+    "<b>messagedraft usage</b>\n"
+    "Streams an ephemeral message draft into this private chat via the Telegram "
+    "<code>sendMessageDraft</code> method. The draft is a temporary ~30-second "
+    "preview and is not a persisted message; this method only works in private "
+    "chats.\n"
+    "Usage: <code>/messagedraft [text]</code>\n"
+    "Without text a \"Thinking…\" placeholder is shown. The optional text is "
+    f"limited to {MESSAGE_DRAFT_TEXT_LIMIT} characters."
+)
+
 CHECKLIST_TASK_SEPARATOR = "|"
 
 CHECKLIST_TITLE_MAX_LENGTH = 255
@@ -427,6 +443,7 @@ async def cmd_help(message: Message):
         "/contact - Send a phone contact (name and phone number) into this chat (admin only)\n"
         "/dice - Send an animated dice (random value) into this chat (admin only)\n"
         "/chataction - Show a chat action (e.g. typing…) in this chat (admin only)\n"
+        "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/clear - Clear conversation history\n"
@@ -1178,6 +1195,37 @@ async def cmd_chat_action(message: Message):
 
     await message.answer(f"Showed the {action} chat action.")
 
+@router.message(Command("messagedraft"))
+async def cmd_message_draft(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    text = _parse_message_draft_args(message.text or "")
+    if len(text) > MESSAGE_DRAFT_TEXT_LIMIT:
+        await message.answer(
+            f"Draft text is too long: {len(text)} characters "
+            f"(max {MESSAGE_DRAFT_TEXT_LIMIT})."
+        )
+        return
+
+    # Message ids are positive, so this satisfies the non-zero draft_id rule.
+    draft_id = message.message_id or 1
+    try:
+        await perform_send_message_draft(
+            message.bot,
+            chat_id=message.chat.id,
+            draft_id=draft_id,
+            text=text,
+        )
+    except SendMessageDraftError as exc:
+        await message.answer(f"Could not send the message draft: {exc}")
+        return
+
+    await message.answer(
+        "Sent message draft." if text else "Sent message draft (Thinking… placeholder)."
+    )
+
 @router.message(Command("checklist"))
 async def cmd_checklist(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -1811,6 +1859,21 @@ def _parse_chat_action_args(text: str):
         return None
 
     return (action,)
+
+
+def _parse_message_draft_args(text: str) -> str:
+    """Parse ``/messagedraft`` args into the optional draft text.
+
+    Strips the command token and returns the remainder as the draft text,
+    preserving any internal spaces and trimming the surrounding whitespace. The
+    text is optional, so an empty string is returned when no argument is given;
+    Telegram shows a "Thinking…" placeholder for empty draft text. The caller
+    validates the text length against Telegram's limit.
+    """
+    parts = (text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        return ""
+    return parts[1].strip()
 
 
 def _parse_checklist_args(text: str):

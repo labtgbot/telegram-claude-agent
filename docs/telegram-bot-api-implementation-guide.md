@@ -486,6 +486,8 @@ Area label: `area:outbound-media`. Priority baseline: `priority:P1`
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:outbound-media`, `priority:P1`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Использовать ephemeral draft preview как альтернативу частым editMessageText во время генерации ответа.
+- Method note: Новый метод Bot API 10.0; aiogram 3.3.0 не имеет typed wrapper; работает только в private chats, draft эфемерный (~30 секунд) и требует ненулевой `draft_id`.
+- Status: implemented in PR #201 — изолированный raw Bot API helper `bot/services/send_message_draft.py`, опциональный draft-стриминг ответа в private chats (`TELEGRAM_MESSAGE_DRAFT_ENABLED`) и admin-команда `/messagedraft`.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API
