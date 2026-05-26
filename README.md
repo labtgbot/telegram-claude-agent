@@ -201,6 +201,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/reopengeneralforumtopic <chat_id>` – Reopen the General forum topic in a supergroup where the bot can manage topics (admin only).
 - `/deleteforumtopic <chat_id> <message_thread_id>` – Delete a forum topic in a supergroup where the bot can manage topics (admin only).
 - `/unpinallforumtopicmessages <chat_id> <message_thread_id>` – Unpin all pinned messages in a forum topic where the bot can manage topics (admin only).
+- `/unpinallgeneralforumtopicmessages <chat_id>` – Unpin all pinned messages in the General forum topic where the bot can manage topics (admin only).
 - `/userpersonalchatmessages <user_id> [limit]` – Fetch recent messages from the user's personal chat with the bot (admin only).
 - `/leavechat <chat_id> confirm` – Make the bot leave a group, supergroup, or channel (admin only, requires confirmation).
 - `/createchatinvitelink <chat_id> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Create an additional invite link where the bot has `can_invite_users` (admin only).
@@ -1670,6 +1671,33 @@ This command does not call `free-claude-code`, mutates only pinned-message
 state in the addressed forum topic and is guarded by `TELEGRAM_ADMIN_CHAT_IDS`
 with no fallback to `TELEGRAM_ALLOWED_CHAT_IDS`. Rollback is operational: pin
 the required messages again in Telegram or with `/pinchatmessage`.
+
+### Unpin all General forum topic messages
+
+The `/unpinallgeneralforumtopicmessages` admin command calls Telegram Bot API
+`unpinAllGeneralForumTopicMessages` through an isolated raw Bot API helper
+because the project pins `aiogram==3.3.0`. It is intended for trusted
+operations chats when a moderator needs to clear all pinned messages in the
+General topic of a forum-enabled supergroup, separate from non-General topics
+and the normal Claude chat flow.
+
+Usage:
+
+```text
+/unpinallgeneralforumtopicmessages <chat_id>
+```
+
+The bot must be an administrator in the target supergroup with the right to
+manage topics. The method accepts only `chat_id`; the General topic is implied
+by Telegram, so no `message_thread_id` is sent. No special update subscription
+is required because the scenario starts from a normal admin command message.
+Telegram transport, rate-limit or API errors are reported back to the admin
+chat.
+
+This command does not call `free-claude-code`, mutates only pinned-message
+state in the General topic and is guarded by `TELEGRAM_ADMIN_CHAT_IDS` with no
+fallback to `TELEGRAM_ALLOWED_CHAT_IDS`. Rollback is operational: pin the
+required General topic messages again in Telegram or with `/pinchatmessage`.
 
 ### Get user personal chat messages
 
