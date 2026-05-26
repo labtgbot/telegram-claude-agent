@@ -43,6 +43,10 @@ from bot.services.set_chat_sticker_set import (
     format_set_chat_sticker_set_result,
     perform_set_chat_sticker_set,
 )
+from bot.services.delete_chat_sticker_set import (
+    format_delete_chat_sticker_set_result,
+    perform_delete_chat_sticker_set,
+)
 from bot.services.copy_message import perform_copy_message
 from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
@@ -784,6 +788,17 @@ SET_CHAT_STICKER_SET_USAGE = (
     "Usage: <code>/setchatstickerset &lt;chat_id&gt; &lt;sticker_set_name&gt;</code>"
 )
 
+DELETE_CHAT_STICKER_SET_USAGE = (
+    "<b>deletechatstickerset usage</b>\n"
+    "Deletes the sticker set from the specified supergroup. The bot must be "
+    "an administrator with the right to change chat information in the target "
+    "chat. This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/deletechatstickerset &lt;chat_id&gt;</code>\n"
+    "Rollback is manual: run <code>/setchatstickerset</code> with the previous "
+    "sticker set name."
+)
+
 PROMOTE_CHAT_MEMBER_USAGE = (
     "<b>promotechatmember usage</b>\n"
     "Promotes or demotes a user in the specified group, supergroup or channel. "
@@ -1097,6 +1112,7 @@ async def cmd_help(message: Message):
         "/setchatdescription - Set or clear a chat description (admin only)\n"
         "/setchattitle - Set a group, supergroup or channel title (admin only)\n"
         "/setchatstickerset - Set a supergroup sticker set (admin only)\n"
+        "/deletechatstickerset - Delete a supergroup sticker set (admin only)\n"
         "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
         "/approvechatjoinrequest - Approve a pending chat join request (admin only)\n"
         "/declinechatjoinrequest - Decline a pending chat join request (admin only)\n"
@@ -2468,6 +2484,29 @@ async def cmd_set_chat_sticker_set(message: Message):
             chat_id=chat_id,
             sticker_set_name=sticker_set_name,
         ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("deletechatstickerset"))
+async def cmd_delete_chat_sticker_set(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    chat_id = _parse_delete_chat_sticker_set_args(message.text or "")
+    if chat_id is None:
+        await message.answer(DELETE_CHAT_STICKER_SET_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        await perform_delete_chat_sticker_set(message.bot, chat_id=chat_id)
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not delete the chat sticker set: {exc}")
+        return
+
+    await message.answer(
+        format_delete_chat_sticker_set_result(chat_id=chat_id),
         parse_mode="HTML",
     )
 
@@ -4523,6 +4562,18 @@ def _parse_set_chat_sticker_set_args(text: str):
         return None
 
     return chat_id, sticker_set_name
+
+
+def _parse_delete_chat_sticker_set_args(text: str):
+    """Parse ``/deletechatstickerset`` args into ``chat_id``."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
 
 
 def _parse_approve_chat_join_request_args(text: str):
