@@ -174,6 +174,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/restrictchatmember <chat_id> <user_id> <mute|readonly|unrestrict> [until_date_unix] [independent=true|false]` – Restrict or restore a group/supergroup member where the bot has `can_restrict_members` (admin only).
 - `/setchatpermissions <chat_id> <closed|text|media|open> [independent=true|false]` – Set default group/supergroup member permissions where the bot has `can_restrict_members` (admin only).
 - `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` – Promote or demote a group, supergroup, or channel member where the bot has `can_promote_members` (admin only).
+- `/approvechatjoinrequest <chat_id> <user_id>` – Approve a pending join request where the bot has `can_invite_users` (admin only).
 - `/exportchatinvitelink <chat_id>` – Export a new primary invite link for a group, supergroup, or channel where the bot has `can_invite_users` (admin only).
 - `/createchatinvitelink <chat_id> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Create an additional invite link where the bot has `can_invite_users` (admin only).
 - `/editchatinvitelink <chat_id> <invite_link> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Edit an existing non-primary invite link where the bot has `can_invite_users` (admin only).
@@ -1147,6 +1148,19 @@ Because the command creates an access link to a chat, it is guarded like the oth
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Approve chat join request
+
+The `/approvechatjoinrequest <chat_id> <user_id>` admin command calls Telegram Bot API `approveChatJoinRequest`. It approves a user's pending request to join a group, supergroup or channel. The project still pins `aiogram==3.3.0`, so the service uses aiogram's typed `approve_chat_join_request` method when the runtime provides it and falls back to an isolated raw Bot API helper otherwise.
+
+The bot must already be an administrator in the target chat with `can_invite_users`. The command needs a concrete `user_id` from a pending join request; the bot must receive or otherwise know that pending request via Telegram operations outside this command. No special update subscription is required for the command itself because the approval scenario is initiated by a normal Telegram message update from an admin chat. Telegram permission, missing-request and rate-limit errors are reported back to the admin chat. Rollback is manual: remove or ban the user in Telegram chat administration if the request was approved by mistake.
+
+Because the command grants access to a chat, it is guarded like the other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Edit chat invite link
 
 The `/editchatinvitelink <chat_id> <invite_link> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` admin command calls Telegram Bot API `editChatInviteLink`. It edits an existing non-primary invite link for a group, supergroup or channel. The project still pins `aiogram==3.3.0`, so the service uses aiogram's typed `edit_chat_invite_link` method when the runtime provides it and falls back to an isolated raw Bot API helper otherwise.
@@ -1326,6 +1340,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/setchatpermissions` command changes default permissions for all non-administrator members in a target group or supergroup, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
 - The `/promotechatmember` command changes a user's administrator privileges in a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_promote_members` in the target chat.
 - The `/exportchatinvitelink` command rotates and exposes the primary invite link for a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.
+- The `/approvechatjoinrequest` command approves a user's pending request to enter a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.
 - The `/createchatinvitelink` command creates and exposes an additional invite link for a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.
 - The `/editchatinvitelink` command changes an existing non-primary invite link for a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.
 - The `/createchatsubscriptioninvitelink` command creates and exposes a paid subscription invite link for a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.

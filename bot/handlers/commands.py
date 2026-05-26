@@ -11,6 +11,11 @@ from aiogram.types import (
 )
 from bot.config import settings
 from bot.services.close import perform_close
+from bot.services.approve_chat_join_request import (
+    ApproveChatJoinRequestError,
+    format_approve_chat_join_request_result,
+    perform_approve_chat_join_request,
+)
 from bot.services.copy_message import perform_copy_message
 from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
@@ -630,6 +635,18 @@ PROMOTE_CHAT_MEMBER_USAGE = (
     "<code>demote</code> clears common administrator rights."
 )
 
+APPROVE_CHAT_JOIN_REQUEST_USAGE = (
+    "<b>approvechatjoinrequest usage</b>\n"
+    "Approves a pending request to join the specified group, supergroup or "
+    "channel. The bot must be an administrator with the "
+    "<code>can_invite_users</code> right in the target chat. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/approvechatjoinrequest &lt;chat_id&gt; &lt;user_id&gt;</code>\n"
+    "The <code>user_id</code> must identify a user with a currently pending "
+    "join request for the target chat."
+)
+
 EXPORT_CHAT_INVITE_LINK_USAGE = (
     "<b>exportchatinvitelink usage</b>\n"
     "Exports a new primary invite link for the specified group, supergroup or "
@@ -799,6 +816,7 @@ async def cmd_help(message: Message):
         "/restrictchatmember - Restrict a user in a chat (admin only)\n"
         "/setchatpermissions - Set default chat permissions (admin only)\n"
         "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
+        "/approvechatjoinrequest - Approve a pending chat join request (admin only)\n"
         "/exportchatinvitelink - Export a new primary chat invite link (admin only)\n"
         "/editchatinvitelink - Edit a non-primary chat invite link (admin only)\n"
         "/editchatsubscriptioninvitelink - Edit a subscription invite link (admin only)\n"
@@ -1998,6 +2016,34 @@ async def cmd_export_chat_invite_link(message: Message):
             chat_id=chat_id,
             invite_link=invite_link,
         ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("approvechatjoinrequest"))
+async def cmd_approve_chat_join_request(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_approve_chat_join_request_args(message.text or "")
+    if parsed is None:
+        await message.answer(APPROVE_CHAT_JOIN_REQUEST_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, user_id = parsed
+    try:
+        await perform_approve_chat_join_request(
+            message.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+        )
+    except (TelegramAPIError, ApproveChatJoinRequestError) as exc:
+        await message.answer(f"Could not approve the chat join request: {exc}")
+        return
+
+    await message.answer(
+        format_approve_chat_join_request_result(chat_id=chat_id, user_id=user_id),
         parse_mode="HTML",
     )
 
@@ -3497,6 +3543,24 @@ def _parse_export_chat_invite_link_args(text: str):
         return int(parts[1])
     except ValueError:
         return None
+
+
+def _parse_approve_chat_join_request_args(text: str):
+    """Parse ``/approvechatjoinrequest`` args into ``chat_id`` and ``user_id``."""
+    parts = (text or "").split()
+    if len(parts) != 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+        user_id = int(parts[2])
+    except ValueError:
+        return None
+
+    if chat_id == 0 or user_id <= 0:
+        return None
+
+    return chat_id, user_id
 
 
 def _parse_create_chat_invite_link_args(text: str):
