@@ -157,6 +157,11 @@ from bot.services.close_forum_topic import (
     format_close_forum_topic_result,
     perform_close_forum_topic,
 )
+from bot.services.close_general_forum_topic import (
+    CloseGeneralForumTopicError,
+    format_close_general_forum_topic_result,
+    perform_close_general_forum_topic,
+)
 from bot.services.reopen_forum_topic import (
     ReopenForumTopicError,
     format_reopen_forum_topic_result,
@@ -991,6 +996,16 @@ CLOSE_FORUM_TOPIC_USAGE = (
     "&lt;message_thread_id&gt;</code>"
 )
 
+CLOSE_GENERAL_FORUM_TOPIC_USAGE = (
+    "<b>closegeneralforumtopic usage</b>\n"
+    "Closes the General forum topic in a supergroup through "
+    "<code>closeGeneralForumTopic</code>. The bot must be an administrator "
+    "with the right to manage topics in the target supergroup. This command "
+    "is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/closegeneralforumtopic &lt;chat_id&gt;</code>"
+)
+
 REOPEN_FORUM_TOPIC_USAGE = (
     "<b>reopenforumtopic usage</b>\n"
     "Reopens a closed forum topic in a supergroup through "
@@ -1244,6 +1259,7 @@ async def cmd_help(message: Message):
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
         "/editgeneralforumtopic - Edit the General forum topic in a supergroup (admin only)\n"
         "/closeforumtopic - Close a forum topic in a supergroup (admin only)\n"
+        "/closegeneralforumtopic - Close the General forum topic in a supergroup (admin only)\n"
         "/reopenforumtopic - Reopen a closed forum topic in a supergroup (admin only)\n"
         "/reopengeneralforumtopic - Reopen the General forum topic in a supergroup (admin only)\n"
         "/deleteforumtopic - Delete a forum topic in a supergroup (admin only)\n"
@@ -2984,6 +3000,32 @@ async def cmd_close_forum_topic(message: Message):
             chat_id=chat_id,
             message_thread_id=message_thread_id,
         ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("closegeneralforumtopic"))
+async def cmd_close_general_forum_topic(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    chat_id = _parse_close_general_forum_topic_args(message.text or "")
+    if chat_id is None:
+        await message.answer(CLOSE_GENERAL_FORUM_TOPIC_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        await perform_close_general_forum_topic(
+            message.bot,
+            chat_id=chat_id,
+        )
+    except CloseGeneralForumTopicError as exc:
+        await message.answer(f"Could not close General forum topic: {exc}")
+        return
+
+    await message.answer(
+        format_close_general_forum_topic_result(chat_id=chat_id),
         parse_mode="HTML",
     )
 
@@ -4911,6 +4953,18 @@ def _parse_reopen_forum_topic_args(text: str):
 
 def _parse_reopen_general_forum_topic_args(text: str):
     """Parse ``/reopengeneralforumtopic`` args into reopenGeneralForumTopic parameters."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
+
+
+def _parse_close_general_forum_topic_args(text: str):
+    """Parse ``/closegeneralforumtopic`` args into closeGeneralForumTopic parameters."""
     parts = (text or "").split()
     if len(parts) != 2:
         return None
