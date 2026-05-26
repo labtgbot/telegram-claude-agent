@@ -227,6 +227,11 @@ from bot.services.get_managed_bot_token import (
     format_managed_bot_token,
     perform_get_managed_bot_token,
 )
+from bot.services.replace_managed_bot_token import (
+    ReplaceManagedBotTokenError,
+    format_replaced_managed_bot_token,
+    perform_replace_managed_bot_token,
+)
 from bot.services.set_message_reaction import (
     REACTION_EMOJI,
     perform_set_message_reaction,
@@ -657,6 +662,31 @@ MANAGED_BOT_TOKEN_USAGE = (
     "The id must come from a trusted <code>managed_bot</code> update, "
     "<code>managed_bot_created</code> message, or another operator-controlled "
     "source. Telegram allows only the manager/owner flow to access the token."
+)
+
+REPLACE_MANAGED_BOT_TOKEN_CONFIRM_KEYWORD = "confirm"
+
+REPLACE_MANAGED_BOT_TOKEN_USAGE = (
+    "<b>replacemanagedbottoken usage</b>\n"
+    "Rotates Telegram <code>replaceManagedBotToken</code> for a managed bot by "
+    "its user id and returns the newly issued token. This revokes the previous "
+    "token, so the command is admin-only, disabled unless "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code> contains the current chat, and keeps "
+    "token values out of structured logs.\n"
+    "Usage: <code>/replacemanagedbottoken &lt;managed_bot_user_id&gt; "
+    "confirm</code>\n"
+    "The id must come from a trusted <code>managed_bot</code> update, "
+    "<code>managed_bot_created</code> message, or another operator-controlled "
+    "source. Telegram allows only the manager/owner flow to replace the token."
+)
+
+REPLACE_MANAGED_BOT_TOKEN_WARNING = (
+    "<b>replacemanagedbottoken confirmation required</b>\n"
+    "This rotates the token for a Telegram managed bot and returns the new "
+    "credential in this admin chat. The previous token may stop working, so "
+    "update deployments and secret stores immediately after success.\n"
+    "Run <code>/replacemanagedbottoken &lt;managed_bot_user_id&gt; "
+    "confirm</code> to proceed."
 )
 
 USER_PROFILE_PHOTOS_USAGE = (
@@ -1349,6 +1379,7 @@ async def cmd_help(message: Message):
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/managedbottoken - Fetch a managed bot token by user id (admin only)\n"
+        "/replacemanagedbottoken - Rotate a managed bot token by user id (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
@@ -2345,6 +2376,40 @@ async def cmd_managed_bot_token(message: Message):
 
     await message.answer(
         format_managed_bot_token(user_id=user_id, token=token),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("replacemanagedbottoken"))
+async def cmd_replace_managed_bot_token(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_replace_managed_bot_token_args(message.text or "")
+    if parsed is None:
+        await message.answer(REPLACE_MANAGED_BOT_TOKEN_USAGE, parse_mode="HTML")
+        return
+
+    user_id, confirmed = parsed
+    if not confirmed:
+        await message.answer(
+            REPLACE_MANAGED_BOT_TOKEN_WARNING,
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        token = await perform_replace_managed_bot_token(
+            message.bot,
+            user_id=user_id,
+        )
+    except ReplaceManagedBotTokenError as exc:
+        await message.answer(f"Could not replace the managed bot token: {exc}")
+        return
+
+    await message.answer(
+        format_replaced_managed_bot_token(user_id=user_id, token=token),
         parse_mode="HTML",
     )
 
@@ -4582,6 +4647,28 @@ def _parse_managed_bot_token_args(text: str) -> int | None:
     if user_id <= 0:
         return None
     return user_id
+
+
+def _parse_replace_managed_bot_token_args(text: str) -> tuple[int, bool] | None:
+    """Parse ``/replacemanagedbottoken`` args into ``(user_id, confirmed)``."""
+    parts = (text or "").split()
+    if len(parts) not in (2, 3):
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+
+    if user_id <= 0:
+        return None
+
+    if len(parts) == 2:
+        return user_id, False
+
+    if parts[2] != REPLACE_MANAGED_BOT_TOKEN_CONFIRM_KEYWORD:
+        return None
+    return user_id, True
 
 
 def _parse_user_profile_photos_args(text: str):
