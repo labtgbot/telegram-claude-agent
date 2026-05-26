@@ -156,6 +156,11 @@ from bot.services.reopen_forum_topic import (
     format_reopen_forum_topic_result,
     perform_reopen_forum_topic,
 )
+from bot.services.delete_forum_topic import (
+    DeleteForumTopicError,
+    format_delete_forum_topic_result,
+    perform_delete_forum_topic,
+)
 from bot.services.unpin_all_forum_topic_messages import (
     UnpinAllForumTopicMessagesError,
     format_unpin_all_forum_topic_messages_result,
@@ -971,6 +976,19 @@ REOPEN_FORUM_TOPIC_USAGE = (
     "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
     "Usage: <code>/reopenforumtopic &lt;chat_id&gt; "
     "&lt;message_thread_id&gt;</code>"
+)
+
+DELETE_FORUM_TOPIC_USAGE = (
+    "<b>deleteforumtopic usage</b>\n"
+    "Deletes a forum topic in a supergroup through "
+    "<code>deleteForumTopic</code>. The bot must be an administrator with the "
+    "right to manage topics in the target supergroup. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/deleteforumtopic &lt;chat_id&gt; "
+    "&lt;message_thread_id&gt;</code>\n"
+    "Rollback is manual: recreate the topic with <code>/createforumtopic</code> "
+    "and move or copy relevant messages if needed."
 )
 
 UNPIN_ALL_FORUM_TOPIC_MESSAGES_USAGE = (
@@ -2933,6 +2951,38 @@ async def cmd_reopen_forum_topic(message: Message):
     )
 
 
+@router.message(Command("deleteforumtopic"))
+async def cmd_delete_forum_topic(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_delete_forum_topic_args(message.text or "")
+    if parsed is None:
+        await message.answer(DELETE_FORUM_TOPIC_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, message_thread_id = parsed
+
+    try:
+        await perform_delete_forum_topic(
+            message.bot,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+        )
+    except DeleteForumTopicError as exc:
+        await message.answer(f"Could not delete forum topic: {exc}")
+        return
+
+    await message.answer(
+        format_delete_forum_topic_result(
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+        ),
+        parse_mode="HTML",
+    )
+
+
 @router.message(Command("unpinallforumtopicmessages"))
 async def cmd_unpin_all_forum_topic_messages(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -4748,6 +4798,24 @@ def _parse_reopen_forum_topic_args(text: str):
 
 def _parse_close_forum_topic_args(text: str):
     """Parse ``/closeforumtopic`` args into closeForumTopic parameters."""
+    parts = (text or "").split()
+    if len(parts) != 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+        message_thread_id = int(parts[2])
+    except ValueError:
+        return None
+
+    if message_thread_id <= 0:
+        return None
+
+    return chat_id, message_thread_id
+
+
+def _parse_delete_forum_topic_args(text: str):
+    """Parse ``/deleteforumtopic`` args into deleteForumTopic parameters."""
     parts = (text or "").split()
     if len(parts) != 3:
         return None
