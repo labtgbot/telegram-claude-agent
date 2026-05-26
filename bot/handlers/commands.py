@@ -20,6 +20,11 @@ from bot.services.export_chat_invite_link import (
     format_export_chat_invite_link_result,
     perform_export_chat_invite_link,
 )
+from bot.services.create_chat_invite_link import (
+    CreateChatInviteLinkError,
+    format_create_chat_invite_link_result,
+    perform_create_chat_invite_link,
+)
 from bot.services.edit_chat_invite_link import (
     EditChatInviteLinkError,
     format_edit_chat_invite_link_result,
@@ -624,6 +629,20 @@ EXPORT_CHAT_INVITE_LINK_USAGE = (
     "This command is deny-by-default and only works from "
     "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
     "Usage: <code>/exportchatinvitelink &lt;chat_id&gt;</code>"
+)
+
+CREATE_CHAT_INVITE_LINK_USAGE = (
+    "<b>createchatinvitelink usage</b>\n"
+    "Creates an additional invite link for the specified group, supergroup or "
+    "channel. The bot must be an administrator with the "
+    "<code>can_invite_users</code> right in the target chat. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/createchatinvitelink &lt;chat_id&gt; "
+    "[name=&lt;text&gt;] [expire_date=&lt;unix_time&gt;] "
+    "[member_limit=&lt;1-99999&gt;] [creates_join_request=true|false]</code>\n"
+    "<code>creates_join_request=true</code> cannot be used with "
+    "<code>member_limit</code>."
 )
 
 EDIT_CHAT_INVITE_LINK_USAGE = (
@@ -1941,6 +1960,34 @@ async def cmd_export_chat_invite_link(message: Message):
             chat_id=chat_id,
             invite_link=invite_link,
         ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("createchatinvitelink"))
+async def cmd_create_chat_invite_link(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_create_chat_invite_link_args(message.text or "")
+    if parsed is None:
+        await message.answer(CREATE_CHAT_INVITE_LINK_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, options = parsed
+    try:
+        link = await perform_create_chat_invite_link(
+            message.bot,
+            chat_id=chat_id,
+            **options,
+        )
+    except (TelegramAPIError, CreateChatInviteLinkError) as exc:
+        await message.answer(f"Could not create the chat invite link: {exc}")
+        return
+
+    await message.answer(
+        format_create_chat_invite_link_result(chat_id=chat_id, link=link),
         parse_mode="HTML",
     )
 
@@ -3345,6 +3392,24 @@ def _parse_export_chat_invite_link_args(text: str):
         return None
 
 
+def _parse_create_chat_invite_link_args(text: str):
+    """Parse ``/createchatinvitelink`` args into chat id and options."""
+    parts = (text or "").split()
+    if len(parts) < 2:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    options = _parse_chat_invite_link_options(parts[2:])
+    if options is None:
+        return None
+
+    return chat_id, options
+
+
 def _parse_edit_chat_invite_link_args(text: str):
     """Parse ``/editchatinvitelink`` args into chat id, link and options."""
     parts = (text or "").split()
@@ -3356,13 +3421,21 @@ def _parse_edit_chat_invite_link_args(text: str):
     except ValueError:
         return None
 
+    options = _parse_chat_invite_link_options(parts[3:])
+    if options is None:
+        return None
+
+    return chat_id, parts[2], options
+
+
+def _parse_chat_invite_link_options(tokens):
     options = {
         "name": None,
         "expire_date": None,
         "member_limit": None,
         "creates_join_request": None,
     }
-    for token in parts[3:]:
+    for token in tokens:
         if "=" not in token:
             return None
         key, value = token.split("=", 1)
@@ -3392,7 +3465,7 @@ def _parse_edit_chat_invite_link_args(text: str):
     if options["creates_join_request"] is True and options["member_limit"] is not None:
         return None
 
-    return chat_id, parts[2], options
+    return options
 
 
 def _parse_bool_value(value: str):

@@ -61,8 +61,9 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `sendChatAction`,
 `sendMessageDraft`, `getUserProfilePhotos`, `setMessageReaction`,
 `setUserEmojiStatus`, `getUserProfileAudios`, `banChatMember`,
-`unbanChatMember`, `restrictChatMember`, `promoteChatMember` и
-`editChatInviteLink` остается 134 пока не интегрированных методов.
+`unbanChatMember`, `restrictChatMember`, `promoteChatMember`,
+`createChatInviteLink` и `editChatInviteLink` остается 133 пока не
+интегрированных метода.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -112,6 +113,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `setChatPermissions` | `bot/services/set_chat_permissions.py`, `/setchatpermissions` в `bot/handlers/commands.py` | Admin-flow изменения default permissions всех не-администраторов в группе/супергруппе по `chat_id` и preset (`closed`, `text`, `media`, `open`), через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_restrict_members`; опциональный `independent=true|false` передается как `use_independent_chat_permissions`, специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, а ошибки Telegram возвращаются оператору. |
 | `promoteChatMember` | `bot/services/promote_chat_member.py`, `/promotechatmember` в `bot/handlers/commands.py` | Admin-flow повышения или понижения пользователя в группе, супергруппе или канале по `chat_id`, `user_id` и preset (`moderator`, `manager`, `demote`), через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_promote_members` и может выдавать только свои права; ошибки Telegram возвращаются оператору. |
 | `exportChatInviteLink` | `bot/services/export_chat_invite_link.py`, `/exportchatinvitelink` в `bot/handlers/commands.py` | Admin-flow ротации и получения primary invite link группы, супергруппы или канала по `chat_id`, через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_invite_users`; успешный вызов отзывает ранее сгенерированную primary invite link, специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, а ошибки Telegram возвращаются оператору. |
+| `createChatInviteLink` | `bot/services/create_chat_invite_link.py`, `/createchatinvitelink` в `bot/handlers/commands.py` | Admin-flow создания дополнительной invite link группы, супергруппы или канала по `chat_id` и опциям `name`, `expire_date`, `member_limit`, `creates_join_request`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_invite_users`; используется typed aiogram API, если runtime его предоставляет, иначе изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; `member_limit` валидируется в диапазоне 1-99999, `creates_join_request=true` нельзя совмещать с `member_limit`, специальных update types не требуется, а ошибки Telegram возвращаются оператору. |
 | `editChatInviteLink` | `bot/services/edit_chat_invite_link.py`, `/editchatinvitelink` в `bot/handlers/commands.py` | Admin-flow изменения существующей non-primary invite link группы, супергруппы или канала по `chat_id`, `invite_link` и опциям `name`, `expire_date`, `member_limit`, `creates_join_request`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_invite_users`; используется typed aiogram API, если runtime его предоставляет, иначе изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; `member_limit` валидируется в диапазоне 1-99999, `creates_join_request=true` нельзя совмещать с `member_limit`, специальных update types не требуется, а ошибки Telegram возвращаются оператору. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
@@ -167,7 +169,8 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `getChatMemberCount`, `getChatMember`, `banChatMember`,
    `unbanChatMember`, `restrictChatMember`, `promoteChatMember`,
    `setChatAdministratorCustomTitle`, `setChatMemberTag`,
-   `setChatPermissions`, `exportChatInviteLink`, `editChatInviteLink`, остальные invite-link методы, join-request методы,
+   `setChatPermissions`, `exportChatInviteLink`, `createChatInviteLink`,
+   `editChatInviteLink`, остальные invite-link методы, join-request методы,
    `pinChatMessage`, `unpinChatMessage`, `unpinAllChatMessages`,
    forum-topic методы и `leaveChat`.
 7. Пользовательский контекст Telegram: `getUserProfilePhotos` (уже интегрирован),
@@ -256,6 +259,10 @@ issue-карточек в
   admin-чата;
 - `/exportchatinvitelink <chat_id>` ротирует и возвращает primary invite link
   группы, супергруппы или канала из разрешенного admin-чата;
+- `/createchatinvitelink <chat_id> [name=<text>] [expire_date=<unix_time>]
+  [member_limit=<1-99999>] [creates_join_request=true|false]` создает
+  дополнительную invite link группы, супергруппы или канала из разрешенного
+  admin-чата;
 - `/editchatinvitelink <chat_id> <invite_link> [name=<text>]
   [expire_date=<unix_time>] [member_limit=<1-99999>]
   [creates_join_request=true|false]` меняет существующую non-primary invite
@@ -1647,6 +1654,11 @@ logging. Фактическая детализация логов зависит
   (`TelegramBadRequest`/`TelegramForbiddenError`), строгий admin allowlist,
   парсинг `chat_id`, `user_id`, preset (`moderator`, `manager`, `demote`) и
   validation path для неверных аргументов `/promotechatmember`;
+- вызов typed aiogram `create_chat_invite_link()` или raw Bot API fallback для
+  `createChatInviteLink`, обработку Telegram API ошибок, строгий admin
+  allowlist, парсинг `chat_id`, `name`, `expire_date`, `member_limit`,
+  `creates_join_request` и validation path для неверных аргументов
+  `/createchatinvitelink`;
 - вызов typed aiogram `send_document()`, обработку Telegram API ошибок
   (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
   document-аргумента и caption с пробелами, validation path для слишком длинного
