@@ -47,6 +47,10 @@ from bot.services.get_user_profile_photos import (
     fetch_user_profile_photos,
     format_user_profile_photos,
 )
+from bot.services.set_message_reaction import (
+    REACTION_EMOJI,
+    perform_set_message_reaction,
+)
 from bot.services.webhook_delete import delete_webhook
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
 from bot.utils.storage import storage
@@ -416,6 +420,20 @@ USER_PROFILE_PHOTOS_USAGE = (
     f"default {GET_USER_PROFILE_PHOTOS_MAX_LIMIT})."
 )
 
+REACT_BIG_KEYWORD = "big"
+
+REACT_USAGE = (
+    "<b>react usage</b>\n"
+    "Sets a reaction on a message in this chat via the Telegram "
+    "<code>setMessageReaction</code> method. The bot must be able to read the "
+    "message; service messages cannot be reacted to. Pass the target message id "
+    "and the reaction emoji. To remove all bot reactions from a message omit the "
+    "emoji. Append <code>big</code> to use the big animation.\n"
+    "Usage: <code>/react &lt;message_id&gt; [emoji] [big]</code>\n"
+    "The emoji must be one of the standard Telegram reaction emoji. "
+    "Non-premium bots can set at most one reaction per message."
+)
+
 MEDIA_GROUP_CAPTION_LIMIT = 1024
 
 MEDIA_GROUP_MIN_ITEMS = 2
@@ -487,6 +505,7 @@ async def cmd_help(message: Message):
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
+        "/react - Set or remove a reaction on a message in this chat (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -1381,6 +1400,51 @@ async def cmd_user_profile_photos(message: Message):
     )
 
 
+@router.message(Command("react"))
+async def cmd_react(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_react_args(message.text or "")
+    if parsed is None:
+        await message.answer(REACT_USAGE, parse_mode="HTML")
+        return
+
+    message_id, emoji, is_big = parsed
+
+    if emoji is not None and emoji not in REACTION_EMOJI:
+        await message.answer(
+            f"Unsupported reaction emoji: {emoji!r}. "
+            "Use one of the standard Telegram reaction emoji or omit the emoji "
+            "to remove all reactions."
+        )
+        return
+
+    reaction = None
+    if emoji is not None:
+        from aiogram.types import ReactionTypeEmoji
+
+        reaction = [ReactionTypeEmoji(emoji=emoji)]
+
+    try:
+        await perform_set_message_reaction(
+            message.bot,
+            chat_id=message.chat.id,
+            message_id=message_id,
+            reaction=reaction,
+            is_big=is_big if is_big else None,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not set the reaction: {exc}")
+        return
+
+    if emoji is not None:
+        await message.answer(f"Set reaction {emoji} on message {message_id}.")
+    else:
+        await message.answer(f"Removed reactions from message {message_id}.")
+
+
 @router.message(Command("mediagroup"))
 async def cmd_media_group(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -2069,6 +2133,37 @@ def _parse_user_profile_photos_args(text: str):
             return None
 
     return user_id, offset, limit
+
+
+def _parse_react_args(text: str):
+    """Parse ``/react`` args into ``(message_id, emoji, is_big)``.
+
+    Splits the raw command text into the command, the required integer
+    ``message_id``, an optional reaction emoji and an optional ``big`` keyword.
+    Returns ``None`` when ``message_id`` is missing or not a valid integer so
+    the caller can show usage. The emoji defaults to ``None``, which removes
+    all bot reactions from the message. The ``big`` flag defaults to
+    ``False``. The caller validates the emoji against the supported set.
+    """
+    parts = (text or "").split()
+    if len(parts) < 2:
+        return None
+
+    try:
+        message_id = int(parts[1])
+    except ValueError:
+        return None
+
+    rest = parts[2:]
+
+    is_big = False
+    if rest and rest[-1].strip().lower() == REACT_BIG_KEYWORD:
+        is_big = True
+        rest = rest[:-1]
+
+    emoji = rest[0] if rest else None
+
+    return message_id, emoji, is_big
 
 
 def _parse_media_group_args(text: str):
