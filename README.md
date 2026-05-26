@@ -194,6 +194,8 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/getchatmembercount <chat_id>` – Fetch the member count for a group, supergroup, or channel known to the bot (admin only).
 - `/forumtopiciconstickers` – Fetch available forum topic icon stickers and their `custom_emoji_id` values (admin only).
 - `/createforumtopic <chat_id> <name> [icon_color=<rgb_int>] [icon_custom_emoji_id=<id>]` – Create a forum topic in a supergroup where the bot can manage topics (admin only).
+- `/editforumtopic <chat_id> <message_thread_id> [name=<text>] [icon_custom_emoji_id=<id>]` – Edit a forum topic in a supergroup where the bot can manage topics (admin only).
+- `/reopenforumtopic <chat_id> <message_thread_id>` – Reopen a closed forum topic in a supergroup where the bot can manage topics (admin only).
 - `/userpersonalchatmessages <user_id> [limit]` – Fetch recent messages from the user's personal chat with the bot (admin only).
 - `/leavechat <chat_id> confirm` – Make the bot leave a group, supergroup, or channel (admin only, requires confirmation).
 - `/createchatinvitelink <chat_id> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Create an additional invite link where the bot has `can_invite_users` (admin only).
@@ -1457,6 +1459,32 @@ This command does not call `free-claude-code`, mutates only the addressed forum
 topic and is guarded by `TELEGRAM_ADMIN_CHAT_IDS` with no fallback to
 `TELEGRAM_ALLOWED_CHAT_IDS`. Rollback is operational: run `/editforumtopic`
 again with the previous topic name or icon custom emoji id.
+
+### Reopen forum topic
+
+The `/reopenforumtopic` admin command calls Telegram Bot API
+`reopenForumTopic` through an isolated raw Bot API helper because the project
+pins `aiogram==3.3.0`. It is intended for trusted operations chats when a
+moderator needs to reopen a previously closed triage or support topic in a
+supergroup, separate from the normal Claude chat flow.
+
+Usage:
+
+```text
+/reopenforumtopic <chat_id> <message_thread_id>
+```
+
+The bot must be an administrator in the target supergroup with the right to
+manage topics. `message_thread_id` must identify an existing closed forum
+topic and must be greater than zero. No special update subscription is
+required because the scenario starts from a normal admin command message.
+Telegram transport, rate-limit or API errors are reported back to the admin
+chat.
+
+This command does not call `free-claude-code`, mutates only the addressed forum
+topic and is guarded by `TELEGRAM_ADMIN_CHAT_IDS` with no fallback to
+`TELEGRAM_ALLOWED_CHAT_IDS`. Rollback is operational: close the topic again in
+Telegram or with a future forum-topic lifecycle command when available.
 
 ### Get user personal chat messages
 
