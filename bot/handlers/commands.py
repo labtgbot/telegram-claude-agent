@@ -6,6 +6,7 @@ from aiogram.types import (
     InputMediaDocument,
     InputMediaPhoto,
     InputMediaVideo,
+    ChatPermissions,
     Message,
 )
 from bot.config import settings
@@ -80,6 +81,10 @@ from bot.services.ban_chat_sender_chat import (
 from bot.services.restrict_chat_member import (
     format_restrict_result,
     perform_restrict_chat_member,
+)
+from bot.services.set_chat_permissions import (
+    format_set_chat_permissions_result,
+    perform_set_chat_permissions,
 )
 from bot.services.unban_chat_member import (
     format_unban_result,
@@ -553,6 +558,22 @@ RESTRICT_CHAT_MEMBER_USAGE = (
     "future as permanent."
 )
 
+SET_CHAT_PERMISSIONS_USAGE = (
+    "<b>setchatpermissions usage</b>\n"
+    "Sets default permissions for all non-administrator members in the "
+    "specified group or supergroup. The bot must be an administrator with the "
+    "<code>can_restrict_members</code> right in the target chat. This command "
+    "is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setchatpermissions &lt;chat_id&gt; "
+    "&lt;closed|text|media|open&gt; [independent=true|false]</code>\n"
+    "Presets: <code>closed</code> denies sending messages; "
+    "<code>text</code> allows text messages only; <code>media</code> allows "
+    "text and common media messages; <code>open</code> restores common member "
+    "permissions including invites, pins and topic management. Telegram does "
+    "not change administrator permissions with this method."
+)
+
 PROMOTE_CHAT_MEMBER_USAGE = (
     "<b>promotechatmember usage</b>\n"
     "Promotes or demotes a user in the specified group, supergroup or channel. "
@@ -667,6 +688,7 @@ async def cmd_help(message: Message):
         "/banchatsenderchat - Ban a sender chat from a chat (admin only)\n"
         "/unbanchatmember - Unban a user from a chat (admin only)\n"
         "/restrictchatmember - Restrict a user in a chat (admin only)\n"
+        "/setchatpermissions - Set default chat permissions (admin only)\n"
         "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
         "/setchatadministratortitle - Set a chat administrator custom title (admin only)\n"
         "/setchatmembertag - Set or clear a chat member tag (admin only)\n"
@@ -1734,6 +1756,41 @@ async def cmd_restrict_chat_member(message: Message):
             preset=preset,
             permissions=permissions,
             until_date=until_date,
+            use_independent_chat_permissions=use_independent_chat_permissions,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setchatpermissions"))
+async def cmd_set_chat_permissions(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_chat_permissions_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_CHAT_PERMISSIONS_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, preset, permissions, use_independent_chat_permissions = parsed
+
+    try:
+        await perform_set_chat_permissions(
+            message.bot,
+            chat_id=chat_id,
+            permissions=permissions,
+            use_independent_chat_permissions=use_independent_chat_permissions,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not set chat permissions: {exc}")
+        return
+
+    await message.answer(
+        format_set_chat_permissions_result(
+            chat_id=chat_id,
+            preset=preset,
+            permissions=permissions,
             use_independent_chat_permissions=use_independent_chat_permissions,
         ),
         parse_mode="HTML",
@@ -2950,6 +3007,95 @@ def _parse_restrict_chat_member_args(text: str):
         until_date,
         use_independent_chat_permissions,
     )
+
+
+def _chat_permissions_for_preset(preset: str):
+    if preset == "closed":
+        return ChatPermissions(can_send_messages=False)
+    if preset == "text":
+        return ChatPermissions(
+            can_send_messages=True,
+            can_send_audios=False,
+            can_send_documents=False,
+            can_send_photos=False,
+            can_send_videos=False,
+            can_send_video_notes=False,
+            can_send_voice_notes=False,
+            can_send_polls=False,
+            can_send_other_messages=False,
+            can_add_web_page_previews=False,
+            can_react_to_messages=False,
+            can_change_info=False,
+            can_invite_users=False,
+            can_pin_messages=False,
+            can_manage_topics=False,
+        )
+    if preset == "media":
+        return ChatPermissions(
+            can_send_messages=True,
+            can_send_audios=True,
+            can_send_documents=True,
+            can_send_photos=True,
+            can_send_videos=True,
+            can_send_video_notes=True,
+            can_send_voice_notes=True,
+            can_send_polls=False,
+            can_send_other_messages=False,
+            can_add_web_page_previews=False,
+            can_react_to_messages=True,
+            can_change_info=False,
+            can_invite_users=False,
+            can_pin_messages=False,
+            can_manage_topics=False,
+        )
+    if preset == "open":
+        return ChatPermissions(
+            can_send_messages=True,
+            can_send_audios=True,
+            can_send_documents=True,
+            can_send_photos=True,
+            can_send_videos=True,
+            can_send_video_notes=True,
+            can_send_voice_notes=True,
+            can_send_polls=True,
+            can_send_other_messages=True,
+            can_add_web_page_previews=True,
+            can_react_to_messages=True,
+            can_change_info=True,
+            can_invite_users=True,
+            can_pin_messages=True,
+            can_manage_topics=True,
+        )
+    return None
+
+
+def _parse_set_chat_permissions_args(text: str):
+    """Parse ``/setchatpermissions`` args for admin-only default permissions."""
+    parts = (text or "").split()
+    if len(parts) < 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    preset = parts[2].strip().lower()
+    permissions = _chat_permissions_for_preset(preset)
+    if permissions is None:
+        return None
+
+    use_independent_chat_permissions = None
+    if len(parts) >= 4:
+        flag = parts[3].strip().lower()
+        if flag == "independent=true":
+            use_independent_chat_permissions = True
+        elif flag == "independent=false":
+            use_independent_chat_permissions = False
+        else:
+            return None
+
+    return chat_id, preset, permissions, use_independent_chat_permissions
 
 
 def _promote_rights_for_preset(preset: str):

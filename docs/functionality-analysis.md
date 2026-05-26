@@ -108,6 +108,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `banChatSenderChat` | `bot/services/ban_chat_sender_chat.py`, `/banchatsenderchat` в `bot/handlers/commands.py` | Admin-flow блокировки channel/sender chat в супергруппе или канале по `chat_id` и `sender_chat_id`, через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_restrict_members`; специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, а ошибки Telegram возвращаются оператору. |
 | `unbanChatMember` | `bot/services/unban_chat_member.py`, `/unbanchatmember` в `bot/handlers/commands.py` | Admin-flow разблокировки пользователя в группе, супергруппе или канале по `chat_id` и `user_id`, через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_restrict_members`; опциональный `only_if_banned=true|false` передается как `only_if_banned`, а ошибки Telegram возвращаются оператору. |
 | `restrictChatMember` | `bot/services/restrict_chat_member.py`, `/restrictchatmember` в `bot/handlers/commands.py` | Admin-flow ограничения или восстановления прав пользователя в группе/супергруппе по `chat_id`, `user_id` и preset (`mute`, `readonly`, `unrestrict`), через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_restrict_members`; опциональные `until_date_unix` и `independent=true|false` управляют сроком ограничения и `use_independent_chat_permissions`, а ошибки Telegram возвращаются оператору. |
+| `setChatPermissions` | `bot/services/set_chat_permissions.py`, `/setchatpermissions` в `bot/handlers/commands.py` | Admin-flow изменения default permissions всех не-администраторов в группе/супергруппе по `chat_id` и preset (`closed`, `text`, `media`, `open`), через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_restrict_members`; опциональный `independent=true|false` передается как `use_independent_chat_permissions`, специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, а ошибки Telegram возвращаются оператору. |
 | `promoteChatMember` | `bot/services/promote_chat_member.py`, `/promotechatmember` в `bot/handlers/commands.py` | Admin-flow повышения или понижения пользователя в группе, супергруппе или канале по `chat_id`, `user_id` и preset (`moderator`, `manager`, `demote`), через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_promote_members` и может выдавать только свои права; ошибки Telegram возвращаются оператору. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
@@ -244,6 +245,9 @@ issue-карточек в
 - `/restrictchatmember <chat_id> <user_id> <mute|readonly|unrestrict>
   [until_date_unix] [independent=true|false]` ограничивает или восстанавливает
   права пользователя в группе или супергруппе из разрешенного admin-чата;
+- `/setchatpermissions <chat_id> <closed|text|media|open>
+  [independent=true|false]` меняет default permissions всех
+  не-администраторов в группе или супергруппе из разрешенного admin-чата;
 - `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` повышает
   или понижает пользователя в группе, супергруппе или канале из разрешенного
   admin-чата;
@@ -1625,6 +1629,11 @@ logging. Фактическая детализация логов зависит
   парсинг `chat_id`, `user_id`, preset, `until_date_unix`,
   `independent=true|false` и validation path для неверных аргументов
   `/restrictchatmember`;
+- вызов typed aiogram `set_chat_permissions()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), строгий admin allowlist,
+  парсинг `chat_id`, preset (`closed`, `text`, `media`, `open`),
+  `independent=true|false` и validation path для неверных аргументов
+  `/setchatpermissions`;
 - вызов typed aiogram `promote_chat_member()`, обработку Telegram API ошибок
   (`TelegramBadRequest`/`TelegramForbiddenError`), строгий admin allowlist,
   парсинг `chat_id`, `user_id`, preset (`moderator`, `manager`, `demote`) и
