@@ -30,6 +30,11 @@ from bot.services.set_chat_description import (
     format_set_chat_description_result,
     perform_set_chat_description,
 )
+from bot.services.set_chat_title import (
+    SET_CHAT_TITLE_LIMIT,
+    format_set_chat_title_result,
+    perform_set_chat_title,
+)
 from bot.services.set_chat_photo import (
     format_set_chat_photo_result,
     perform_set_chat_photo,
@@ -678,6 +683,16 @@ SET_CHAT_DESCRIPTION_USAGE = (
     f"{SET_CHAT_DESCRIPTION_LIMIT} characters."
 )
 
+SET_CHAT_TITLE_USAGE = (
+    "<b>setchattitle usage</b>\n"
+    "Sets the title for the specified group, supergroup or channel. The bot "
+    "must be an administrator with the right to change chat information in "
+    "the target chat. This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setchattitle &lt;chat_id&gt; &lt;title&gt;</code>\n"
+    f"The title is limited to {SET_CHAT_TITLE_LIMIT} characters."
+)
+
 PROMOTE_CHAT_MEMBER_USAGE = (
     "<b>promotechatmember usage</b>\n"
     "Promotes or demotes a user in the specified group, supergroup or channel. "
@@ -897,6 +912,7 @@ async def cmd_help(message: Message):
         "/setchatpermissions - Set default chat permissions (admin only)\n"
         "/setchatphoto - Set a group or supergroup photo (admin only)\n"
         "/setchatdescription - Set or clear a chat description (admin only)\n"
+        "/setchattitle - Set a group, supergroup or channel title (admin only)\n"
         "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
         "/approvechatjoinrequest - Approve a pending chat join request (admin only)\n"
         "/declinechatjoinrequest - Decline a pending chat join request (admin only)\n"
@@ -2120,6 +2136,35 @@ async def cmd_set_chat_description(message: Message):
             chat_id=chat_id,
             description=description,
         ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setchattitle"))
+async def cmd_set_chat_title(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_chat_title_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_CHAT_TITLE_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, title = parsed
+
+    try:
+        await perform_set_chat_title(
+            message.bot,
+            chat_id=chat_id,
+            title=title,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not set the chat title: {exc}")
+        return
+
+    await message.answer(
+        format_set_chat_title_result(chat_id=chat_id, title=title),
         parse_mode="HTML",
     )
 
@@ -3815,6 +3860,24 @@ def _parse_set_chat_description_args(text: str):
         return None
 
     return chat_id, description
+
+
+def _parse_set_chat_title_args(text: str):
+    """Parse ``/setchattitle`` args into ``chat_id`` and ``title``."""
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) != 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    title = parts[2].strip()
+    if not title or len(title) > SET_CHAT_TITLE_LIMIT:
+        return None
+
+    return chat_id, title
 
 
 def _parse_approve_chat_join_request_args(text: str):
