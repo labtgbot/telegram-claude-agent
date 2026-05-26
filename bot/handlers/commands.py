@@ -65,6 +65,10 @@ from bot.services.restrict_chat_member import (
     format_restrict_result,
     perform_restrict_chat_member,
 )
+from bot.services.unban_chat_member import (
+    format_unban_result,
+    perform_unban_chat_member,
+)
 from bot.utils.storage import storage
 from bot.services.claude_proxy import ClaudeProxyClient
 
@@ -488,6 +492,19 @@ BAN_CHAT_MEMBER_USAGE = (
     "revoked for supergroups/channels)."
 )
 
+UNBAN_CHAT_MEMBER_USAGE = (
+    "<b>unbanchatmember usage</b>\n"
+    "Unbans a user from the specified group, supergroup or channel. The bot "
+    "must be an administrator with the <code>can_restrict_members</code> right "
+    "in the target chat. This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/unbanchatmember &lt;chat_id&gt; &lt;user_id&gt; "
+    "[only_if_banned=true|false]</code>\n"
+    "The <code>chat_id</code> and <code>user_id</code> are required. The "
+    "optional <code>only_if_banned</code> flag asks Telegram to unban the user "
+    "only when the user is currently banned; omit it to use Telegram's default."
+)
+
 RESTRICT_CHAT_MEMBER_USAGE = (
     "<b>restrictchatmember usage</b>\n"
     "Restricts a user in the specified group or supergroup. The bot must be "
@@ -579,6 +596,7 @@ async def cmd_help(message: Message):
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
         "/banchatmember - Ban a user from a chat (admin only)\n"
+        "/unbanchatmember - Unban a user from a chat (admin only)\n"
         "/restrictchatmember - Restrict a user in a chat (admin only)\n"
         "/react - Set or remove a reaction on a message in this chat (admin only)\n"
         "/setemojistatus - Set or remove the emoji status of a user (admin only)\n"
@@ -1541,6 +1559,36 @@ async def cmd_ban_chat_member(message: Message):
 
     await message.answer(
         format_ban_result(chat_id, user_id, until_date, revoke_messages),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("unbanchatmember"))
+async def cmd_unban_chat_member(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_unban_chat_member_args(message.text or "")
+    if parsed is None:
+        await message.answer(UNBAN_CHAT_MEMBER_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, user_id, only_if_banned = parsed
+
+    try:
+        await perform_unban_chat_member(
+            message.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+            only_if_banned=only_if_banned,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not unban the user: {exc}")
+        return
+
+    await message.answer(
+        format_unban_result(chat_id, user_id, only_if_banned),
         parse_mode="HTML",
     )
 
@@ -2550,6 +2598,40 @@ def _parse_ban_chat_member_args(text: str):
             return None
 
     return chat_id, user_id, until_date, revoke_messages
+
+
+def _parse_unban_chat_member_args(text: str):
+    """Parse ``/unbanchatmember`` args into ``(chat_id, user_id, only_if_banned)``.
+
+    Returns ``None`` when required ids are missing or invalid. The optional
+    ``only_if_banned=true|false`` flag defaults to ``None`` so Telegram uses
+    its own default.
+    """
+    parts = (text or "").split()
+    if len(parts) < 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    try:
+        user_id = int(parts[2])
+    except ValueError:
+        return None
+
+    only_if_banned = None
+    if len(parts) >= 4:
+        flag = parts[3].strip().lower()
+        if flag == "only_if_banned=true":
+            only_if_banned = True
+        elif flag == "only_if_banned=false":
+            only_if_banned = False
+        else:
+            return None
+
+    return chat_id, user_id, only_if_banned
 
 
 def _restrict_permissions_for_preset(preset: str):
