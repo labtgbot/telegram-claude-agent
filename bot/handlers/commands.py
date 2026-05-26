@@ -25,6 +25,11 @@ from bot.services.create_chat_invite_link import (
     format_create_chat_invite_link_result,
     perform_create_chat_invite_link,
 )
+from bot.services.create_chat_subscription_invite_link import (
+    CreateChatSubscriptionInviteLinkError,
+    format_create_chat_subscription_invite_link_result,
+    perform_create_chat_subscription_invite_link,
+)
 from bot.services.edit_chat_invite_link import (
     EditChatInviteLinkError,
     format_edit_chat_invite_link_result,
@@ -662,6 +667,21 @@ EDIT_CHAT_INVITE_LINK_USAGE = (
     "[member_limit=&lt;1-99999&gt;] [creates_join_request=true|false]</code>\n"
     "<code>creates_join_request=true</code> cannot be used with "
     "<code>member_limit</code>."
+)
+
+CREATE_CHAT_SUBSCRIPTION_INVITE_LINK_USAGE = (
+    "<b>createchatsubscriptioninvitelink usage</b>\n"
+    "Creates a subscription invite link for the specified supergroup or "
+    "channel. The bot must be an administrator with the "
+    "<code>can_invite_users</code> right in the target chat. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/createchatsubscriptioninvitelink &lt;chat_id&gt; "
+    "&lt;subscription_price&gt; [name=&lt;text&gt;] "
+    "[subscription_period=2592000]</code>\n"
+    "The optional <code>name</code> must be 0-32 characters. "
+    "<code>subscription_price</code> must be 1-10000 Telegram Stars; Telegram "
+    "currently requires a 2592000-second subscription period."
 )
 
 EDIT_CHAT_SUBSCRIPTION_INVITE_LINK_USAGE = (
@@ -2035,6 +2055,43 @@ async def cmd_edit_chat_invite_link(message: Message):
 
     await message.answer(
         format_edit_chat_invite_link_result(chat_id=chat_id, link=link),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("createchatsubscriptioninvitelink"))
+async def cmd_create_chat_subscription_invite_link(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_create_chat_subscription_invite_link_args(message.text or "")
+    if parsed is None:
+        await message.answer(
+            CREATE_CHAT_SUBSCRIPTION_INVITE_LINK_USAGE,
+            parse_mode="HTML",
+        )
+        return
+
+    chat_id, subscription_price, options = parsed
+    try:
+        link = await perform_create_chat_subscription_invite_link(
+            message.bot,
+            chat_id=chat_id,
+            subscription_price=subscription_price,
+            **options,
+        )
+    except (TelegramAPIError, CreateChatSubscriptionInviteLinkError) as exc:
+        await message.answer(
+            f"Could not create the chat subscription invite link: {exc}"
+        )
+        return
+
+    await message.answer(
+        format_create_chat_subscription_invite_link_result(
+            chat_id=chat_id,
+            link=link,
+        ),
         parse_mode="HTML",
     )
 
@@ -3476,6 +3533,47 @@ def _parse_edit_chat_invite_link_args(text: str):
         return None
 
     return chat_id, parts[2], options
+
+
+def _parse_create_chat_subscription_invite_link_args(text: str):
+    """Parse ``/createchatsubscriptioninvitelink`` args."""
+    parts = (text or "").split()
+    if len(parts) < 3 or len(parts) > 5:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+        subscription_price = int(parts[2])
+    except ValueError:
+        return None
+
+    if not 1 <= subscription_price <= 10000:
+        return None
+
+    options = {
+        "name": None,
+        "subscription_period": 2592000,
+    }
+    for token in parts[3:]:
+        key, separator, value = token.partition("=")
+        if separator != "=":
+            return None
+        if key == "name":
+            if len(value) > 32:
+                return None
+            options["name"] = value
+        elif key == "subscription_period":
+            try:
+                subscription_period = int(value)
+            except ValueError:
+                return None
+            if subscription_period != 2592000:
+                return None
+            options["subscription_period"] = subscription_period
+        else:
+            return None
+
+    return chat_id, subscription_price, options
 
 
 def _parse_edit_chat_subscription_invite_link_args(text: str):
