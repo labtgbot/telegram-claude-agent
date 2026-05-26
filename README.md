@@ -175,6 +175,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/setchatpermissions <chat_id> <closed|text|media|open> [independent=true|false]` – Set default group/supergroup member permissions where the bot has `can_restrict_members` (admin only).
 - `/pinchatmessage <chat_id> <message_id> [silent|loud]` – Pin a message where the bot has `can_pin_messages` in groups/supergroups or `can_edit_messages` in channels (admin only).
 - `/unpinchatmessage <chat_id> [message_id]` – Unpin a specific or most recent pinned message where the bot has `can_pin_messages` in groups/supergroups or `can_edit_messages` in channels (admin only).
+- `/unpinallchatmessages <chat_id>` – Unpin all pinned messages where the bot has `can_pin_messages` in groups/supergroups or `can_edit_messages` in channels (admin only).
 - `/setchatphoto <chat_id> <photo_path>` – Set a new group/supergroup photo from a local file where the bot can change chat information (admin only).
 - `/deletechatphoto <chat_id>` – Delete the current group/supergroup photo where the bot can change chat information (admin only).
 - `/setchatdescription <chat_id> [description]` – Set or clear a group,
