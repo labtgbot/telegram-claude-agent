@@ -155,6 +155,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
 | `answerInlineQuery` | `bot/handlers/inline.py` | Минимальный inline mode: возвращается один статический `InlineQueryResultArticle`. |
+| `answerCallbackQuery` | `bot/services/answer_callback_query.py`, `bot/handlers/callbacks.py` | Callback-flow для inline keyboards в `/settings`, `/model`, `/clear`, `/logout` и `/close`; используется typed aiogram API `Bot.answer_callback_query`, `callback_query_id` обязателен, optional text ограничен 200 символами, Telegram-ошибки логируются структурно. |
 
 `message.bot.download_file()` скачивает файл по `file_path`, полученному через
 `getFile`; это важная часть file flow, но не отдельный метод Bot API из списка
@@ -165,8 +166,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 - `message`: частично обрабатываются text, photo, voice, document, caption и
   reply metadata;
 - `inline_query`: обрабатывается минимально, без запроса к Claude proxy;
-- `callback_query`: распознается только middleware для логирования и rate
-  limiting, но отдельного handler нет.
+- `callback_query`: обрабатывается для inline keyboards настроек, выбора модели,
+  очистки истории и подтверждений admin-действий.
 
 `TELEGRAM_GUEST_MODE_ENABLED` сохраняет локальную политику для групп: если бот
 уже находится в группе и к нему обратились mention/reply, история группы не
@@ -244,19 +245,22 @@ issue-карточек в
 - `/start` отправляет приветствие и подсказку использовать `/help`;
 - `/help` перечисляет доступные команды и поддерживаемые типы сообщений;
 - `/model` без аргументов показывает текущую модель пользователя и пытается
-  получить список моделей из proxy;
+  получить список моделей из proxy; если список доступен, ответ содержит
+  inline-кнопки выбора модели;
 - `/model <model_id>` сохраняет выбранную модель в in-memory настройках
   пользователя;
 - `/settings` показывает текущую модель, streaming flag, guest mode и лимит
-  запросов;
+  запросов и содержит inline-кнопку обновления;
 - `/webhook` показывает диагностику Telegram webhook для разрешенных
   admin/ops чатов;
 - `/deletewebhook [drop_pending_updates=true|false]` удаляет Telegram webhook
   для разрешенных admin/ops чатов перед переходом на polling или local Bot API;
 - `/logout` выполняет защищенный выход бота из cloud Bot API сервера для
-  admin-чатов и требует явного подтверждения `/logout confirm`;
+  admin-чатов и требует явного подтверждения `/logout confirm` или inline-кнопкой
+  из admin-чата;
 - `/close` выполняет защищенное закрытие bot instance на текущем Bot API
-  сервере для admin-чатов и требует явного подтверждения `/close confirm`;
+  сервере для admin-чатов и требует явного подтверждения `/close confirm` или
+  inline-кнопкой из admin-чата;
 - `/forward <from_chat_id> <message_id> [share]` пересылает одно сообщение из
   другого чата в текущий admin-чат для поддержки/модерации;
 - `/forwards <from_chat_id> <message_id> [<message_id> ...] [share]` пакетно
@@ -316,7 +320,16 @@ issue-карточек в
 - `/editchatsubscriptioninvitelink <chat_id> <invite_link> [name=<text>]`
   меняет существующую subscription invite link, созданную ботом, из
   разрешенного admin-чата;
-- `/clear` очищает историю разговора для пары `(chat_id, user_id)`.
+- `/clear` очищает историю разговора для пары `(chat_id, user_id)` и показывает
+  inline-кнопку повторной очистки текущего chat/user контекста.
+
+Inline callback-сценарии требуют update type `callback_query`; специальных прав
+бота не нужно, кроме уже существующего доступа к чату с сообщением-клавиатурой.
+Admin callback-действия используют тот же deny-by-default allowlist
+`TELEGRAM_ADMIN_CHAT_IDS`, что и текстовые `/logout` и `/close`. Rollback для
+`/clear` невозможен без внешнего persistent storage, для выбора модели это
+повторный выбор прежнего model id, а для `/logout` и `/close` rollback остается
+операционным запуском бота после ограничений Telegram.
 
 Важная деталь: выбранная через `/model <model_id>` модель сохраняется в
 `storage.user_settings`, но обработчик чата сейчас отправляет запросы с

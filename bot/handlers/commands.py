@@ -7,6 +7,8 @@ from aiogram.types import (
     InputMediaPhoto,
     InputMediaVideo,
     ChatPermissions,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
     Message,
 )
 from bot.config import settings
@@ -265,6 +267,13 @@ from bot.services.claude_proxy import ClaudeProxyClient
 router = Router()
 
 LOGOUT_CONFIRM_KEYWORD = "confirm"
+CALLBACK_SETTINGS_REFRESH = "settings:refresh"
+CALLBACK_MODEL_PREFIX = "model:set:"
+CALLBACK_CLEAR_HISTORY = "history:clear"
+CALLBACK_LOGOUT_CONFIRM = "admin:logout:confirm"
+CALLBACK_CLOSE_CONFIRM = "admin:close:confirm"
+CALLBACK_CANCEL = "action:cancel"
+TELEGRAM_CALLBACK_DATA_LIMIT = 64
 
 LOGOUT_WARNING = (
     "<b>logOut confirmation required</b>\n"
@@ -1360,7 +1369,25 @@ async def cmd_model(message: Message):
         try:
             models = await client.list_models()
             models_list = "\n".join(f"- {m}" for m in models)
-            await message.answer(f"Current model: {current}\nAvailable models:\n{models_list}")
+            model_buttons = [
+                [
+                    InlineKeyboardButton(
+                        text=m,
+                        callback_data=f"{CALLBACK_MODEL_PREFIX}{m}",
+                    )
+                ]
+                for m in models[:10]
+                if len(f"{CALLBACK_MODEL_PREFIX}{m}".encode("utf-8"))
+                <= TELEGRAM_CALLBACK_DATA_LIMIT
+            ]
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=model_buttons
+            )
+            kwargs = {"reply_markup": keyboard} if model_buttons else {}
+            await message.answer(
+                f"Current model: {current}\nAvailable models:\n{models_list}",
+                **kwargs,
+            )
         except Exception as e:
             await message.answer(f"Current model: {current}\nCould not fetch model list: {str(e)}")
         finally:
@@ -1384,7 +1411,17 @@ async def cmd_settings(message: Message):
         f"Guest mode: {'enabled' if guest_mode else 'disabled'}\n"
         f"Rate limit: {rate_limit} requests per minute"
     )
-    await message.answer(settings_text, parse_mode="HTML")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Refresh",
+                    callback_data=CALLBACK_SETTINGS_REFRESH,
+                )
+            ]
+        ]
+    )
+    await message.answer(settings_text, parse_mode="HTML", reply_markup=keyboard)
 
 @router.message(Command("webhook"))
 async def cmd_webhook_info(message: Message):
@@ -1431,7 +1468,18 @@ async def cmd_log_out(message: Message):
 
     args = (message.text or "").split()
     if len(args) < 2 or args[1].strip().lower() != LOGOUT_CONFIRM_KEYWORD:
-        await message.answer(LOGOUT_WARNING, parse_mode="HTML")
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Confirm logOut",
+                        callback_data=CALLBACK_LOGOUT_CONFIRM,
+                    ),
+                    InlineKeyboardButton(text="Cancel", callback_data=CALLBACK_CANCEL),
+                ]
+            ]
+        )
+        await message.answer(LOGOUT_WARNING, parse_mode="HTML", reply_markup=keyboard)
         return
 
     try:
@@ -1454,7 +1502,18 @@ async def cmd_close(message: Message):
 
     args = (message.text or "").split()
     if len(args) < 2 or args[1].strip().lower() != CLOSE_CONFIRM_KEYWORD:
-        await message.answer(CLOSE_WARNING, parse_mode="HTML")
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Confirm close",
+                        callback_data=CALLBACK_CLOSE_CONFIRM,
+                    ),
+                    InlineKeyboardButton(text="Cancel", callback_data=CALLBACK_CANCEL),
+                ]
+            ]
+        )
+        await message.answer(CLOSE_WARNING, parse_mode="HTML", reply_markup=keyboard)
         return
 
     try:
@@ -3759,7 +3818,17 @@ async def cmd_media_group(message: Message):
 @router.message(Command("clear"))
 async def cmd_clear(message: Message):
     storage.clear_history(message.chat.id, message.from_user.id)
-    await message.answer("Conversation history cleared.")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Clear again",
+                    callback_data=CALLBACK_CLEAR_HISTORY,
+                )
+            ]
+        ]
+    )
+    await message.answer("Conversation history cleared.", reply_markup=keyboard)
 
 
 def _is_diagnostics_allowed(chat_id: int) -> bool:
