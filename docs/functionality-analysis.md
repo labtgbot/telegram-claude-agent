@@ -60,8 +60,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup`, `sendVenue`,
 `sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `sendChatAction`,
 `sendMessageDraft`, `getUserProfilePhotos`, `setMessageReaction`,
-`setUserEmojiStatus` и `getUserProfileAudios`
-остается 139 пока не интегрированных методов.
+`setUserEmojiStatus`, `getUserProfileAudios` и `banChatMember`
+остается 138 пока не интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).

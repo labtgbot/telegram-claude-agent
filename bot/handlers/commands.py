@@ -60,6 +60,7 @@ from bot.services.set_message_reaction import (
 from bot.services.set_user_emoji_status import perform_set_user_emoji_status
 from bot.services.webhook_delete import delete_webhook
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
+from bot.services.ban_chat_member import format_ban_result, perform_ban_chat_member
 from bot.utils.storage import storage
 from bot.services.claude_proxy import ClaudeProxyClient
 
@@ -467,6 +468,22 @@ USER_PROFILE_AUDIOS_USAGE = (
     f"default {GET_USER_PROFILE_AUDIOS_MAX_LIMIT})."
 )
 
+BAN_CHAT_MEMBER_USAGE = (
+    "<b>banchatmember usage</b>\n"
+    "Bans a user from the specified chat. The bot must be an administrator "
+    "with the <code>can_restrict_members</code> right in the target chat.\n"
+    "Usage: <code>/banchatmember &lt;chat_id&gt; &lt;user_id&gt; "
+    "[until_date_unix] [revoke=true|false]</code>\n"
+    "The <code>chat_id</code> and <code>user_id</code> are required. "
+    "The optional <code>until_date_unix</code> is a Unix timestamp (seconds) "
+    "at which the ban expires; Telegram ignores values less than 30 seconds "
+    "or more than 366 days in the future (a permanent ban is used instead). "
+    "Omit it or pass 0 for a permanent ban. "
+    "The optional <code>revoke</code> flag (true/false) controls whether the "
+    "user's messages are deleted; defaults to Telegram's behaviour (always "
+    "revoked for supergroups/channels)."
+)
+
 MEDIA_GROUP_CAPTION_LIMIT = 1024
 
 MEDIA_GROUP_MIN_ITEMS = 2
@@ -539,6 +556,7 @@ async def cmd_help(message: Message):
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
+        "/banchatmember - Ban a user from a chat (admin only)\n"
         "/react - Set or remove a reaction on a message in this chat (admin only)\n"
         "/setemojistatus - Set or remove the emoji status of a user (admin only)\n"
         "/clear - Clear conversation history\n"
@@ -1473,6 +1491,37 @@ async def cmd_user_profile_audios(message: Message):
     )
 
 
+@router.message(Command("banchatmember"))
+async def cmd_ban_chat_member(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_ban_chat_member_args(message.text or "")
+    if parsed is None:
+        await message.answer(BAN_CHAT_MEMBER_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, user_id, until_date, revoke_messages = parsed
+
+    try:
+        await perform_ban_chat_member(
+            message.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+            until_date=until_date,
+            revoke_messages=revoke_messages,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not ban the user: {exc}")
+        return
+
+    await message.answer(
+        format_ban_result(chat_id, user_id, until_date, revoke_messages),
+        parse_mode="HTML",
+    )
+
+
 @router.message(Command("react"))
 async def cmd_react(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -2381,3 +2430,54 @@ def _parse_set_emoji_status_args(text: str):
     custom_emoji_id = parts[2] if len(parts) >= 3 else None
 
     return user_id, custom_emoji_id
+
+
+def _parse_ban_chat_member_args(text: str):
+    """Parse ``/banchatmember`` args into ``(chat_id, user_id, until_date, revoke_messages)``.
+
+    Splits the raw command text into the command, the required integer
+    ``chat_id`` and required integer ``user_id``, the optional Unix timestamp
+    ``until_date_unix`` (0 or omitted means permanent), and the optional
+    ``revoke=true|false`` flag.
+
+    Returns ``None`` when ``chat_id`` or ``user_id`` is missing or not a valid
+    integer so the caller can show usage. ``until_date`` is a timezone-aware
+    UTC ``datetime`` or ``None`` (permanent ban). ``revoke_messages`` defaults
+    to ``None`` so Telegram uses its own default.
+    """
+    from datetime import datetime, timezone
+
+    parts = (text or "").split()
+    if len(parts) < 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    try:
+        user_id = int(parts[2])
+    except ValueError:
+        return None
+
+    until_date = None
+    if len(parts) >= 4:
+        try:
+            ts = int(parts[3])
+        except ValueError:
+            return None
+        if ts > 0:
+            until_date = datetime.fromtimestamp(ts, tz=timezone.utc)
+
+    revoke_messages = None
+    if len(parts) >= 5:
+        flag = parts[4].strip().lower()
+        if flag == "revoke=true":
+            revoke_messages = True
+        elif flag == "revoke=false":
+            revoke_messages = False
+        else:
+            return None
+
+    return chat_id, user_id, until_date, revoke_messages
