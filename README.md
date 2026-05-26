@@ -199,6 +199,8 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/closeforumtopic <chat_id> <message_thread_id>` – Close a forum topic in a supergroup where the bot can manage topics (admin only).
 - `/reopenforumtopic <chat_id> <message_thread_id>` – Reopen a closed forum topic in a supergroup where the bot can manage topics (admin only).
 - `/reopengeneralforumtopic <chat_id>` – Reopen the General forum topic in a supergroup where the bot can manage topics (admin only).
+- `/hidegeneralforumtopic <chat_id>` – Hide the General forum topic in a supergroup where the bot can manage topics (admin only).
+- `/unhidegeneralforumtopic <chat_id>` – Unhide the General forum topic in a supergroup where the bot can manage topics (admin only).
 - `/deleteforumtopic <chat_id> <message_thread_id>` – Delete a forum topic in a supergroup where the bot can manage topics (admin only).
 - `/unpinallforumtopicmessages <chat_id> <message_thread_id>` – Unpin all pinned messages in a forum topic where the bot can manage topics (admin only).
 - `/unpinallgeneralforumtopicmessages <chat_id>` – Unpin all pinned messages in the General forum topic where the bot can manage topics (admin only).
@@ -1619,8 +1621,34 @@ API errors are reported back to the admin chat.
 This command does not call `free-claude-code`, mutates only the General topic
 visibility in the addressed supergroup, and is guarded by
 `TELEGRAM_ADMIN_CHAT_IDS` with no fallback to `TELEGRAM_ALLOWED_CHAT_IDS`.
-Rollback is operational: unhide the General topic in Telegram or with the
-future `/unhidegeneralforumtopic` command when available.
+Rollback is operational: unhide the General topic with
+`/unhidegeneralforumtopic` after confirming the same `chat_id`.
+
+### Unhide General forum topic
+
+The `/unhidegeneralforumtopic` admin command calls Telegram Bot API
+`unhideGeneralForumTopic` through an isolated raw Bot API helper because the
+project pins `aiogram==3.3.0`. It is intended for trusted operations chats when
+a moderator needs to restore the General topic visibility in a forum-enabled
+supergroup, separate from the normal Claude chat flow and from non-General
+topic management.
+
+Usage:
+
+```text
+/unhidegeneralforumtopic <chat_id>
+```
+
+The bot must be an administrator in the target supergroup with the right to
+manage topics. No special update subscription is required because the scenario
+starts from a normal admin command message. Telegram transport, rate-limit or
+API errors are reported back to the admin chat.
+
+This command does not call `free-claude-code`, mutates only the General topic
+visibility in the addressed supergroup, and is guarded by
+`TELEGRAM_ADMIN_CHAT_IDS` with no fallback to `TELEGRAM_ALLOWED_CHAT_IDS`.
+Rollback is operational: hide the General topic again with
+`/hidegeneralforumtopic` after confirming the same `chat_id`.
 
 ### Delete forum topic
 
