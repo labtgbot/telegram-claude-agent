@@ -169,6 +169,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
 - `/mediagroup` – Send 2-10 media items into this chat as a single album (media group) via URLs or file_ids (admin only).
 - `/banchatmember <chat_id> <user_id> [until_date_unix] [revoke=true|false]` – Ban a user from a group, supergroup, or channel where the bot has `can_restrict_members` (admin only).
+- `/restrictchatmember <chat_id> <user_id> <mute|readonly|unrestrict> [until_date_unix] [independent=true|false]` – Restrict or restore a group/supergroup member where the bot has `can_restrict_members` (admin only).
 - `/clear` – Clear your conversation history.
 
 ### Webhook diagnostics and lifecycle
@@ -945,6 +946,35 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+The `/restrictchatmember <chat_id> <user_id> <mute|readonly|unrestrict>
+[until_date_unix] [independent=true|false]` admin command calls Telegram Bot
+API `restrictChatMember` through aiogram's typed API. It is intended for
+moderator-run group and supergroup permission changes from trusted operations
+chats.
+
+The target `chat_id`, `user_id`, and preset are required. `mute` denies sending
+messages, `readonly` allows text messages but denies media, polls, reactions,
+link previews, invites, pins and topic management, and `unrestrict` restores
+common member permissions. The optional `until_date_unix` is a Unix timestamp
+in seconds; omit it or pass `0` for a permanent restriction. Telegram treats
+durations shorter than 30 seconds or longer than 366 days as permanent. The
+optional `independent=true|false` flag is passed as
+`use_independent_chat_permissions`.
+
+The bot must already be an administrator in the target group or supergroup
+with `can_restrict_members`. No special update subscription is required because
+the command is initiated by a normal Telegram message update. Telegram
+permission errors such as missing admin rights, unknown chats, or users that
+cannot be restricted are reported back to the admin chat.
+
+Because the command changes user permissions, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 ### Group privacy mode
 
 When the bot is mentioned in a group chat (e.g., `@YourBot hello`) or a user replies to a bot message, it can avoid shared group history. In this mode:
@@ -1079,6 +1109,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/checklist` command makes the bot post an arbitrary checklist into the chat on behalf of a connected business account, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the title and task texts are kept out of the structured logs.
 - The `/mediagroup` command makes the bot post an arbitrary album of 2-10 media items into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/banchatmember` command removes a user from a target chat and can revoke their previous messages, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
+- The `/restrictchatmember` command changes a user's permissions in a target group or supergroup, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
 - Rate limiting helps prevent abuse.
 
 ## Limitations & Future Work

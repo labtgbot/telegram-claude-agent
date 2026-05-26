@@ -61,6 +61,10 @@ from bot.services.set_user_emoji_status import perform_set_user_emoji_status
 from bot.services.webhook_delete import delete_webhook
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
 from bot.services.ban_chat_member import format_ban_result, perform_ban_chat_member
+from bot.services.restrict_chat_member import (
+    format_restrict_result,
+    perform_restrict_chat_member,
+)
 from bot.utils.storage import storage
 from bot.services.claude_proxy import ClaudeProxyClient
 
@@ -484,6 +488,24 @@ BAN_CHAT_MEMBER_USAGE = (
     "revoked for supergroups/channels)."
 )
 
+RESTRICT_CHAT_MEMBER_USAGE = (
+    "<b>restrictchatmember usage</b>\n"
+    "Restricts a user in the specified group or supergroup. The bot must be "
+    "an administrator with the <code>can_restrict_members</code> right in the "
+    "target chat. This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/restrictchatmember &lt;chat_id&gt; &lt;user_id&gt; "
+    "&lt;mute|readonly|unrestrict&gt; [until_date_unix] "
+    "[independent=true|false]</code>\n"
+    "Presets: <code>mute</code> denies sending messages; "
+    "<code>readonly</code> allows text messages but denies media, polls, link "
+    "previews, reactions, invites, pins and topic management; "
+    "<code>unrestrict</code> restores common member permissions. Omit "
+    "<code>until_date_unix</code> or pass 0 for a permanent restriction. "
+    "Telegram treats values less than 30 seconds or more than 366 days in the "
+    "future as permanent."
+)
+
 MEDIA_GROUP_CAPTION_LIMIT = 1024
 
 MEDIA_GROUP_MIN_ITEMS = 2
@@ -557,6 +579,7 @@ async def cmd_help(message: Message):
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
         "/banchatmember - Ban a user from a chat (admin only)\n"
+        "/restrictchatmember - Restrict a user in a chat (admin only)\n"
         "/react - Set or remove a reaction on a message in this chat (admin only)\n"
         "/setemojistatus - Set or remove the emoji status of a user (admin only)\n"
         "/clear - Clear conversation history\n"
@@ -1522,6 +1545,52 @@ async def cmd_ban_chat_member(message: Message):
     )
 
 
+@router.message(Command("restrictchatmember"))
+async def cmd_restrict_chat_member(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_restrict_chat_member_args(message.text or "")
+    if parsed is None:
+        await message.answer(RESTRICT_CHAT_MEMBER_USAGE, parse_mode="HTML")
+        return
+
+    (
+        chat_id,
+        user_id,
+        preset,
+        permissions,
+        until_date,
+        use_independent_chat_permissions,
+    ) = parsed
+
+    try:
+        await perform_restrict_chat_member(
+            message.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+            permissions=permissions,
+            until_date=until_date,
+            use_independent_chat_permissions=use_independent_chat_permissions,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not restrict the user: {exc}")
+        return
+
+    await message.answer(
+        format_restrict_result(
+            chat_id=chat_id,
+            user_id=user_id,
+            preset=preset,
+            permissions=permissions,
+            until_date=until_date,
+            use_independent_chat_permissions=use_independent_chat_permissions,
+        ),
+        parse_mode="HTML",
+    )
+
+
 @router.message(Command("react"))
 async def cmd_react(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -2481,3 +2550,95 @@ def _parse_ban_chat_member_args(text: str):
             return None
 
     return chat_id, user_id, until_date, revoke_messages
+
+
+def _restrict_permissions_for_preset(preset: str):
+    from aiogram.types import ChatPermissions
+
+    if preset == "mute":
+        return ChatPermissions(can_send_messages=False)
+    if preset == "readonly":
+        return ChatPermissions(
+            can_send_messages=True,
+            can_send_audios=False,
+            can_send_documents=False,
+            can_send_photos=False,
+            can_send_videos=False,
+            can_send_video_notes=False,
+            can_send_voice_notes=False,
+            can_send_polls=False,
+            can_send_other_messages=False,
+            can_add_web_page_previews=False,
+            can_react_to_messages=False,
+            can_change_info=False,
+            can_invite_users=False,
+            can_pin_messages=False,
+            can_manage_topics=False,
+        )
+    if preset == "unrestrict":
+        return ChatPermissions(
+            can_send_messages=True,
+            can_send_audios=True,
+            can_send_documents=True,
+            can_send_photos=True,
+            can_send_videos=True,
+            can_send_video_notes=True,
+            can_send_voice_notes=True,
+            can_send_polls=True,
+            can_send_other_messages=True,
+            can_add_web_page_previews=True,
+            can_react_to_messages=True,
+            can_change_info=True,
+            can_invite_users=True,
+            can_pin_messages=True,
+            can_manage_topics=True,
+        )
+    return None
+
+
+def _parse_restrict_chat_member_args(text: str):
+    """Parse ``/restrictchatmember`` args for admin-only chat restrictions."""
+    from datetime import datetime, timezone
+
+    parts = (text or "").split()
+    if len(parts) < 4:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+        user_id = int(parts[2])
+    except ValueError:
+        return None
+
+    preset = parts[3].strip().lower()
+    permissions = _restrict_permissions_for_preset(preset)
+    if permissions is None:
+        return None
+
+    until_date = None
+    if len(parts) >= 5:
+        try:
+            ts = int(parts[4])
+        except ValueError:
+            return None
+        if ts > 0:
+            until_date = datetime.fromtimestamp(ts, tz=timezone.utc)
+
+    use_independent_chat_permissions = None
+    if len(parts) >= 6:
+        flag = parts[5].strip().lower()
+        if flag == "independent=true":
+            use_independent_chat_permissions = True
+        elif flag == "independent=false":
+            use_independent_chat_permissions = False
+        else:
+            return None
+
+    return (
+        chat_id,
+        user_id,
+        preset,
+        permissions,
+        until_date,
+        use_independent_chat_permissions,
+    )
