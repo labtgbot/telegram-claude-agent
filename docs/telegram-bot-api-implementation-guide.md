@@ -635,6 +635,7 @@ Area label: `area:chat-admin`. Priority baseline: `priority:P2`
 - Title: `telegram-api: реализовать promoteChatMember`
 - Official docs: https://core.telegram.org/bots/api#promotechatmember
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:chat-admin`, `priority:P2`, `stage:S1-spec`
+- Status: implemented in PR #210 as restricted admin `/promotechatmember` command.
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Добавить поддержку `promoteChatMember` в область: администрирование групп/супергрупп, invite links, join requests, закрепы, права участников и metadata чатов. Определить конкретный сценарий: админские команды с проверкой прав инициатора и конфигурационным deny-by-default режимом.
 - Acceptance criteria:
