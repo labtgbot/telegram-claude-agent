@@ -232,6 +232,11 @@ from bot.services.get_managed_bot_access_settings import (
     format_managed_bot_access_settings,
     perform_get_managed_bot_access_settings,
 )
+from bot.services.set_managed_bot_access_settings import (
+    SetManagedBotAccessSettingsError,
+    format_set_managed_bot_access_settings_result,
+    perform_set_managed_bot_access_settings,
+)
 from bot.services.replace_managed_bot_token import (
     ReplaceManagedBotTokenError,
     format_replaced_managed_bot_token,
@@ -680,6 +685,33 @@ MANAGED_BOT_ACCESS_SETTINGS_USAGE = (
     "The id must come from a trusted <code>managed_bot</code> update, "
     "<code>managed_bot_created</code> message, or another operator-controlled "
     "source. Telegram allows only the manager/owner flow to read these settings."
+)
+
+SET_MANAGED_BOT_ACCESS_SETTINGS_CONFIRM_KEYWORD = "confirm"
+
+SET_MANAGED_BOT_ACCESS_SETTINGS_USAGE = (
+    "<b>setmanagedbotaccess usage</b>\n"
+    "Updates Telegram <code>setManagedBotAccessSettings</code> for a managed "
+    "bot by its user id. This changes who can access the managed bot, so the "
+    "command is admin-only, disabled unless "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code> contains the current chat, and keeps "
+    "allowlist values out of structured logs.\n"
+    "Usage: <code>/setmanagedbotaccess &lt;managed_bot_user_id&gt; "
+    "&lt;restricted|open&gt; [added_user_id ...] confirm</code>\n"
+    "Use <code>restricted</code> to limit access to the owner and listed users, "
+    "or <code>open</code> to remove the access allowlist. The id must come "
+    "from a trusted <code>managed_bot</code> update, "
+    "<code>managed_bot_created</code> message, or another operator-controlled "
+    "source."
+)
+
+SET_MANAGED_BOT_ACCESS_SETTINGS_WARNING = (
+    "<b>setmanagedbotaccess confirmation required</b>\n"
+    "This changes access settings for a Telegram managed bot. Before changing "
+    "them, fetch the current state with <code>/managedbotaccess</code> so it "
+    "can be restored if needed.\n"
+    "Run <code>/setmanagedbotaccess &lt;managed_bot_user_id&gt; "
+    "&lt;restricted|open&gt; [added_user_id ...] confirm</code> to proceed."
 )
 
 REPLACE_MANAGED_BOT_TOKEN_CONFIRM_KEYWORD = "confirm"
@@ -1398,6 +1430,7 @@ async def cmd_help(message: Message):
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/managedbottoken - Fetch a managed bot token by user id (admin only)\n"
         "/managedbotaccess - Fetch managed bot access settings by user id (admin only)\n"
+        "/setmanagedbotaccess - Update managed bot access settings by user id (admin only)\n"
         "/replacemanagedbottoken - Rotate a managed bot token by user id (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
@@ -2426,6 +2459,51 @@ async def cmd_managed_bot_access_settings(message: Message):
 
     await message.answer(
         format_managed_bot_access_settings(user_id=user_id, settings=settings),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setmanagedbotaccess"))
+async def cmd_set_managed_bot_access_settings(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_managed_bot_access_settings_args(message.text or "")
+    if parsed is None:
+        await message.answer(
+            SET_MANAGED_BOT_ACCESS_SETTINGS_USAGE,
+            parse_mode="HTML",
+        )
+        return
+
+    user_id, is_access_restricted, added_user_ids, confirmed = parsed
+    if not confirmed:
+        await message.answer(
+            SET_MANAGED_BOT_ACCESS_SETTINGS_WARNING,
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        await perform_set_managed_bot_access_settings(
+            message.bot,
+            user_id=user_id,
+            is_access_restricted=is_access_restricted,
+            added_user_ids=added_user_ids,
+        )
+    except SetManagedBotAccessSettingsError as exc:
+        await message.answer(
+            f"Could not set the managed bot access settings: {exc}"
+        )
+        return
+
+    await message.answer(
+        format_set_managed_bot_access_settings_result(
+            user_id=user_id,
+            is_access_restricted=is_access_restricted,
+            added_user_ids=added_user_ids,
+        ),
         parse_mode="HTML",
     )
 
@@ -4713,6 +4791,49 @@ def _parse_managed_bot_access_settings_args(text: str) -> int | None:
     if user_id <= 0:
         return None
     return user_id
+
+
+def _parse_set_managed_bot_access_settings_args(
+    text: str,
+) -> tuple[int, bool, list[int], bool] | None:
+    """Parse ``/setmanagedbotaccess`` args into settings and confirmation."""
+    parts = (text or "").split()
+    if len(parts) < 3:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+
+    if user_id <= 0:
+        return None
+
+    mode = parts[2].lower()
+    if mode == "restricted":
+        is_access_restricted = True
+    elif mode == "open":
+        is_access_restricted = False
+    else:
+        return None
+
+    confirmed = bool(
+        len(parts) >= 4
+        and parts[-1] == SET_MANAGED_BOT_ACCESS_SETTINGS_CONFIRM_KEYWORD
+    )
+    added_user_parts = parts[3:-1] if confirmed else parts[3:]
+
+    added_user_ids: list[int] = []
+    for raw_user_id in added_user_parts:
+        try:
+            added_user_id = int(raw_user_id)
+        except ValueError:
+            return None
+        if added_user_id <= 0:
+            return None
+        added_user_ids.append(added_user_id)
+
+    return user_id, is_access_restricted, added_user_ids, confirmed
 
 
 def _parse_replace_managed_bot_token_args(text: str) -> tuple[int, bool] | None:

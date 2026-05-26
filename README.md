@@ -170,6 +170,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/businessconnection` – Fetch metadata for a connected Telegram business account by `business_connection_id` (admin only).
 - `/managedbottoken` – Fetch the live token of a managed bot by its Telegram user id (admin only).
 - `/managedbotaccess` – Fetch access settings for a managed bot by its Telegram user id (admin only).
+- `/setmanagedbotaccess` – Update access settings for a managed bot by its Telegram user id (admin only, requires confirmation).
 - `/replacemanagedbottoken` – Rotate the live token of a managed bot by its Telegram user id (admin only, requires confirmation).
 - `/mediagroup` – Send 2-10 media items into this chat as a single album (media group) via URLs or file_ids (admin only).
 - `/banchatmember <chat_id> <user_id> [until_date_unix] [revoke=true|false]` – Ban a user from a group, supergroup, or channel where the bot has `can_restrict_members` (admin only).
@@ -1066,6 +1067,39 @@ other sensitive managed-bot commands:
 - no special update subscription is required for the command itself because it
   starts from a normal admin message; include `managed_bot` in allowed updates
   only when the operator needs to collect managed-bot lifecycle ids;
+- Telegram permission, unknown managed-bot, transport and rate-limit errors are
+  reported back to the admin chat.
+
+### Set managed bot access settings
+
+The restricted `/setmanagedbotaccess` command calls Telegram Bot API
+`setManagedBotAccessSettings` to update the `BotAccessSettings` object of a
+managed bot by its Telegram `user_id`. Because the pinned `aiogram==3.3.0` does
+not expose a typed wrapper for this Bot API 10.0 method, the command uses an
+isolated raw Bot API helper
+(`bot/services/set_managed_bot_access_settings.py`) over `httpx`.
+
+Usage:
+`/setmanagedbotaccess <managed_bot_user_id> <restricted|open> [added_user_id ...] confirm`
+
+The `user_id` and optional `added_user_id` values must be positive integers
+from trusted operator-controlled sources. `restricted` sets
+`is_access_restricted=true` and sends the listed user ids as `added_users`;
+`open` sets `is_access_restricted=false` and omits the allowlist. Telegram only
+updates access settings when the calling bot is allowed to manage that bot.
+
+Because this command changes who can access a managed bot, it requires the
+literal `confirm` argument. Rollback is to run `/managedbotaccess` before the
+change, preserve the previous state, then run `/setmanagedbotaccess` again with
+the previous restricted flag and user ids if the update must be reverted.
+
+The command is guarded like the other sensitive managed-bot commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- structured logs include only `user_id`, the restricted flag and allowlist
+  count, not the full allowlist values;
 - Telegram permission, unknown managed-bot, transport and rate-limit errors are
   reported back to the admin chat.
 
