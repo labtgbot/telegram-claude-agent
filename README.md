@@ -173,6 +173,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/unbanchatmember <chat_id> <user_id> [only_if_banned=true|false]` – Unban a user from a group, supergroup, or channel where the bot has `can_restrict_members` (admin only).
 - `/restrictchatmember <chat_id> <user_id> <mute|readonly|unrestrict> [until_date_unix] [independent=true|false]` – Restrict or restore a group/supergroup member where the bot has `can_restrict_members` (admin only).
 - `/setchatpermissions <chat_id> <closed|text|media|open> [independent=true|false]` – Set default group/supergroup member permissions where the bot has `can_restrict_members` (admin only).
+- `/pinchatmessage <chat_id> <message_id> [silent|loud]` – Pin a message where the bot has `can_pin_messages` in groups/supergroups or `can_edit_messages` in channels (admin only).
 - `/unpinchatmessage <chat_id> [message_id]` – Unpin a specific or most recent pinned message where the bot has `can_pin_messages` in groups/supergroups or `can_edit_messages` in channels (admin only).
 - `/setchatphoto <chat_id> <photo_path>` – Set a new group/supergroup photo from a local file where the bot can change chat information (admin only).
 - `/deletechatphoto <chat_id>` – Delete the current group/supergroup photo where the bot can change chat information (admin only).
@@ -1080,6 +1081,34 @@ permission errors such as missing admin rights, unknown chats, or users that
 cannot be restricted are reported back to the admin chat.
 
 Because the command changes user permissions, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
+### Pin chat messages
+
+The `/pinchatmessage <chat_id> <message_id> [silent|loud]` admin command calls
+Telegram Bot API `pinChatMessage` through aiogram's typed API. It is intended
+for trusted operators to pin operational notices, moderation messages, or other
+important messages in groups, supergroups, or channels.
+
+The target `chat_id` and `message_id` are required. The optional notification
+flag controls Telegram's `disable_notification` parameter: pass `silent` to pin
+without notifying members, `loud` to request a notification, or omit the flag to
+use Telegram's default behaviour. Rollback is manual: unpin the message in
+Telegram or run `/unpinchatmessage <chat_id> <message_id>`.
+
+The bot must already be an administrator in the target chat with
+`can_pin_messages` in groups and supergroups, or `can_edit_messages` in
+channels. No special update subscription is required because the command is
+initiated by a normal Telegram message update. Telegram permission errors,
+unknown chats, invalid message ids, or messages that cannot be pinned are
+reported back to the admin chat.
+
+Because the command changes visible chat state, it is guarded like the other
 admin commands:
 
 - it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
