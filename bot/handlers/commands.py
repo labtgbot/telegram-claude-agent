@@ -155,6 +155,10 @@ from bot.services.unpin_chat_message import (
     format_unpin_chat_message_result,
     perform_unpin_chat_message,
 )
+from bot.services.pin_chat_message import (
+    format_pin_chat_message_result,
+    perform_pin_chat_message,
+)
 from bot.utils.storage import storage
 from bot.services.claude_proxy import ClaudeProxyClient
 
@@ -666,6 +670,21 @@ UNPIN_CHAT_MESSAGE_USAGE = (
     "operational tool."
 )
 
+PIN_CHAT_MESSAGE_USAGE = (
+    "<b>pinchatmessage usage</b>\n"
+    "Pins a message in the specified group, supergroup or channel. The bot "
+    "must be an administrator with <code>can_pin_messages</code> in groups and "
+    "supergroups or <code>can_edit_messages</code> in channels. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/pinchatmessage &lt;chat_id&gt; &lt;message_id&gt; "
+    "[silent|loud]</code>\n"
+    "Pass <code>silent</code> to pin without notification, or <code>loud</code> "
+    "to force notification. Omit the flag to use Telegram's default. Rollback "
+    "is manual: unpin the message in Telegram or with "
+    "<code>/unpinchatmessage</code>."
+)
+
 DELETE_CHAT_PHOTO_USAGE = (
     "<b>deletechatphoto usage</b>\n"
     "Deletes the current photo from the specified group or supergroup. The bot "
@@ -927,6 +946,7 @@ async def cmd_help(message: Message):
         "/unbanchatsenderchat - Unban a sender chat from a chat (admin only)\n"
         "/restrictchatmember - Restrict a user in a chat (admin only)\n"
         "/setchatpermissions - Set default chat permissions (admin only)\n"
+        "/pinchatmessage - Pin a message in a chat (admin only)\n"
         "/unpinchatmessage - Unpin a message from a chat (admin only)\n"
         "/setchatphoto - Set a group or supergroup photo (admin only)\n"
         "/setchatdescription - Set or clear a chat description (admin only)\n"
@@ -2099,6 +2119,40 @@ async def cmd_unpin_chat_message(message: Message):
 
     await message.answer(
         format_unpin_chat_message_result(chat_id=chat_id, message_id=message_id),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("pinchatmessage"))
+async def cmd_pin_chat_message(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_pin_chat_message_args(message.text or "")
+    if parsed is None:
+        await message.answer(PIN_CHAT_MESSAGE_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, message_id, disable_notification = parsed
+
+    try:
+        await perform_pin_chat_message(
+            message.bot,
+            chat_id=chat_id,
+            message_id=message_id,
+            disable_notification=disable_notification,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not pin the chat message: {exc}")
+        return
+
+    await message.answer(
+        format_pin_chat_message_result(
+            chat_id=chat_id,
+            message_id=message_id,
+            disable_notification=disable_notification,
+        ),
         parse_mode="HTML",
     )
 
@@ -3889,6 +3943,34 @@ def _parse_unpin_chat_message_args(text: str):
         return None
 
     return chat_id, message_id
+
+
+def _parse_pin_chat_message_args(text: str):
+    """Parse ``/pinchatmessage`` args into chat/message ids and notification flag."""
+    parts = (text or "").split()
+    if len(parts) not in {3, 4}:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+        message_id = int(parts[2])
+    except ValueError:
+        return None
+
+    if message_id <= 0:
+        return None
+
+    disable_notification = None
+    if len(parts) == 4:
+        flag = parts[3].lower()
+        if flag in {"silent", "silent=true", "disable_notification=true"}:
+            disable_notification = True
+        elif flag in {"loud", "silent=false", "disable_notification=false"}:
+            disable_notification = False
+        else:
+            return None
+
+    return chat_id, message_id, disable_notification
 
 
 def _parse_set_chat_photo_args(text: str):
