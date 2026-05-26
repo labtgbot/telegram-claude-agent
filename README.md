@@ -169,6 +169,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
 - `/businessconnection` – Fetch metadata for a connected Telegram business account by `business_connection_id` (admin only).
 - `/managedbottoken` – Fetch the live token of a managed bot by its Telegram user id (admin only).
+- `/replacemanagedbottoken` – Rotate the live token of a managed bot by its Telegram user id (admin only, requires confirmation).
 - `/mediagroup` – Send 2-10 media items into this chat as a single album (media group) via URLs or file_ids (admin only).
 - `/banchatmember <chat_id> <user_id> [until_date_unix] [revoke=true|false]` – Ban a user from a group, supergroup, or channel where the bot has `can_restrict_members` (admin only).
 - `/banchatsenderchat <chat_id> <sender_chat_id>` – Ban a channel chat from sending messages as itself into a supergroup or channel where the bot has `can_restrict_members` (admin only).
@@ -1028,6 +1029,35 @@ admin commands:
 - it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
   **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
   is empty, the command is disabled;
+- structured logs include only `user_id` and token length, never the token;
+- Telegram permission, unknown managed-bot, token lifecycle, transport and
+  rate-limit errors are reported back to the admin chat.
+
+### Replace a managed bot token
+
+The restricted `/replacemanagedbottoken` command calls Telegram Bot API
+`replaceManagedBotToken` to rotate the live token of a managed bot by its
+Telegram `user_id`. Because the pinned `aiogram==3.3.0` does not expose a typed
+wrapper for this Bot API 9.6 method, the command uses an isolated raw Bot API
+helper (`bot/services/replace_managed_bot_token.py`) over `httpx`.
+
+Usage: `/replacemanagedbottoken <managed_bot_user_id> confirm`
+
+The `user_id` must be a positive integer from a trusted `managed_bot` update,
+`managed_bot_created` message, or another operator-controlled source. Telegram
+only replaces a token when the calling bot is allowed to manage that bot. The
+method does not require `free-claude-code`, but it changes token lifecycle
+state: the returned token must be moved into the relevant secret store and
+deployments immediately, and rollback requires another rotation or a separately
+preserved previous credential if Telegram still accepts it.
+
+Because the command rotates a credential, it is guarded like a destructive
+admin command:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- it requires explicit text confirmation with the `confirm` keyword;
 - structured logs include only `user_id` and token length, never the token;
 - Telegram permission, unknown managed-bot, token lifecycle, transport and
   rate-limit errors are reported back to the admin chat.
@@ -2103,6 +2133,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/checklist` command makes the bot post an arbitrary checklist into the chat on behalf of a connected business account, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the title and task texts are kept out of the structured logs.
 - The `/businessconnection` command fetches business connection owner/lifecycle metadata by `business_connection_id`, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps returned owner fields out of structured logs.
 - The `/managedbottoken` command returns a live managed-bot token, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps the token itself out of structured logs.
+- The `/replacemanagedbottoken` command rotates and returns a live managed-bot token, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, explicit `confirm`, is unavailable when that list is empty, and keeps token values out of structured logs.
 - The `/mediagroup` command makes the bot post an arbitrary album of 2-10 media items into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/banchatmember` command removes a user from a target chat and can revoke their previous messages, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
 - The `/banchatsenderchat` command blocks a channel identity from posting as a sender chat in a target supergroup or channel, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_restrict_members` in the target chat.
