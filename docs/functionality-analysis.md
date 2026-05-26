@@ -59,8 +59,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
 `sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup`, `sendVenue`,
 `sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `sendChatAction`,
-`sendMessageDraft` и `getUserProfilePhotos`
-остается 142 пока не интегрированных методов.
+`sendMessageDraft`, `getUserProfilePhotos` и `setMessageReaction`
+остается 141 пока не интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -99,6 +99,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendChatAction` | `bot/services/send_chat_action.py`, `keep_chat_action` в `bot/handlers/chat.py` и `/chataction` в `bot/handlers/commands.py` | Показ chat action (transient-статуса вроде `typing…`) в чате через typed aiogram API. Автоматически показывается и обновляется, пока Claude/proxy обрабатывает входящее сообщение (управляется `TELEGRAM_CHAT_ACTION_ENABLED`); admin-команда `/chataction [action]` запускает action вручную, где action ограничен набором поддерживаемых значений и валидируется до обращения к Telegram. |
 | `sendMessageDraft` | `bot/services/send_message_draft.py`, `handle_streaming_with_draft` в `bot/handlers/chat.py` и `/messagedraft` в `bot/handlers/commands.py` | Стриминг частичного ответа через эфемерный draft preview (временный ~30-секундный предпросмотр) в private chat как альтернатива частым `editMessageText`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; включается флагом `TELEGRAM_MESSAGE_DRAFT_ENABLED` и работает только в private chats, финальный ответ затем сохраняется обычным `sendMessage`. Admin-команда `/messagedraft [text]` запускает draft вручную; `draft_id` обязан быть ненулевым, а длина текста (до 4096) валидируется до обращения к Telegram, и текст draft не пишется в structured logs. |
 | `getUserProfilePhotos` | `bot/services/get_user_profile_photos.py`, `/userprofilephotos` в `bot/handlers/commands.py` | Admin-flow получения фотографий профиля Telegram-пользователя по `user_id`, через typed aiogram API; не требует особых прав бота, Telegram может вернуть ошибку при ограниченной приватности пользователя; опциональные `offset` и `limit` (1-100) позволяют постранично получать фотографии, каждая в нескольких разрешениях; `user_id` и `file_id` фотографий не пишутся в structured logs. |
+| `setMessageReaction` | `bot/services/set_message_reaction.py`, `/react` в `bot/handlers/commands.py` | Admin-flow установки emoji-реакции на сообщение в текущем чате по `message_id`, через typed aiogram API (поддерживается с `aiogram==3.3.0`, Bot API 7.0); реакция задаётся стандартным emoji из фиксированного набора Telegram или опускается для удаления всех реакций бота; опциональный флаг `big` включает увеличенную анимацию; служебные сообщения не поддерживают реакции, в альбомах нужно реагировать на первое сообщение; не-premium боты могут ставить не более одной реакции на сообщение. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -138,8 +139,7 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `getMyDefaultAdministratorRights`.
 3. Более богатые ответы пользователю: `sendChatAction`,
    `sendChecklist`,
-   `sendMessageDraft`, `setMessageReaction` (из них `sendChatAction`,
-   `sendChecklist` и `sendMessageDraft` уже интегрированы).
+   `sendMessageDraft`, `setMessageReaction` (все четыре уже интегрированы).
 4. Управление сообщениями: `editMessageCaption`, `editMessageMedia`,
    `editMessageLiveLocation`, `stopMessageLiveLocation`,
    `editMessageChecklist`, `editMessageReplyMarkup`, `stopPoll`,
