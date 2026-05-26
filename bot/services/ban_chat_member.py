@@ -1,5 +1,5 @@
-from html import escape
 from datetime import datetime, timezone
+from html import escape
 from typing import Any, Optional
 
 import structlog
