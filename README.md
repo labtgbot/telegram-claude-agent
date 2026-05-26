@@ -185,6 +185,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/approvechatjoinrequest <chat_id> <user_id>` – Approve a pending join request where the bot has `can_invite_users` (admin only).
 - `/declinechatjoinrequest <chat_id> <user_id>` – Decline a pending join request where the bot has `can_invite_users` (admin only).
 - `/exportchatinvitelink <chat_id>` – Export a new primary invite link for a group, supergroup, or channel where the bot has `can_invite_users` (admin only).
+- `/getchat <chat_id>` – Fetch Telegram chat metadata for a private chat, group, supergroup, or channel (admin only).
 - `/leavechat <chat_id> confirm` – Make the bot leave a group, supergroup, or channel (admin only, requires confirmation).
 - `/createchatinvitelink <chat_id> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Create an additional invite link where the bot has `can_invite_users` (admin only).
 - `/editchatinvitelink <chat_id> <invite_link> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Edit an existing non-primary invite link where the bot has `can_invite_users` (admin only).
@@ -1212,6 +1213,32 @@ rights, insufficient grantable rights, unknown chats, or users that cannot be
 promoted are reported back to the admin chat.
 
 Because the command changes administrator privileges, it is guarded like the
+other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
+### Get chat information
+
+The `/getchat <chat_id>` admin command calls Telegram Bot API `getChat` through
+aiogram's typed API. It is intended for trusted operations chats when an
+administrator needs to inspect Telegram metadata for a private chat, group,
+supergroup or channel known to the bot.
+
+The command takes only the target `chat_id`. When Telegram succeeds, the bot
+returns a concise HTML summary with the chat id, type and common optional
+fields such as title, username, bio, description, invite link, forum flag,
+protected-content flag, linked chat id, auto-delete timer and slow-mode delay
+when Telegram includes them in the response.
+
+The bot must be able to access the target chat. For groups, supergroups and
+channels this usually means the bot is already a member; Telegram permission
+errors such as unknown chats, missing membership or inaccessible private chats
+are reported back to the admin chat.
+
+Because the command may expose private chat metadata, it is guarded like the
 other admin commands:
 
 - it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does

@@ -116,6 +116,7 @@ from bot.services.get_user_profile_photos import (
     fetch_user_profile_photos,
     format_user_profile_photos,
 )
+from bot.services.get_chat import format_get_chat_result, perform_get_chat
 from bot.services.set_message_reaction import (
     REACTION_EMOJI,
     perform_set_message_reaction,
@@ -796,6 +797,15 @@ EXPORT_CHAT_INVITE_LINK_USAGE = (
     "Usage: <code>/exportchatinvitelink &lt;chat_id&gt;</code>"
 )
 
+GET_CHAT_USAGE = (
+    "<b>getchat usage</b>\n"
+    "Fetches Telegram chat metadata for a private chat, group, supergroup or "
+    "channel through <code>getChat</code>. The bot must be able to access the "
+    "target chat. This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/getchat &lt;chat_id&gt;</code>"
+)
+
 LEAVE_CHAT_CONFIRM_KEYWORD = "confirm"
 
 LEAVE_CHAT_USAGE = (
@@ -979,6 +989,7 @@ async def cmd_help(message: Message):
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
+        "/getchat - Fetch chat metadata from Telegram (admin only)\n"
         "/banchatmember - Ban a user from a chat (admin only)\n"
         "/banchatsenderchat - Ban a sender chat from a chat (admin only)\n"
         "/unbanchatmember - Unban a user from a chat (admin only)\n"
@@ -2393,6 +2404,32 @@ async def cmd_export_chat_invite_link(message: Message):
             chat_id=chat_id,
             invite_link=invite_link,
         ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("getchat"))
+async def cmd_get_chat(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    chat_id = _parse_get_chat_args(message.text or "")
+    if chat_id is None:
+        await message.answer(GET_CHAT_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        chat = await perform_get_chat(
+            message.bot,
+            chat_id=chat_id,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not get chat information: {exc}")
+        return
+
+    await message.answer(
+        format_get_chat_result(chat),
         parse_mode="HTML",
     )
 
@@ -3996,6 +4033,18 @@ def _parse_promote_chat_member_args(text: str):
 
 def _parse_export_chat_invite_link_args(text: str):
     """Parse ``/exportchatinvitelink`` args into ``chat_id``."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
+
+
+def _parse_get_chat_args(text: str):
+    """Parse ``/getchat`` args into ``chat_id``."""
     parts = (text or "").split()
     if len(parts) != 2:
         return None
