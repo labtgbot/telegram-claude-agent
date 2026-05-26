@@ -151,6 +151,10 @@ from bot.services.unban_chat_sender_chat import (
     format_unban_sender_chat_result,
     perform_unban_chat_sender_chat,
 )
+from bot.services.unpin_chat_message import (
+    format_unpin_chat_message_result,
+    perform_unpin_chat_message,
+)
 from bot.utils.storage import storage
 from bot.services.claude_proxy import ClaudeProxyClient
 
@@ -649,6 +653,19 @@ SET_CHAT_PERMISSIONS_USAGE = (
     "not change administrator permissions with this method."
 )
 
+UNPIN_CHAT_MESSAGE_USAGE = (
+    "<b>unpinchatmessage usage</b>\n"
+    "Unpins a message from the specified group, supergroup or channel. The bot "
+    "must be an administrator with <code>can_pin_messages</code> in groups and "
+    "supergroups or <code>can_edit_messages</code> in channels. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/unpinchatmessage &lt;chat_id&gt; [message_id]</code>\n"
+    "Omit <code>message_id</code> to unpin the most recent pinned message. "
+    "Rollback is manual: pin the message again in Telegram or with another "
+    "operational tool."
+)
+
 DELETE_CHAT_PHOTO_USAGE = (
     "<b>deletechatphoto usage</b>\n"
     "Deletes the current photo from the specified group or supergroup. The bot "
@@ -910,6 +927,7 @@ async def cmd_help(message: Message):
         "/unbanchatsenderchat - Unban a sender chat from a chat (admin only)\n"
         "/restrictchatmember - Restrict a user in a chat (admin only)\n"
         "/setchatpermissions - Set default chat permissions (admin only)\n"
+        "/unpinchatmessage - Unpin a message from a chat (admin only)\n"
         "/setchatphoto - Set a group or supergroup photo (admin only)\n"
         "/setchatdescription - Set or clear a chat description (admin only)\n"
         "/setchattitle - Set a group, supergroup or channel title (admin only)\n"
@@ -2052,6 +2070,35 @@ async def cmd_set_chat_permissions(message: Message):
             permissions=permissions,
             use_independent_chat_permissions=use_independent_chat_permissions,
         ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("unpinchatmessage"))
+async def cmd_unpin_chat_message(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_unpin_chat_message_args(message.text or "")
+    if parsed is None:
+        await message.answer(UNPIN_CHAT_MESSAGE_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, message_id = parsed
+
+    try:
+        await perform_unpin_chat_message(
+            message.bot,
+            chat_id=chat_id,
+            message_id=message_id,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not unpin the chat message: {exc}")
+        return
+
+    await message.answer(
+        format_unpin_chat_message_result(chat_id=chat_id, message_id=message_id),
         parse_mode="HTML",
     )
 
@@ -3824,6 +3871,24 @@ def _parse_delete_chat_photo_args(text: str):
         return int(parts[1])
     except ValueError:
         return None
+
+
+def _parse_unpin_chat_message_args(text: str):
+    """Parse ``/unpinchatmessage`` args into ``chat_id`` and optional ``message_id``."""
+    parts = (text or "").split()
+    if len(parts) not in {2, 3}:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+        message_id = int(parts[2]) if len(parts) == 3 else None
+    except ValueError:
+        return None
+
+    if message_id is not None and message_id <= 0:
+        return None
+
+    return chat_id, message_id
 
 
 def _parse_set_chat_photo_args(text: str):
