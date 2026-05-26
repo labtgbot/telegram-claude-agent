@@ -41,6 +41,12 @@ from bot.services.send_venue import perform_send_venue
 from bot.services.send_video import perform_send_video
 from bot.services.send_video_note import perform_send_video_note
 from bot.services.send_voice import perform_send_voice
+from bot.services.get_user_profile_audios import (
+    GET_USER_PROFILE_AUDIOS_MAX_LIMIT,
+    GET_USER_PROFILE_AUDIOS_MIN_LIMIT,
+    fetch_user_profile_audios,
+    format_user_profile_audios,
+)
 from bot.services.get_user_profile_photos import (
     GET_USER_PROFILE_PHOTOS_MAX_LIMIT,
     GET_USER_PROFILE_PHOTOS_MIN_LIMIT,
@@ -448,6 +454,19 @@ SET_EMOJI_STATUS_USAGE = (
     "omit it or pass an empty string to remove the user's current emoji status."
 )
 
+USER_PROFILE_AUDIOS_USAGE = (
+    "<b>userprofileaudios usage</b>\n"
+    "Fetches the profile audios of a Telegram user and lists their "
+    "<code>file_id</code> values, duration, performer and title. No special "
+    "bot permissions are needed; Telegram may return an error when the user "
+    "has restricted profile audio visibility in their privacy settings.\n"
+    "Usage: <code>/userprofileaudios &lt;user_id&gt; [offset] [limit]</code>\n"
+    "The <code>user_id</code> is required. The optional <code>offset</code> "
+    "skips the first N audios (default 0) and the optional <code>limit</code> "
+    f"caps the number of audios returned (1-{GET_USER_PROFILE_AUDIOS_MAX_LIMIT}, "
+    f"default {GET_USER_PROFILE_AUDIOS_MAX_LIMIT})."
+)
+
 MEDIA_GROUP_CAPTION_LIMIT = 1024
 
 MEDIA_GROUP_MIN_ITEMS = 2
@@ -519,6 +538,7 @@ async def cmd_help(message: Message):
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
+        "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
         "/react - Set or remove a reaction on a message in this chat (admin only)\n"
         "/setemojistatus - Set or remove the emoji status of a user (admin only)\n"
         "/clear - Clear conversation history\n"
@@ -1415,6 +1435,44 @@ async def cmd_user_profile_photos(message: Message):
     )
 
 
+@router.message(Command("userprofileaudios"))
+async def cmd_user_profile_audios(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_user_profile_audios_args(message.text or "")
+    if parsed is None:
+        await message.answer(USER_PROFILE_AUDIOS_USAGE, parse_mode="HTML")
+        return
+
+    user_id, offset, limit = parsed
+
+    if limit is not None and not (
+        GET_USER_PROFILE_AUDIOS_MIN_LIMIT <= limit <= GET_USER_PROFILE_AUDIOS_MAX_LIMIT
+    ):
+        await message.answer(
+            f"Limit must be between {GET_USER_PROFILE_AUDIOS_MIN_LIMIT} and "
+            f"{GET_USER_PROFILE_AUDIOS_MAX_LIMIT}."
+        )
+        return
+
+    try:
+        result = await fetch_user_profile_audios(
+            message.bot,
+            user_id=user_id,
+            offset=offset,
+            limit=limit,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not fetch user profile audios: {exc}")
+        return
+
+    await message.answer(
+        format_user_profile_audios(result, user_id), parse_mode="HTML"
+    )
+
+
 @router.message(Command("react"))
 async def cmd_react(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -2145,6 +2203,44 @@ def _parse_checklist_args(text: str):
 
 def _parse_user_profile_photos_args(text: str):
     """Parse ``/userprofilephotos`` args into ``(user_id, offset, limit)``.
+
+    Splits the raw command text into the command, the required integer
+    ``user_id`` and optional integer ``offset`` and ``limit`` values. Returns
+    ``None`` when ``user_id`` is missing or not a valid integer so the caller
+    can show usage. ``offset`` and ``limit`` default to ``None`` so the service
+    layer can pass them unchanged to Telegram (Telegram ignores ``None`` values
+    and uses its own defaults: offset 0, limit 100). The caller validates the
+    ``limit`` range (1-100) against Telegram's accepted bounds.
+    """
+    parts = (text or "").split()
+    if len(parts) < 2:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+
+    offset = None
+    limit = None
+
+    if len(parts) >= 3:
+        try:
+            offset = int(parts[2])
+        except ValueError:
+            return None
+
+    if len(parts) >= 4:
+        try:
+            limit = int(parts[3])
+        except ValueError:
+            return None
+
+    return user_id, offset, limit
+
+
+def _parse_user_profile_audios_args(text: str):
+    """Parse ``/userprofileaudios`` args into ``(user_id, offset, limit)``.
 
     Splits the raw command text into the command, the required integer
     ``user_id`` and optional integer ``offset`` and ``limit`` values. Returns
