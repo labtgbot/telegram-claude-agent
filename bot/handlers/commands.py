@@ -65,6 +65,10 @@ from bot.services.set_chat_administrator_custom_title import (
     format_set_chat_administrator_custom_title_result,
     perform_set_chat_administrator_custom_title,
 )
+from bot.services.set_chat_member_tag import (
+    format_set_chat_member_tag_result,
+    perform_set_chat_member_tag,
+)
 from bot.services.set_user_emoji_status import perform_set_user_emoji_status
 from bot.services.webhook_delete import delete_webhook
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
@@ -575,6 +579,18 @@ SET_CHAT_ADMINISTRATOR_CUSTOM_TITLE_USAGE = (
     "The <code>custom_title</code> may contain spaces."
 )
 
+SET_CHAT_MEMBER_TAG_USAGE = (
+    "<b>setchatmembertag usage</b>\n"
+    "Sets or clears a tag for a member in the specified chat. The bot must "
+    "be an administrator with the required Telegram rights in the target "
+    "chat. This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setchatmembertag &lt;chat_id&gt; &lt;user_id&gt; "
+    "&lt;tag|clear&gt;</code>\n"
+    "The <code>tag</code> may contain spaces. Pass <code>clear</code>, "
+    "<code>none</code> or <code>-</code> to clear the member tag."
+)
+
 MEDIA_GROUP_CAPTION_LIMIT = 1024
 
 MEDIA_GROUP_MIN_ITEMS = 2
@@ -653,6 +669,7 @@ async def cmd_help(message: Message):
         "/restrictchatmember - Restrict a user in a chat (admin only)\n"
         "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
         "/setchatadministratortitle - Set a chat administrator custom title (admin only)\n"
+        "/setchatmembertag - Set or clear a chat member tag (admin only)\n"
         "/react - Set or remove a reaction on a message in this chat (admin only)\n"
         "/setemojistatus - Set or remove the emoji status of a user (admin only)\n"
         "/clear - Clear conversation history\n"
@@ -1790,6 +1807,40 @@ async def cmd_set_chat_administrator_custom_title(message: Message):
             chat_id=chat_id,
             user_id=user_id,
             custom_title=custom_title,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setchatmembertag"))
+async def cmd_set_chat_member_tag(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_chat_member_tag_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_CHAT_MEMBER_TAG_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, user_id, tag = parsed
+
+    try:
+        await perform_set_chat_member_tag(
+            message.bot,
+            chat_id=chat_id,
+            user_id=user_id,
+            tag=tag,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not set the member tag: {exc}")
+        return
+
+    await message.answer(
+        format_set_chat_member_tag_result(
+            chat_id=chat_id,
+            user_id=user_id,
+            tag=tag,
         ),
         parse_mode="HTML",
     )
@@ -2992,3 +3043,25 @@ def _parse_set_chat_administrator_custom_title_args(text: str):
         return None
 
     return chat_id, user_id, custom_title
+
+
+def _parse_set_chat_member_tag_args(text: str):
+    """Parse ``/setchatmembertag`` args into ``(chat_id, user_id, tag)``."""
+    parts = (text or "").split(maxsplit=3)
+    if len(parts) < 4:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+        user_id = int(parts[2])
+    except ValueError:
+        return None
+
+    tag = parts[3].strip()
+    if not tag:
+        return None
+
+    if tag.lower() in {"clear", "none", "-"}:
+        tag = None
+
+    return chat_id, user_id, tag
