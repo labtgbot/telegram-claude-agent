@@ -117,6 +117,10 @@ from bot.services.get_user_profile_photos import (
     format_user_profile_photos,
 )
 from bot.services.get_chat import format_get_chat_result, perform_get_chat
+from bot.services.get_chat_member_count import (
+    format_get_chat_member_count_result,
+    perform_get_chat_member_count,
+)
 from bot.services.set_message_reaction import (
     REACTION_EMOJI,
     perform_set_message_reaction,
@@ -804,6 +808,15 @@ GET_CHAT_USAGE = (
     "target chat. This command is deny-by-default and only works from "
     "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
     "Usage: <code>/getchat &lt;chat_id&gt;</code>"
+)
+
+GET_CHAT_MEMBER_COUNT_USAGE = (
+    "<b>getchatmembercount usage</b>\n"
+    "Fetches the number of members in a group, supergroup or channel through "
+    "<code>getChatMemberCount</code>. The bot must be able to access the "
+    "target chat. This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/getchatmembercount &lt;chat_id&gt;</code>"
 )
 
 LEAVE_CHAT_CONFIRM_KEYWORD = "confirm"
@@ -2434,6 +2447,32 @@ async def cmd_get_chat(message: Message):
     )
 
 
+@router.message(Command("getchatmembercount"))
+async def cmd_get_chat_member_count(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    chat_id = _parse_get_chat_member_count_args(message.text or "")
+    if chat_id is None:
+        await message.answer(GET_CHAT_MEMBER_COUNT_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        member_count = await perform_get_chat_member_count(
+            message.bot,
+            chat_id=chat_id,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not get chat member count: {exc}")
+        return
+
+    await message.answer(
+        format_get_chat_member_count_result(chat_id, member_count),
+        parse_mode="HTML",
+    )
+
+
 @router.message(Command("leavechat"))
 async def cmd_leave_chat(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -4045,6 +4084,18 @@ def _parse_export_chat_invite_link_args(text: str):
 
 def _parse_get_chat_args(text: str):
     """Parse ``/getchat`` args into ``chat_id``."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
+
+
+def _parse_get_chat_member_count_args(text: str):
+    """Parse ``/getchatmembercount`` args into ``chat_id``."""
     parts = (text or "").split()
     if len(parts) != 2:
         return None

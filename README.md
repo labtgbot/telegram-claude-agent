@@ -186,6 +186,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/declinechatjoinrequest <chat_id> <user_id>` – Decline a pending join request where the bot has `can_invite_users` (admin only).
 - `/exportchatinvitelink <chat_id>` – Export a new primary invite link for a group, supergroup, or channel where the bot has `can_invite_users` (admin only).
 - `/getchat <chat_id>` – Fetch Telegram chat metadata for a private chat, group, supergroup, or channel (admin only).
+- `/getchatmembercount <chat_id>` – Fetch the member count for a group, supergroup, or channel known to the bot (admin only).
 - `/leavechat <chat_id> confirm` – Make the bot leave a group, supergroup, or channel (admin only, requires confirmation).
 - `/createchatinvitelink <chat_id> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Create an additional invite link where the bot has `can_invite_users` (admin only).
 - `/editchatinvitelink <chat_id> <invite_link> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Edit an existing non-primary invite link where the bot has `can_invite_users` (admin only).
@@ -1240,6 +1241,29 @@ are reported back to the admin chat.
 
 Because the command may expose private chat metadata, it is guarded like the
 other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
+### Get chat member count
+
+The `/getchatmembercount <chat_id>` admin command calls Telegram Bot API
+`getChatMemberCount` through aiogram's typed API. It is intended for trusted
+operations chats when an administrator needs a quick size check for a group,
+supergroup or channel known to the bot.
+
+The command takes only the target `chat_id` and returns Telegram's integer
+member count. The bot must be able to access the target chat; for groups,
+supergroups and channels this usually means the bot is already a member.
+Telegram permission errors such as unknown chats, missing membership,
+restricted access or rate limits are reported back to the admin chat. No
+special update subscriptions are required because the scenario starts from a
+normal command message.
+
+Because the command may expose private membership metadata, it is guarded like
+the other admin commands:
 
 - it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
   **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
