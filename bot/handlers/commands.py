@@ -213,6 +213,11 @@ from bot.services.get_chat_member import (
     format_get_chat_member_result,
     perform_get_chat_member,
 )
+from bot.services.get_business_connection import (
+    GetBusinessConnectionError,
+    format_business_connection,
+    perform_get_business_connection,
+)
 from bot.services.set_message_reaction import (
     REACTION_EMOJI,
     perform_set_message_reaction,
@@ -620,6 +625,17 @@ CHECKLIST_USAGE = (
     "Provide 1-30 tasks. The title is limited to 255 characters and each task "
     "to 100 characters; the title and every task may contain spaces and must be "
     "non-empty."
+)
+
+BUSINESS_CONNECTION_USAGE = (
+    "<b>businessconnection usage</b>\n"
+    "Fetches Telegram <code>getBusinessConnection</code> diagnostics for a "
+    "connected business account. This is an admin-only surface because the "
+    "response exposes business owner and lifecycle metadata.\n"
+    "Usage: <code>/businessconnection &lt;business_connection_id&gt;</code>\n"
+    "The id must come from a live business connection update or another "
+    "trusted operator source. This command is unavailable unless "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code> contains the current chat."
 )
 
 USER_PROFILE_PHOTOS_USAGE = (
@@ -2251,6 +2267,28 @@ async def cmd_checklist(message: Message):
         return
 
     await message.answer(f"Sent checklist with {len(tasks)} tasks.")
+
+@router.message(Command("businessconnection"))
+async def cmd_business_connection(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    business_connection_id = _parse_business_connection_args(message.text or "")
+    if business_connection_id is None:
+        await message.answer(BUSINESS_CONNECTION_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        connection = await perform_get_business_connection(
+            message.bot,
+            business_connection_id=business_connection_id,
+        )
+    except GetBusinessConnectionError as exc:
+        await message.answer(f"Could not fetch the business connection: {exc}")
+        return
+
+    await message.answer(format_business_connection(connection), parse_mode="HTML")
 
 @router.message(Command("userprofilephotos"))
 async def cmd_user_profile_photos(message: Message):
@@ -4423,6 +4461,16 @@ def _parse_checklist_args(text: str):
         return None
 
     return business_connection_id, title, tasks
+
+
+def _parse_business_connection_args(text: str) -> str | None:
+    """Parse ``/businessconnection`` args into ``business_connection_id``."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    business_connection_id = parts[1].strip()
+    return business_connection_id or None
 
 
 def _parse_user_profile_photos_args(text: str):

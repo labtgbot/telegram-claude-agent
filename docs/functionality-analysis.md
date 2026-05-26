@@ -105,6 +105,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendContact` | `bot/services/send_contact.py`, `/contact` в `bot/handlers/commands.py` | Admin-flow отправки телефонного контакта (contact) — имени с номером телефона, который получатель может сохранить в адресную книгу — в текущий чат, через typed aiogram API; phone_number и first_name обязательны, last_name опционален, а номер телефона и имя контакта не пишутся в structured logs. |
 | `sendDice` | `bot/services/send_dice.py`, `/dice` в `bot/handlers/commands.py` | Admin-flow отправки анимированной кости (dice) — анимированного эмодзи со случайным значением, которое выбирает Telegram — в текущий чат, через typed aiogram API; опциональный emoji ограничен набором 🎲/🎯/🏀/⚽/🎳/🎰 и валидируется до обращения к Telegram, без аргумента отправляется 🎲. |
 | `sendChecklist` | `bot/services/send_checklist.py`, `/checklist` в `bot/handlers/commands.py` | Admin-flow отправки чеклиста (checklist) — озаглавленного списка из 1-30 задач — в текущий чат от имени подключенного business account, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 9.1; требует `business_connection_id`, длины title (до 255) и задач (до 100) и их количество валидируются до обращения к Telegram, а title и тексты задач не пишутся в structured logs. |
+| `getBusinessConnection` | `bot/services/get_business_connection.py`, `/businessconnection` в `bot/handlers/commands.py` | Admin-flow получения `BusinessConnection` по live `business_connection_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, показывает owner/user chat/lifecycle/can_reply/enabled metadata и не пишет owner-поля или полный объект в structured logs. |
 | `sendChatAction` | `bot/services/send_chat_action.py`, `keep_chat_action` в `bot/handlers/chat.py` и `/chataction` в `bot/handlers/commands.py` | Показ chat action (transient-статуса вроде `typing…`) в чате через typed aiogram API. Автоматически показывается и обновляется, пока Claude/proxy обрабатывает входящее сообщение (управляется `TELEGRAM_CHAT_ACTION_ENABLED`); admin-команда `/chataction [action]` запускает action вручную, где action ограничен набором поддерживаемых значений и валидируется до обращения к Telegram. |
 | `sendMessageDraft` | `bot/services/send_message_draft.py`, `handle_streaming_with_draft` в `bot/handlers/chat.py` и `/messagedraft` в `bot/handlers/commands.py` | Стриминг частичного ответа через эфемерный draft preview (временный ~30-секундный предпросмотр) в private chat как альтернатива частым `editMessageText`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; включается флагом `TELEGRAM_MESSAGE_DRAFT_ENABLED` и работает только в private chats, финальный ответ затем сохраняется обычным `sendMessage`. Admin-команда `/messagedraft [text]` запускает draft вручную; `draft_id` обязан быть ненулевым, а длина текста (до 4096) валидируется до обращения к Telegram, и текст draft не пишется в structured logs. |
 | `getUserProfilePhotos` | `bot/services/get_user_profile_photos.py`, `/userprofilephotos` в `bot/handlers/commands.py` | Admin-flow получения фотографий профиля Telegram-пользователя по `user_id`, через typed aiogram API; не требует особых прав бота, Telegram может вернуть ошибку при ограниченной приватности пользователя; опциональные `offset` и `limit` (1-100) позволяют постранично получать фотографии, каждая в нескольких разрешениях; `user_id` и `file_id` фотографий не пишутся в structured logs. |
@@ -1193,6 +1194,43 @@ Telegram-чеклист от имени подключенного business acco
 
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/checklist` так же, как к другим командам.
+
+### getBusinessConnection
+
+Команда `/businessconnection` получает объект Telegram `BusinessConnection` по
+`business_connection_id` методом `getBusinessConnection` (Bot API 10.0). Метод
+нужен для business connection и managed-bot сценариев: оператор может проверить
+live-подключение, владельца, `user_chat_id`, дату подключения, `can_reply` и
+`is_enabled` перед дальнейшими действиями от имени business account.
+
+Pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода, поэтому
+реализация идет через изолированный raw Bot API helper
+`bot/services/get_business_connection.py`. Helper POST'ит JSON payload
+`{"business_connection_id": ...}` на endpoint `getBusinessConnection` через
+`httpx`, берет URL через `bot.session.api.api_url(...)` для поддержки local Bot
+API server и поднимает транспортные ошибки или Telegram `ok: false` как
+`GetBusinessConnectionError`.
+
+Сценарий намеренно узкий и защищенный: `/businessconnection
+<business_connection_id>` доступен только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и
+не делает fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; при пустом admin allowlist
+команда отключена. Значение `business_connection_id` обязательно, должно быть
+одним токеном и приходить из live business connection update или другого
+доверенного operator source. При отсутствии id показывается usage и Telegram не
+вызывается.
+
+Security/privacy impact: команда раскрывает owner и lifecycle metadata
+business-подключения, но не управляет токенами, не вызывает managed-bot token
+methods и не меняет состояние подключения. В structured logs попадают только
+`business_connection_id`, булевы признаки `can_reply`/`is_enabled` и наличие
+`user_chat_id`; owner name, username, полный объект и потенциально чувствимые
+поля не логируются. Rollback прост: убрать `/businessconnection` из admin
+allowlist или очистить `TELEGRAM_ADMIN_CHAT_IDS`, после чего поверхность
+выключена без изменения бизнес-подключений.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/businessconnection` так же, как к другим
+командам.
 
 ### sendChatAction
 
