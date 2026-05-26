@@ -364,6 +364,29 @@ guarded like the other admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Set bot commands
+
+The restricted `/setmycommands` command calls Telegram Bot API `setMyCommands`
+through aiogram's typed `Bot.set_my_commands()` wrapper. It updates the default
+command list shown in Telegram clients, so BotFather command configuration can
+be reproduced from the repository.
+
+Usage: `/setmycommands command:Description | command2:Description`
+
+Example: `/setmycommands start:Start the bot | help:Show help | model:Show or change the AI model`
+
+- Telegram accepts 0-100 commands in one list;
+- command names must be lowercase Latin letters, digits or underscores and
+  1-32 characters long;
+- descriptions are required and must be 1-256 characters long;
+- the bot does not need chat administrator rights, but the command changes the
+  bot's public UI and is guarded like the other admin commands.
+
+It is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+**not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+is empty, the command is disabled. The global rate-limit middleware still
+applies.
+
 `forwardMessage` forwards a single message; forwarding a whole album as a group
 is the job of `forwardMessages`, exposed as `/forwards`.
 
@@ -2116,7 +2139,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /checklist, /mediagroup, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /checklist, /setmycommands, /mediagroup, /clear
 │   │   ├── chat.py             # Text and media message handler (shows typing… while processing)
 │   │   └── inline.py           # Inline query handler
 │   ├── services/

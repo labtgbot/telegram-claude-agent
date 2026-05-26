@@ -2,6 +2,7 @@ from aiogram import Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
 from aiogram.types import (
+    BotCommand,
     InputMediaAudio,
     InputMediaDocument,
     InputMediaPhoto,
@@ -36,6 +37,10 @@ from bot.services.set_chat_title import (
     SET_CHAT_TITLE_LIMIT,
     format_set_chat_title_result,
     perform_set_chat_title,
+)
+from bot.services.set_my_commands import (
+    format_set_my_commands_result,
+    perform_set_my_commands,
 )
 from bot.services.set_chat_photo import (
     format_set_chat_photo_result,
@@ -968,6 +973,18 @@ SET_CHAT_TITLE_USAGE = (
     f"The title is limited to {SET_CHAT_TITLE_LIMIT} characters."
 )
 
+SET_MY_COMMANDS_USAGE = (
+    "<b>setmycommands usage</b>\n"
+    "Sets the bot command list shown in Telegram clients via "
+    "<code>setMyCommands</code>. Telegram accepts 0-100 commands; command names "
+    "must be lowercase Latin letters, digits or underscores, 1-32 characters "
+    "long, and descriptions must be 1-256 characters. This command changes the "
+    "bot's public UI, is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setmycommands command:Description | command2:Description</code>\n"
+    "Example: <code>/setmycommands start:Start the bot | help:Show help</code>"
+)
+
 SET_CHAT_STICKER_SET_USAGE = (
     "<b>setchatstickerset usage</b>\n"
     "Sets a sticker set for the specified supergroup. The bot must be an "
@@ -1463,6 +1480,7 @@ async def cmd_help(message: Message):
         "/setchatphoto - Set a group or supergroup photo (admin only)\n"
         "/setchatdescription - Set or clear a chat description (admin only)\n"
         "/setchattitle - Set a group, supergroup or channel title (admin only)\n"
+        "/setmycommands - Set the bot command list shown in Telegram clients (admin only)\n"
         "/setchatstickerset - Set a supergroup sticker set (admin only)\n"
         "/deletechatstickerset - Delete a supergroup sticker set (admin only)\n"
         "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
@@ -3013,6 +3031,29 @@ async def cmd_set_chat_title(message: Message):
 
     await message.answer(
         format_set_chat_title_result(chat_id=chat_id, title=title),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setmycommands"))
+async def cmd_set_my_commands(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_my_commands_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_MY_COMMANDS_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        await perform_set_my_commands(message.bot, commands=parsed)
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not set bot commands: {exc}")
+        return
+
+    await message.answer(
+        format_set_my_commands_result(parsed),
         parse_mode="HTML",
     )
 
@@ -5870,6 +5911,38 @@ def _parse_set_chat_title_args(text: str):
         return None
 
     return chat_id, title
+
+
+def _parse_set_my_commands_args(text: str):
+    """Parse ``/setmycommands`` args into a list of ``BotCommand`` objects."""
+    parts = (text or "").split(maxsplit=1)
+    if len(parts) != 2:
+        return None
+
+    raw_items = [item.strip() for item in parts[1].split("|")]
+    if not raw_items or len(raw_items) > 100:
+        return None
+
+    parsed = []
+    for item in raw_items:
+        if not item or ":" not in item:
+            return None
+
+        command, description = (part.strip() for part in item.split(":", maxsplit=1))
+        if not _is_valid_bot_command(command):
+            return None
+        if not description or len(description) > 256:
+            return None
+
+        parsed.append(BotCommand(command=command, description=description))
+
+    return parsed
+
+
+def _is_valid_bot_command(command: str) -> bool:
+    if not 1 <= len(command) <= 32:
+        return False
+    return all(char.islower() or char.isdigit() or char == "_" for char in command)
 
 
 def _parse_set_chat_sticker_set_args(text: str):
