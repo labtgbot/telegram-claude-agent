@@ -54,8 +54,13 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 описан в
 [telegram-bot-api-implementation-guide.md](telegram-bot-api-implementation-guide.md):
 в нем 169 карточек методов с labels, stages, scope и acceptance criteria;
-после внедрения `deleteWebhook`, `getWebhookInfo`, `logOut` и `close` остается 165 пока не
-интегрированных методов.
+после внедрения `deleteWebhook`, `getWebhookInfo`, `logOut`, `close`, `forwardMessage`,
+`copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
+`sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
+`sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup`, `sendVenue`,
+`sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `sendChatAction` и
+`sendMessageDraft`
+остается 143 пока не интегрированных методов.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
 [telegram-bot-api-issue-index.md](telegram-bot-api-issue-index.md).
@@ -71,6 +76,28 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `getWebhookInfo` | `bot/services/webhook_info.py`, `/webhook` в `bot/handlers/commands.py` | Админская диагностика статуса webhook, pending updates, `allowed_updates` и последних ошибок доставки. |
 | `logOut` | `bot/services/log_out.py`, `/logout` в `bot/handlers/commands.py` | Защищенный admin-flow выхода из cloud Bot API перед запуском local Bot API server, с обязательным подтверждением. |
 | `close` | `bot/services/close.py`, `/close` в `bot/handlers/commands.py` | Защищенный admin-flow закрытия bot instance перед миграцией между local Bot API серверами, с обязательным подтверждением. |
+| `forwardMessage` | `bot/services/forward_message.py`, `/forward` в `bot/handlers/commands.py` | Admin-flow пересылки одного сообщения из другого чата в текущий admin-чат для поддержки/модерации, с `protect_content` по умолчанию. |
+| `forwardMessages` | `bot/services/forward_messages.py`, `/forwards` в `bot/handlers/commands.py` | Admin-flow пакетной пересылки 1-100 сообщений из другого чата в текущий admin-чат с сохранением album grouping, с `protect_content` по умолчанию. |
+| `copyMessage` | `bot/services/copy_message.py`, `/copy` в `bot/handlers/commands.py` | Admin-flow копирования одного сообщения из другого чата в текущий admin-чат как нового сообщения без ссылки на исходного отправителя, с `protect_content` по умолчанию. |
+| `copyMessages` | `bot/services/copy_messages.py`, `/copies` в `bot/handlers/commands.py` | Admin-flow пакетного копирования 1-100 сообщений из другого чата в текущий admin-чат как новых сообщений без ссылки на исходного отправителя, с сохранением album grouping, `protect_content` по умолчанию и опциональным `remove_caption`. |
+| `sendPhoto` | `bot/services/send_photo.py`, `/photo` в `bot/handlers/commands.py` | Admin-flow отправки изображения в текущий чат как настоящего Telegram-фото по URL или `file_id`, а не только текстовой интерпретации. |
+| `sendAudio` | `bot/services/send_audio.py`, `/audio` в `bot/handlers/commands.py` | Admin-flow отправки аудиофайла в текущий чат как проигрываемого музыкального трека по URL или `file_id`, а не только текстовой интерпретации. |
+| `sendLivePhoto` | `bot/services/send_live_photo.py`, `/livephoto` в `bot/handlers/commands.py` | Admin-flow отправки live photo (короткое видео + статичная обложка) в текущий чат по `file_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0. |
+| `sendDocument` | `bot/services/send_document.py`, `/document` в `bot/handlers/commands.py` | Admin-flow отправки файла в текущий чат как Telegram-документа по URL или `file_id` — для больших текстовых, PDF или исходных артефактов, когда текстовый ответ не подходит. |
+| `sendVideo` | `bot/services/send_video.py`, `/video` в `bot/handlers/commands.py` | Admin-flow отправки видео в текущий чат как проигрываемого Telegram-видео по URL или `file_id`, а не только текстовой интерпретации. |
+| `sendVideoNote` | `bot/services/send_video_note.py`, `/videonote` в `bot/handlers/commands.py` | Admin-flow отправки видеосообщения-кружка (круглого квадратного видео) в текущий чат по `file_id`, через typed aiogram API; у видеосообщений нет caption, и Telegram не поддерживает их отправку по URL. |
+| `sendAnimation` | `bot/services/send_animation.py`, `/animation` в `bot/handlers/commands.py` | Admin-flow отправки анимации (GIF или видео без звука) в текущий чат как проигрываемого зацикленного клипа по URL или `file_id`, а не только текстовой интерпретации. |
+| `sendVoice` | `bot/services/send_voice.py`, `/voice` в `bot/handlers/commands.py` | Admin-flow отправки голосового сообщения в текущий чат как проигрываемого аудиоклипа (в виде waveform) по URL или `file_id`, а не только текстовой интерпретации. |
+| `sendPaidMedia` | `bot/services/send_paid_media.py`, `/paidmedia` в `bot/handlers/commands.py` | Admin-flow отправки платного фото в текущий чат, доступ к которому пользователи оплачивают Telegram Stars, по URL или `file_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 7.6. |
+| `sendLocation` | `bot/services/send_location.py`, `/location` в `bot/handlers/commands.py` | Admin-flow отправки точки на карте в текущий чат как настоящей Telegram-локации по широте и долготе, через typed aiogram API; у локаций нет caption, координаты валидируются по диапазонам и не пишутся в structured logs. |
+| `sendMediaGroup` | `bot/services/send_media_group.py`, `/mediagroup` в `bot/handlers/commands.py` | Admin-flow отправки 2-10 медиа в текущий чат как единого альбома (media group) по URL или `file_id`, через typed aiogram API; все элементы одного типа (photo/video/document/audio), единый caption применяется к первому элементу. |
+| `sendVenue` | `bot/services/send_venue.py`, `/venue` в `bot/handlers/commands.py` | Admin-flow отправки заведения (venue) — именованного места с названием и адресом, закрепленного на карте — в текущий чат по широте, долготе, title и address, через typed aiogram API; координаты валидируются по диапазонам, а сами координаты, title и address не пишутся в structured logs. |
+| `sendPoll` | `bot/services/send_poll.py`, `/poll` в `bot/handlers/commands.py` | Admin-flow отправки нативного опроса (poll) — интерактивного вопроса с 2-10 вариантами ответа — в текущий чат, через typed aiogram API; длины вопроса (до 300) и вариантов (до 100) и их количество валидируются до обращения к Telegram, а сам вопрос и варианты ответа не пишутся в structured logs. |
+| `sendContact` | `bot/services/send_contact.py`, `/contact` в `bot/handlers/commands.py` | Admin-flow отправки телефонного контакта (contact) — имени с номером телефона, который получатель может сохранить в адресную книгу — в текущий чат, через typed aiogram API; phone_number и first_name обязательны, last_name опционален, а номер телефона и имя контакта не пишутся в structured logs. |
+| `sendDice` | `bot/services/send_dice.py`, `/dice` в `bot/handlers/commands.py` | Admin-flow отправки анимированной кости (dice) — анимированного эмодзи со случайным значением, которое выбирает Telegram — в текущий чат, через typed aiogram API; опциональный emoji ограничен набором 🎲/🎯/🏀/⚽/🎳/🎰 и валидируется до обращения к Telegram, без аргумента отправляется 🎲. |
+| `sendChecklist` | `bot/services/send_checklist.py`, `/checklist` в `bot/handlers/commands.py` | Admin-flow отправки чеклиста (checklist) — озаглавленного списка из 1-30 задач — в текущий чат от имени подключенного business account, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 9.1; требует `business_connection_id`, длины title (до 255) и задач (до 100) и их количество валидируются до обращения к Telegram, а title и тексты задач не пишутся в structured logs. |
+| `sendChatAction` | `bot/services/send_chat_action.py`, `keep_chat_action` в `bot/handlers/chat.py` и `/chataction` в `bot/handlers/commands.py` | Показ chat action (transient-статуса вроде `typing…`) в чате через typed aiogram API. Автоматически показывается и обновляется, пока Claude/proxy обрабатывает входящее сообщение (управляется `TELEGRAM_CHAT_ACTION_ENABLED`); admin-команда `/chataction [action]` запускает action вручную, где action ограничен набором поддерживаемых значений и валидируется до обращения к Telegram. |
+| `sendMessageDraft` | `bot/services/send_message_draft.py`, `handle_streaming_with_draft` в `bot/handlers/chat.py` и `/messagedraft` в `bot/handlers/commands.py` | Стриминг частичного ответа через эфемерный draft preview (временный ~30-секундный предпросмотр) в private chat как альтернатива частым `editMessageText`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; включается флагом `TELEGRAM_MESSAGE_DRAFT_ENABLED` и работает только в private chats, финальный ответ затем сохраняется обычным `sendMessage`. Admin-команда `/messagedraft [text]` запускает draft вручную; `draft_id` обязан быть ненулевым, а длина текста (до 4096) валидируется до обращения к Telegram, и текст draft не пишется в structured logs. |
 | `sendMessage` | `message.answer()` в command/chat/rate-limit handlers | Отправка командных ответов, Claude-ответов, ошибок и rate-limit уведомлений. |
 | `editMessageText` | `sent_msg.edit_text()` в streaming handler | Обновление одного сообщения во время streaming и замена его финальным первым chunk'ом. |
 | `getFile` | `bot/handlers/chat.py` | Получение `file_path` для входящих `photo`, `voice` и `document`. |
@@ -108,13 +135,11 @@ Guest Mode из Bot API 10.0. В коде это локальная полити
    `setMyProfilePhoto`, `removeMyProfilePhoto`, `setChatMenuButton`,
    `getChatMenuButton`, `setMyDefaultAdministratorRights`,
    `getMyDefaultAdministratorRights`.
-3. Более богатые ответы пользователю: `sendChatAction`, `sendPhoto`,
-   `sendDocument`, `sendAudio`, `sendVoice`, `sendVideo`, `sendAnimation`,
-   `sendVideoNote`, `sendMediaGroup`, `sendLivePhoto`, `sendPaidMedia`,
-   `sendLocation`, `sendVenue`, `sendContact`, `sendPoll`, `sendChecklist`,
-   `sendDice`, `sendMessageDraft`, `setMessageReaction`.
-4. Управление сообщениями: `forwardMessage`, `forwardMessages`, `copyMessage`,
-   `copyMessages`, `editMessageCaption`, `editMessageMedia`,
+3. Более богатые ответы пользователю: `sendChatAction`,
+   `sendChecklist`,
+   `sendMessageDraft`, `setMessageReaction` (из них `sendChatAction`,
+   `sendChecklist` и `sendMessageDraft` уже интегрированы).
+4. Управление сообщениями: `editMessageCaption`, `editMessageMedia`,
    `editMessageLiveLocation`, `stopMessageLiveLocation`,
    `editMessageChecklist`, `editMessageReplyMarkup`, `stopPoll`,
    `approveSuggestedPost`, `declineSuggestedPost`, `deleteMessage`,
@@ -177,6 +202,27 @@ issue-карточек в
   admin-чатов и требует явного подтверждения `/logout confirm`;
 - `/close` выполняет защищенное закрытие bot instance на текущем Bot API
   сервере для admin-чатов и требует явного подтверждения `/close confirm`;
+- `/forward <from_chat_id> <message_id> [share]` пересылает одно сообщение из
+  другого чата в текущий admin-чат для поддержки/модерации;
+- `/forwards <from_chat_id> <message_id> [<message_id> ...] [share]` пакетно
+  пересылает 1-100 сообщений из другого чата в текущий admin-чат с сохранением
+  album grouping;
+- `/copy <from_chat_id> <message_id> [share]` копирует одно сообщение из другого
+  чата в текущий admin-чат как новое сообщение без ссылки на исходного
+  отправителя;
+- `/copies <from_chat_id> <message_id> [<message_id> ...] [share] [nocaption]`
+  пакетно копирует 1-100 сообщений из другого чата в текущий admin-чат как новые
+  сообщения без ссылки на исходного отправителя, с сохранением album grouping;
+- `/photo <url_or_file_id> [caption]` отправляет изображение в текущий чат как
+  настоящее Telegram-фото по URL или `file_id`, а не только как текст;
+- `/audio <url_or_file_id> [caption]` отправляет аудиофайл в текущий чат как
+  проигрываемый музыкальный трек по URL или `file_id`, а не только как текст;
+- `/livephoto <live_photo_file_id> <photo_file_id> [caption]` отправляет live
+  photo (короткое видео + статичная обложка) в текущий чат по `file_id`, а не
+  только как текст;
+- `/document <url_or_file_id> [caption]` отправляет файл в текущий чат как
+  Telegram-документ по URL или `file_id` — для больших текстовых, PDF или
+  исходных артефактов, когда текстовый ответ не подходит;
 - `/clear` очищает историю разговора для пары `(chat_id, user_id)`.
 
 Важная деталь: выбранная через `/model <model_id>` модель сохраняется в
@@ -296,6 +342,902 @@ server и повторному запуску, после которого бо�
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/close` так же, как к другим командам.
 
+### forwardMessage
+
+Команда `/forward` вызывает typed aiogram API `Bot.forward_message()` для
+метода Telegram `forwardMessage`. По официальной документации метод требует
+`chat_id`, `from_chat_id` и `message_id` и возвращает отправленное `Message`.
+Service-сообщения и сообщения с уже protected content переслать нельзя, а бот
+должен иметь доступ к `from_chat_id`, то есть быть участником исходного чата.
+
+Выбран admin-сценарий поддержки/модерации: оператор переносит конкретное
+сообщение из чата, где находится бот, в текущий admin-чат для разбора. Целевой
+чат всегда тот, где вызвана команда, поэтому бот не может переслать сообщение в
+произвольный чат. Синтаксис: `/forward <from_chat_id> <message_id> [share]`.
+
+По умолчанию пересланная копия защищается `protect_content=True`, чтобы
+модерируемый контент нельзя было переслать или сохранить дальше; необязательное
+ключевое слово `share` отключает защиту. Метод обрабатывает одиночное
+сообщение; группировка альбома — задача `forwardMessages`.
+
+`/forward` относится к message-relay и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующих или нечисловых аргументах команда показывает usage и не
+  обращается к Telegram;
+- ошибки Telegram (например, недоступный чат или несуществующее сообщение)
+  возвращаются пользователю, а пересылка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/forward` так же, как к другим командам.
+
+### forwardMessages
+
+Команда `/forwards` вызывает typed aiogram API `Bot.forward_messages()` для
+метода Telegram `forwardMessages`. По официальной документации метод требует
+`chat_id`, `from_chat_id` и `message_ids` (1-100 идентификаторов в строго
+возрастающем порядке) и возвращает массив `MessageId` отправленных сообщений.
+В отличие от `forwardMessage`, `forwardMessages` сохраняет album grouping:
+сообщения, изначально входившие в один альбом, пересылаются альбомом. Сообщения,
+которые переслать нельзя (service-сообщения и сообщения с protected content),
+пропускаются, поэтому возвращённый список может быть короче запрошенного; если
+переслать нельзя ни одно, вызов завершается ошибкой. Бот должен иметь доступ к
+`from_chat_id`, то есть быть участником исходного чата.
+
+Выбран тот же admin-сценарий поддержки/модерации, что и для `/forward`, но для
+переноса сразу нескольких сообщений (например, целого альбома) одним вызовом.
+Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/forwards <from_chat_id> <message_id> [<message_id> ...] [share]`.
+
+По умолчанию пересланные копии защищаются `protect_content=True`; необязательное
+ключевое слово `share` отключает защиту. Команда сообщает, сколько из
+запрошенных сообщений было фактически переслано, так как часть могла быть
+пропущена Telegram.
+
+`/forwards` относится к message-relay и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующих, нечисловых, нарушающих строгий порядок или выходящих за
+  пределы 1-100 идентификаторах команда показывает usage и не обращается к
+  Telegram;
+- ошибки Telegram (например, недоступный чат) возвращаются пользователю, а
+  пересылка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/forwards` так же, как к другим командам.
+
+### copyMessage
+
+Команда `/copy` вызывает typed aiogram API `Bot.copy_message()` для метода
+Telegram `copyMessage`. По официальной документации метод требует `chat_id`,
+`from_chat_id` и `message_id` и возвращает только новый `MessageId`, а не полное
+`Message`. В отличие от `forwardMessage`, `copyMessage` пересоздаёт содержимое
+как новое сообщение **без ссылки на оригинал** (нет заголовка «forwarded from»),
+поэтому оператор может разобрать или переразместить модерируемый контент, не
+раскрывая источник. Service-сообщения, paid media, giveaway/giveaway-winners и
+invoice-сообщения скопировать нельзя, а бот должен иметь доступ к `from_chat_id`,
+то есть быть участником исходного чата.
+
+Выбран тот же admin-сценарий поддержки/модерации, что и для `/forward`: оператор
+переносит конкретное сообщение из чата, где находится бот, в текущий admin-чат
+для разбора. Целевой чат всегда тот, где вызвана команда, поэтому бот не может
+скопировать сообщение в произвольный чат. Синтаксис:
+`/copy <from_chat_id> <message_id> [share]`.
+
+По умолчанию скопированное сообщение защищается `protect_content=True`, чтобы
+модерируемый контент нельзя было переслать или сохранить дальше; необязательное
+ключевое слово `share` отключает защиту. Метод обрабатывает одиночное
+сообщение; пакетное копирование с сохранением группировки альбома — задача
+`copyMessages`, доступного как `/copies`.
+
+`/copy` относится к message-relay и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующих или нечисловых аргументах команда показывает usage и не
+  обращается к Telegram;
+- ошибки Telegram (например, недоступный чат или несуществующее сообщение)
+  возвращаются пользователю, а копирование не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/copy` так же, как к другим командам.
+
+### copyMessages
+
+Команда `/copies` вызывает typed aiogram API `Bot.copy_messages()` для метода
+Telegram `copyMessages`. По официальной документации метод требует `chat_id`,
+`from_chat_id` и `message_ids` (1-100 идентификаторов в строго возрастающем
+порядке) и возвращает массив `MessageId` отправленных сообщений. Как и
+`copyMessage` и в отличие от `forwardMessages`, скопированные сообщения **не
+имеют ссылки на оригинал** (нет заголовка «forwarded from»), поэтому оператор
+может переразместить модерируемый контент, не раскрывая источник. Как и
+`forwardMessages`, метод сохраняет album grouping: сообщения, изначально
+входившие в один альбом, пересоздаются альбомом. Сообщения, которые скопировать
+нельзя (service, giveaway/giveaway-winners и invoice-сообщения), пропускаются,
+поэтому возвращённый список может быть короче запрошенного; бот должен иметь
+доступ к `from_chat_id`, то есть быть участником исходного чата.
+
+Выбран тот же admin-сценарий поддержки/модерации, что и для `/copy`, но для
+переноса сразу нескольких сообщений (например, целого альбома) одним вызовом.
+Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/copies <from_chat_id> <message_id> [<message_id> ...] [share] [nocaption]`.
+
+По умолчанию скопированные сообщения защищаются `protect_content=True`;
+необязательное ключевое слово `share` отключает защиту. В отличие от
+`copyMessage`, у `copyMessages` нет переопределения `caption`, поэтому
+необязательное ключевое слово `nocaption` включает `remove_caption=True` и
+копирует сообщения без их исходных подписей; оба ключевых слова можно
+комбинировать в конце в любом порядке. Команда сообщает, сколько из запрошенных
+сообщений было фактически скопировано, так как часть могла быть пропущена
+Telegram.
+
+`/copies` относится к message-relay и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующих, нечисловых, нарушающих строгий порядок или выходящих за
+  пределы 1-100 идентификаторах команда показывает usage и не обращается к
+  Telegram;
+- ошибки Telegram (например, недоступный чат) возвращаются пользователю, а
+  копирование не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/copies` так же, как к другим командам.
+
+### sendPhoto
+
+Команда `/photo` вызывает typed aiogram API `Bot.send_photo()` для метода
+Telegram `sendPhoto`. По официальной документации метод требует `chat_id` и
+`photo` и возвращает отправленное `Message`. `photo` может быть HTTP(S)-URL,
+который Telegram скачивает сам, `file_id` уже существующего на серверах Telegram
+фото или загружаемым файлом; helper принимает строковую форму URL/`file_id`.
+Telegram ограничивает фото 10 MB, сумму ширины и высоты — 10000, соотношение
+сторон — не более 20, а `caption` — 1024 символами после парсинга entities.
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет сгенерированное или
+полученное изображение в чат как настоящее фото, а не только текстовую
+интерпретацию. Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/photo <url_or_file_id> [caption]`.
+
+Caption необязателен, может содержать пробелы и проверяется на лимит 1024
+символа до обращения к Telegram, чтобы validation path не зависел от ошибки
+Telegram. Метод обрабатывает одиночное фото; отправка альбома — задача
+`sendMediaGroup`.
+
+`/photo` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующем photo-аргументе команда показывает usage, а при слишком
+  длинном caption — сообщение о превышении лимита, и в обоих случаях не
+  обращается к Telegram;
+- ошибки Telegram (например, недоступный URL или превышение лимитов фото)
+  возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/photo` так же, как к другим командам.
+
+### sendAudio
+
+Команда `/audio` вызывает typed aiogram API `Bot.send_audio()` для метода
+Telegram `sendAudio`. По официальной документации метод требует `chat_id` и
+`audio` и возвращает отправленное `Message`. `audio` может быть HTTP(S)-URL,
+который Telegram скачивает сам, `file_id` уже существующего на серверах Telegram
+аудиофайла или загружаемым файлом; helper принимает строковую форму
+URL/`file_id`. Telegram ожидает аудио в формате `.MP3` или `.M4A`, ограничивает
+файл, отправляемый по URL или `file_id`, 20 MB, а `caption` — 1024 символами
+после парсинга entities. Опциональные `duration` (в секундах), `performer` и
+`title` задают музыкальные метаданные трека.
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет сгенерированный или
+полученный аудиоклип в чат как настоящий проигрываемый трек, а не только
+текстовую интерпретацию. Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/audio <url_or_file_id> [caption]`.
+
+Caption необязателен, может содержать пробелы и проверяется на лимит 1024
+символа до обращения к Telegram, чтобы validation path не зависел от ошибки
+Telegram. Метод обрабатывает одиночный аудиофайл; голосовое сообщение — задача
+`sendVoice`, а отправка альбома — `sendMediaGroup`.
+
+`/audio` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующем audio-аргументе команда показывает usage, а при слишком
+  длинном caption — сообщение о превышении лимита, и в обоих случаях не
+  обращается к Telegram;
+- ошибки Telegram (например, недоступный URL или неподдерживаемый формат файла)
+  возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/audio` так же, как к другим командам.
+
+### sendLivePhoto
+
+Команда `/livephoto` отправляет live photo — короткое зацикленное видео в паре
+со статичной обложкой — методом Telegram `sendLivePhoto` (Bot API 10.0). По
+официальной документации метод требует `chat_id`, `live_photo` (видео) и `photo`
+(статичная обложка) и возвращает отправленное `Message`. Видео `live_photo` не
+должно быть длиннее 10 секунд и больше 10 MB. Telegram **не поддерживает**
+отправку live photo по URL, поэтому `live_photo` и `photo` должны быть `file_id`
+уже существующих на серверах Telegram медиа; helper принимает строковую форму
+`file_id`. `caption` ограничен 1024 символами после парсинга entities.
+
+Ключевое отличие от `sendPhoto`/`sendAudio`: pinned `aiogram==3.3.0`
+(Bot API 7.0) не имеет typed wrapper для этого метода Bot API 10.0. Поэтому
+реализация идет через изолированный raw Bot API helper
+`bot/services/send_live_photo.py`, который сам собирает JSON-payload и POST'ит
+его на endpoint `sendLivePhoto` через `httpx`, не завися от typed aiogram метода.
+URL endpoint берется из `bot.session.api.api_url(...)`, чтобы учесть кастомный
+local Bot API server, с fallback на cloud-endpoint. Ошибки транспорта и ответы
+Telegram с `ok: false` поднимаются как единое исключение `SendLivePhotoError`.
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет live photo в чат, а
+не только текстовую интерпретацию. Целевой чат всегда тот, где вызвана команда.
+Синтаксис: `/livephoto <live_photo_file_id> <photo_file_id> [caption]`.
+
+Caption необязателен, может содержать пробелы и проверяется на лимит 1024 символа
+до обращения к Telegram, чтобы validation path не зависел от ошибки Telegram.
+
+`/livephoto` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствии любого из двух `file_id`-аргументов команда показывает usage, а
+  при слишком длинном caption — сообщение о превышении лимита, и в обоих случаях
+  не обращается к Telegram;
+- ошибки Telegram (например, неверный `file_id` или неподдерживаемый формат
+  файла) возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/livephoto` так же, как к другим командам.
+
+### sendDocument
+
+Команда `/document` вызывает typed aiogram API `Bot.send_document()` для метода
+Telegram `sendDocument`. По официальной документации метод требует `chat_id` и
+`document` и возвращает отправленное `Message`. `document` может быть HTTP(S)-URL,
+который Telegram скачивает сам, `file_id` уже существующего на серверах Telegram
+файла или загружаемым файлом; helper принимает строковую форму URL/`file_id`.
+Telegram ограничивает файл, отправляемый по URL, 20 MB, а `caption` — 1024
+символами после парсинга entities. Опциональные `disable_content_type_detection`
+отключает серверное автоопределение типа контента, а `thumbnail` задает кастомную
+обложку-превью.
+
+Выбран admin-сценарий исходящего медиа: оператор возвращает большой текстовый,
+PDF или исходный артефакт как настоящий документ, когда текстовый ответ не
+подходит, а не только текстовую интерпретацию. Целевой чат всегда тот, где
+вызвана команда. Синтаксис: `/document <url_or_file_id> [caption]`.
+
+Caption необязателен, может содержать пробелы и проверяется на лимит 1024
+символа до обращения к Telegram, чтобы validation path не зависел от ошибки
+Telegram. Метод обрабатывает одиночный файл общего назначения; голосовое
+сообщение — задача `sendVoice`, аудиотрек — `sendAudio`, а отправка альбома —
+`sendMediaGroup`.
+
+`/document` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующем document-аргументе команда показывает usage, а при слишком
+  длинном caption — сообщение о превышении лимита, и в обоих случаях не
+  обращается к Telegram;
+- ошибки Telegram (например, недоступный URL или неверный `file_id`)
+  возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/document` так же, как к другим командам.
+
+### sendVideo
+
+Команда `/video` вызывает typed aiogram API `Bot.send_video()` для метода
+Telegram `sendVideo`. По официальной документации метод требует `chat_id` и
+`video` и возвращает отправленное `Message`. `video` может быть HTTP(S)-URL,
+который Telegram скачивает сам, `file_id` уже существующего на серверах Telegram
+видео или загружаемым файлом; helper принимает строковую форму URL/`file_id`.
+Telegram-клиенты поддерживают видео в формате MPEG4 (другие форматы могут быть
+отправлены как `Document`), ограничивают файл, отправляемый по URL, 20 MB, а
+`caption` — 1024 символами после парсинга entities. Опциональные `duration` (в
+секундах), `width` и `height` описывают видео, `thumbnail` задает кастомную
+обложку-превью, `has_spoiler` закрывает видео spoiler-анимацией, а
+`supports_streaming` помечает файл как пригодный для стриминга.
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет сгенерированный или
+полученный клип в чат как настоящее проигрываемое видео, а не только текстовую
+интерпретацию. Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/video <url_or_file_id> [caption]`.
+
+Caption необязателен, может содержать пробелы и проверяется на лимит 1024
+символа до обращения к Telegram, чтобы validation path не зависел от ошибки
+Telegram. Метод обрабатывает одиночное видео; видеосообщение-кружок — задача
+`sendVideoNote`, GIF/анимация без звука — `sendAnimation`, а отправка альбома —
+`sendMediaGroup`.
+
+`/video` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующем video-аргументе команда показывает usage, а при слишком
+  длинном caption — сообщение о превышении лимита, и в обоих случаях не
+  обращается к Telegram;
+- ошибки Telegram (например, недоступный URL или неподдерживаемый формат файла)
+  возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/video` так же, как к другим командам.
+
+### sendVideoNote
+
+Команда `/videonote` вызывает typed aiogram API `Bot.send_video_note()` для
+метода Telegram `sendVideoNote`. По официальной документации метод требует
+`chat_id` и `video_note` и возвращает отправленное `Message`. В отличие от
+`sendVideo`, Telegram сейчас **не** поддерживает отправку видеосообщений-кружков
+по URL, поэтому `video_note` должен быть `file_id` уже существующего на серверах
+Telegram видеосообщения или загружаемым файлом; helper принимает строковую форму
+`file_id`. У видеосообщений-кружков нет caption и они не принимают `parse_mode`.
+Опциональные `duration` (в секундах) и `length` (диаметр квадратного
+видеосообщения) описывают клип, а `thumbnail` задает кастомную обложку-превью.
+Параметры соответствуют typed wrapper'у pinned `aiogram==3.3.0` (Bot API 7.0).
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет сгенерированный или
+полученный клип в чат как настоящее проигрываемое видеосообщение-кружок, а не
+только текстовую интерпретацию. Целевой чат всегда тот, где вызвана команда.
+Синтаксис: `/videonote <file_id>`.
+
+Caption у видеосообщений нет, поэтому команда не принимает текст подписи: лишние
+токены после `file_id` игнорируются. Метод отправляет круглое квадратное
+видеосообщение; обычное видео со звуком — задача `sendVideo`, GIF/анимация без
+звука — `sendAnimation`, а отправка альбома — `sendMediaGroup`.
+
+`/videonote` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующем video_note-аргументе команда показывает usage и не
+  обращается к Telegram;
+- ошибки Telegram (например, неверный `file_id` или попытка отправить по URL)
+  возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/videonote` так же, как к другим командам.
+
+### sendAnimation
+
+Команда `/animation` вызывает typed aiogram API `Bot.send_animation()` для
+метода Telegram `sendAnimation`. По официальной документации метод требует
+`chat_id` и `animation` и возвращает отправленное `Message`. `animation` может
+быть HTTP(S)-URL, который Telegram скачивает сам, `file_id` уже существующей на
+серверах Telegram анимации или загружаемым файлом; helper принимает строковую
+форму URL/`file_id`. Telegram доставляет GIF и H.264/MPEG-4 AVC файлы без звука,
+ограничивает файл, отправляемый по URL, 20 MB, а `caption` — 1024 символами
+после парсинга entities. Опциональные `duration` (в секундах), `width` и
+`height` описывают анимацию, `thumbnail` задает кастомную обложку-превью, а
+`has_spoiler` закрывает анимацию spoiler-анимацией.
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет сгенерированный или
+полученный GIF/клип в чат как настоящую проигрываемую зацикленную анимацию, а не
+только текстовую интерпретацию. Целевой чат всегда тот, где вызвана команда.
+Синтаксис: `/animation <url_or_file_id> [caption]`.
+
+Caption необязателен, может содержать пробелы и проверяется на лимит 1024
+символа до обращения к Telegram, чтобы validation path не зависел от ошибки
+Telegram. Метод обрабатывает анимацию без звука; видео со звуком — задача
+`sendVideo`, видеосообщение-кружок — `sendVideoNote`, а отправка альбома —
+`sendMediaGroup`.
+
+`/animation` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующем animation-аргументе команда показывает usage, а при слишком
+  длинном caption — сообщение о превышении лимита, и в обоих случаях не
+  обращается к Telegram;
+- ошибки Telegram (например, недоступный URL или неподдерживаемый формат файла)
+  возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/animation` так же, как к другим командам.
+
+### sendVoice
+
+Команда `/voice` вызывает typed aiogram API `Bot.send_voice()` для метода
+Telegram `sendVoice`. По официальной документации метод требует `chat_id` и
+`voice` и возвращает отправленное `Message`. `voice` может быть HTTP(S)-URL,
+который Telegram скачивает сам, `file_id` уже существующего на серверах Telegram
+голосового сообщения или загружаемым файлом; helper принимает строковую форму
+URL/`file_id`. Чтобы аудио воспроизводилось именно как голосовое сообщение,
+Telegram ожидает `.OGG` файл в кодировке OPUS, либо `.MP3` или `.M4A`; другие
+форматы могут быть отправлены как audio или document. Telegram ограничивает файл,
+отправляемый по URL или `file_id`, 20 MB, а `caption` — 1024 символами после
+парсинга entities. Опциональный `duration` задает длительность голосового
+сообщения в секундах.
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет сгенерированный или
+полученный аудиоклип в чат как настоящее проигрываемое голосовое сообщение
+(в виде waveform), а не только текстовую интерпретацию. Целевой чат всегда тот,
+где вызвана команда. Синтаксис: `/voice <url_or_file_id> [caption]`.
+
+Caption необязателен, может содержать пробелы и проверяется на лимит 1024
+символа до обращения к Telegram, чтобы validation path не зависел от ошибки
+Telegram. Метод отправляет голосовое сообщение; музыкальный трек с метаданными —
+задача `sendAudio`, видеосообщение-кружок — `sendVideoNote`, а отправка альбома —
+`sendMediaGroup`.
+
+`/voice` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующем voice-аргументе команда показывает usage, а при слишком
+  длинном caption — сообщение о превышении лимита, и в обоих случаях не
+  обращается к Telegram;
+- ошибки Telegram (например, недоступный URL или неподдерживаемый формат файла)
+  возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/voice` так же, как к другим командам.
+
+### sendPaidMedia
+
+Команда `/paidmedia` отправляет платное медиа — контент, доступ к которому
+пользователи оплачивают Telegram Stars, — методом Telegram `sendPaidMedia`
+(введен в Bot API 7.6). По официальной документации метод требует `chat_id`,
+`star_count` (цена в Telegram Stars; 1-25000 по состоянию на Bot API 10.0) и
+`media` (JSON-массив до 10 элементов `InputPaidMedia`, каждый — `photo` или
+`video`) и возвращает отправленное `Message`. Если `chat_id` указывает на канал,
+все Star-поступления зачисляются на баланс канала; иначе — на баланс бота.
+Опциональный `payload` (0-128 байт) не показывается пользователю и возвращается
+в `purchased_paid_media` updates, а `caption` ограничен 1024 символами после
+парсинга entities.
+
+Ключевое отличие от `sendPhoto`/`sendVideo`: pinned `aiogram==3.3.0`
+(Bot API 7.0) не имеет typed wrapper для этого метода Bot API 7.6. Поэтому
+реализация идет через изолированный raw Bot API helper
+`bot/services/send_paid_media.py`, который сам собирает JSON-payload (с
+JSON-сериализацией массива `media`) и POST'ит его на endpoint `sendPaidMedia`
+через `httpx`, не завися от typed aiogram метода. URL endpoint берется из
+`bot.session.api.api_url(...)`, чтобы учесть кастомный local Bot API server, с
+fallback на cloud-endpoint. Ошибки транспорта и ответы Telegram с `ok: false`
+поднимаются как единое исключение `SendPaidMediaError`.
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет платное фото в чат,
+а не только текстовую интерпретацию. Целевой чат всегда тот, где вызвана команда.
+Синтаксис: `/paidmedia <star_count> <url_or_file_id> [caption]`. Команда
+отправляет одиночное фото (`media=[{"type": "photo", ...}]`), а helper принимает
+полный массив `media` для до 10 photo/video элементов.
+
+`star_count` проверяется на диапазон 1-25000, а caption необязателен, может
+содержать пробелы и проверяется на лимит 1024 символа до обращения к Telegram,
+чтобы validation path не зависел от ошибки Telegram.
+
+`/paidmedia` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствии цены или media-аргумента (или нечисловой цене) команда
+  показывает usage, при цене вне диапазона 1-25000 — сообщение о допустимом
+  диапазоне, а при слишком длинном caption — сообщение о превышении лимита, и во
+  всех случаях не обращается к Telegram;
+- ошибки Telegram (например, недостаточные права бота на отправку платного медиа
+  или неверный `file_id`) возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/paidmedia` так же, как к другим командам.
+
+### sendLocation
+
+Команда `/location` вызывает typed aiogram API `Bot.send_location()` для метода
+Telegram `sendLocation`. По официальной документации метод требует `chat_id`,
+`latitude` и `longitude` и возвращает отправленное `Message`. Опциональный
+`horizontal_accuracy` (0-1500 м) задает радиус неопределенности; live-локация
+запускается через `live_period` (60-86400 с), а для live-локаций `heading`
+(1-360°) задает направление движения и `proximity_alert_radius` (1-100000 м) —
+дистанцию для proximity-уведомлений. Параметры соответствуют typed wrapper'у
+pinned `aiogram==3.3.0` (Bot API 7.0).
+
+Выбран admin-сценарий исходящего ответа: оператор отправляет точку на карте в
+чат как настоящую Telegram-локацию, а не только текстовую интерпретацию.
+Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/location <latitude> <longitude>`. Координаты передаются в десятичных градусах.
+
+У локаций нет caption, поэтому команда не принимает текст подписи: лишние токены
+после долготы игнорируются. Координаты парсятся как числа с плавающей точкой, а
+затем проверяются на диапазоны (`latitude` -90..90, `longitude` -180..180) до
+обращения к Telegram, чтобы validation path не зависел от ошибки Telegram.
+Координаты могут раскрывать местоположение человека, поэтому в structured logs
+пишутся только факт live-локации и id отправленного сообщения, без самих
+координат.
+
+`/location` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствии или нечисловых координатах команда показывает usage, при
+  координатах вне допустимых диапазонов — сообщение о допустимом диапазоне, и в
+  обоих случаях не обращается к Telegram;
+- ошибки Telegram (например, отсутствие прав на отправку в чат) возвращаются
+  пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/location` так же, как к другим командам.
+
+### sendVenue
+
+Команда `/venue` вызывает typed aiogram API `Bot.send_venue()` для метода
+Telegram `sendVenue`. По официальной документации метод требует `chat_id`,
+`latitude`, `longitude`, `title` и `address` и возвращает отправленное
+`Message`. Заведение можно опционально связать с местом в Foursquare через
+`foursquare_id` и `foursquare_type` (например `arts_entertainment/aquarium`)
+или с местом в Google Places через `google_place_id` и `google_place_type`.
+Параметры соответствуют typed wrapper'у pinned `aiogram==3.3.0` (Bot API 7.0);
+`business_connection_id` и более новые поля появились в последующих версиях Bot
+API и в этот wrapper не входят.
+
+Выбран admin-сценарий исходящего ответа: оператор отправляет заведение в чат как
+настоящий Telegram venue (именованное место с названием и адресом, закрепленное
+на карте), а не только текстовую интерпретацию. Целевой чат всегда тот, где
+вызвана команда. Синтаксис: `/venue <latitude> <longitude> <title> | <address>`.
+Координаты передаются в десятичных градусах.
+
+`title` и `address` следуют за координатами и разделяются вертикальной чертой
+(`|`); оба могут содержать пробелы и оба обязательны. Координаты парсятся как
+числа с плавающей точкой, а затем проверяются на диапазоны (`latitude` -90..90,
+`longitude` -180..180) до обращения к Telegram, чтобы validation path не зависел
+от ошибки Telegram. Заведение раскрывает конкретное место и адрес, поэтому в
+structured logs пишутся только факт наличия Foursquare/Google Places metadata и
+id отправленного сообщения, без самих координат, названия и адреса.
+
+`/venue` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствии или нечисловых координатах, отсутствии разделителя или пустых
+  title/address команда показывает usage, при координатах вне допустимых
+  диапазонов — сообщение о допустимом диапазоне, и в обоих случаях не обращается
+  к Telegram;
+- ошибки Telegram (например, отсутствие прав на отправку в чат) возвращаются
+  пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/venue` так же, как к другим командам.
+
+### sendPoll
+
+Команда `/poll` вызывает typed aiogram API `Bot.send_poll()` для метода
+Telegram `sendPoll`. По официальной документации метод требует `chat_id`,
+`question` (1-300 символов) и `options` (2-10 строк по 1-100 символов) и
+возвращает отправленное `Message`. По умолчанию опрос анонимный и типа
+`regular`; для quiz-опроса передаются `type="quiz"` и `correct_option_id`, а
+опционально — `explanation`. `open_period` (5-600 секунд) или `close_date`
+задают автоматическое закрытие, а `is_closed` отправляет уже закрытый опрос для
+предпросмотра. Параметры соответствуют typed wrapper'у pinned `aiogram==3.3.0`
+(Bot API 7.0); в этой версии `options` — это список строк (в Bot API 7.3 он стал
+списком `InputPollOption`), а `business_connection_id` и более новые поля в
+wrapper не входят.
+
+Выбран admin-сценарий исходящего ответа: оператор отправляет в чат настоящий
+нативный Telegram-опрос (интерактивный вопрос с вариантами ответа), а не только
+текстовую интерпретацию. Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/poll <question> | <option> | <option> [| <option> ...]`. Вопрос идет первым, за
+ним следуют варианты ответа, все разделяются вертикальной чертой (`|`); вопрос и
+каждый вариант могут содержать пробелы.
+
+Команда сама проверяет validation path до обращения к Telegram: при отсутствии
+аргументов, отсутствии разделителя (а значит и вариантов) или пустом вопросе/
+варианте показывается usage; при количестве вариантов вне диапазона 2-10 —
+сообщение о допустимом количестве; при превышении длины вопроса (300) или
+варианта (100) — сообщение о допустимой длине. Опрос отправляется с дефолтами
+Telegram (анонимный одиночный regular-опрос). Вопрос и варианты ответа — это
+контент, который оператор решил опубликовать, поэтому в structured logs пишутся
+только количество вариантов, признак quiz и id отправленного сообщения, без
+текста вопроса и вариантов.
+
+`/poll` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при невалидном вводе команда показывает usage или сообщение об ограничении и
+  не обращается к Telegram;
+- ошибки Telegram (например, отсутствие прав на отправку в чат) возвращаются
+  пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/poll` так же, как к другим командам.
+
+### sendContact
+
+Команда `/contact` вызывает typed aiogram API `Bot.send_contact()` для метода
+Telegram `sendContact`. По официальной документации метод требует `chat_id`,
+`phone_number` и `first_name` контакта и возвращает отправленное `Message`.
+Опционально передаются `last_name` и `vcard` (дополнительные данные о контакте
+в формате vCard, 0-2048 байт). Параметры соответствуют typed wrapper'у pinned
+`aiogram==3.3.0` (Bot API 7.0); более новые поля (`business_connection_id`,
+`message_effect_id` и т.п.) в wrapper не входят.
+
+Выбран admin-сценарий исходящего ответа: оператор отправляет в чат настоящий
+Telegram-контакт (имя с номером телефона, который получатель может сохранить в
+адресную книгу), а не только текстовую интерпретацию. Целевой чат всегда тот,
+где вызвана команда. Синтаксис: `/contact <phone_number> <first_name>
+[| <last_name>]`. Номер телефона идет первым одним токеном, за ним first_name;
+опциональный last_name отделяется вертикальной чертой (`|`). first_name может
+содержать пробелы.
+
+Команда сама проверяет validation path до обращения к Telegram: при отсутствии
+аргументов, отсутствии first_name или пустом first_name показывается usage; если
+last_name-сегмент пустой, last_name считается отсутствующим. Номер телефона и
+имя контакта — это персональные данные, которые оператор решил передать, поэтому
+в structured logs пишутся только признак наличия last_name/vCard и id
+отправленного сообщения, без самого номера и имени.
+
+`/contact` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при невалидном вводе команда показывает usage и не обращается к Telegram;
+- ошибки Telegram (например, невалидный номер или отсутствие прав на отправку в
+  чат) возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/contact` так же, как к другим командам.
+
+### sendDice
+
+Команда `/dice` вызывает typed aiogram API `Bot.send_dice()` для метода
+Telegram `sendDice`. По официальной документации метод требует только `chat_id`
+и возвращает отправленное `Message`; выпавшее значение выбирает Telegram, и оно
+доступно в `Message.dice`. Опциональный `emoji` задает анимацию и должен быть
+одним из `🎲`, `🎯`, `🏀`, `⚽`, `🎳` или `🎰` (диапазон значений зависит от
+эмодзи: 1-6 для `🎲`, `🎯` и `🎳`, 1-5 для `🏀` и `⚽`, 1-64 для `🎰`); без
+аргумента Telegram отправляет `🎲`. Параметры соответствуют typed wrapper'у
+pinned `aiogram==3.3.0` (Bot API 7.0); более новые поля
+(`business_connection_id`, `message_effect_id` и т.п.) в wrapper не входят.
+
+Выбран admin-сценарий исходящего ответа: оператор отправляет в чат настоящую
+анимированную Telegram-кость (анимированный эмодзи со случайным значением), а не
+только текстовую интерпретацию. Целевой чат всегда тот, где вызвана команда.
+Синтаксис: `/dice [emoji]`. Без аргумента отправляется 🎲; единственный
+опциональный аргумент — один из поддерживаемых эмодзи.
+
+Команда сама проверяет validation path до обращения к Telegram: при
+неподдерживаемом эмодзи или более чем одном аргументе показывается usage, и
+Telegram не вызывается. Кость не несет переданного оператором контента, поэтому
+в structured logs пишутся выбранный эмодзи, признак тихой доставки и id
+отправленного сообщения.
+
+`/dice` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при невалидном вводе команда показывает usage и не обращается к Telegram;
+- ошибки Telegram (например, отсутствие прав на отправку в чат) возвращаются
+  пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/dice` так же, как к другим командам.
+
+### sendChecklist
+
+Команда `/checklist` отправляет чеклист — озаглавленный список из 1-30 задач,
+которые получатели могут отмечать выполненными, — методом Telegram
+`sendChecklist` (введен в Bot API 9.1). По официальной документации метод
+отправляет сообщение от имени подключенного business account, поэтому требует
+`business_connection_id` (идентификатор живого business connection), `chat_id` и
+`checklist` (объект `InputChecklist`) и возвращает отправленное `Message`.
+`title` в `InputChecklist` ограничен 1-255 символами, каждый task — 1-100
+символами после парсинга entities, а каждый task несет положительный `id`,
+уникальный в пределах чеклиста. Так как метод действует от имени business
+account, его нельзя включать в обычный чат без business-mode: бот должен быть
+подключен к business account, а `business_connection_id` — соответствовать
+действующему подключению.
+
+Ключевое отличие от `sendPoll`: pinned `aiogram==3.3.0` (Bot API 7.0) не имеет
+typed wrapper для этого метода Bot API 9.1. Поэтому реализация идет через
+изолированный raw Bot API helper `bot/services/send_checklist.py`, который сам
+собирает JSON-payload (с JSON-сериализацией объекта `checklist`) и POST'ит его на
+endpoint `sendChecklist` через `httpx`, не завися от typed aiogram метода. URL
+endpoint берется из `bot.session.api.api_url(...)`, чтобы учесть кастомный local
+Bot API server, с fallback на cloud-endpoint. Ошибки транспорта и ответы Telegram
+с `ok: false` поднимаются как единое исключение `SendChecklistError`.
+
+Выбран admin-сценарий исходящего ответа: оператор отправляет в чат настоящий
+Telegram-чеклист от имени подключенного business account, а не только текстовую
+интерпретацию. Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/checklist <business_connection_id> <title> | <task> [| <task> ...]`.
+Идентификатор подключения идет первым (одним токеном без пробелов), затем
+заголовок и задачи, разделенные вертикальной чертой. Обработчик сам присваивает
+задачам последовательные `id`, начиная с 1.
+
+Команда сама проверяет validation path до обращения к Telegram: при отсутствии
+`business_connection_id`, заголовка или хотя бы одной задачи (а также при пустом
+сегменте) показывается usage; при слишком длинном заголовке (>255), количестве
+задач вне диапазона 1-30 или слишком длинной задаче (>100) — соответствующее
+сообщение, и Telegram не вызывается. Заголовок и тексты задач — переданный
+оператором контент, поэтому в structured logs пишутся только количество задач,
+признак защиты контента и id отправленного сообщения.
+
+`/checklist` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при невалидном вводе команда показывает usage или сообщение о превышении
+  лимитов и не обращается к Telegram;
+- ошибки Telegram (например, отсутствующий или истекший `business_connection_id`
+  либо недостаточные права бизнес-подключения) возвращаются пользователю, а
+  отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/checklist` так же, как к другим командам.
+
+### sendChatAction
+
+`sendChatAction` показывает в чате transient-статус (например, `typing…`),
+который сообщает пользователю, что бот занят. По официальной документации метод
+требует `chat_id` и `action`, возвращает `True` и не создает сообщения: Telegram
+сбрасывает статус примерно через пять секунд или как только бот отправит
+сообщение. Реализация идет через typed aiogram API `Bot.send_chat_action()` в
+`bot/services/send_chat_action.py`; `action` должен быть одним из поддерживаемых
+значений (`typing`, `upload_photo`, `record_video`, `upload_video`,
+`record_voice`, `upload_voice`, `upload_document`, `choose_sticker`,
+`find_location`, `record_video_note`, `upload_video_note`), а неподдерживаемое
+значение отклоняется исключением `SendChatActionError` до обращения к Telegram.
+Опциональные `message_thread_id` (forum topic) и `business_connection_id`
+соответствуют typed wrapper'у pinned `aiogram==3.3.0` (Bot API 7.0).
+
+Выбран пользовательский сценарий из scope issue: показывать typing/upload
+action, пока Claude/proxy обрабатывает заметно долгий запрос. Поскольку Telegram
+сбрасывает статус через ~5 секунд, helper `keep_chat_action` — это async context
+manager, который отправляет action сразу и обновляет его в фоновой задаче, пока
+выполняется обернутый блок. `bot/handlers/chat.py` оборачивает обработку Claude
+(и streaming, и non-streaming ветки) в `_typing_indicator`, который показывает
+`typing…` до готовности ответа. Поведение управляется флагом
+`TELEGRAM_CHAT_ACTION_ENABLED` (по умолчанию `true`); при `false` индикатор не
+показывается и поведение остается прежним. Ошибки Telegram при обновлении
+индикатора логируются и проглатываются, чтобы сбой отображения статуса не ломал
+саму обработку запроса, а фоновая задача всегда отменяется при выходе из блока.
+
+Дополнительно admin-команда `/chataction [action]` запускает action вручную (в
+основном для проверки). Синтаксис: без аргумента показывается `typing`, а
+единственный опциональный аргумент должен быть одним из поддерживаемых action.
+Команда сама проверяет validation path до обращения к Telegram: при
+неподдерживаемом action или более чем одном аргументе показывается usage, и
+Telegram не вызывается. Action не несет переданного оператором контента, поэтому
+в structured logs пишутся выбранный action, целевой чат и признаки forum
+topic/business connection.
+
+`/chataction` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при невалидном вводе команда показывает usage и не обращается к Telegram;
+- ошибки Telegram (например, отсутствие прав на отправку в чат) возвращаются
+  пользователю.
+
+Автоматический `typing…`-индикатор не требует admin-прав и работает для обычных
+пользователей в рамках уже разрешенных чатов. Глобальный `RateLimitMiddleware`
+применяется к `/chataction` так же, как к другим командам.
+
+### sendMessageDraft
+
+`sendMessageDraft` (Bot API 10.0) стримит частичное сообщение пользователю, пока
+ответ еще генерируется. По официальной документации метод требует `chat_id`
+**private chat** и ненулевой `draft_id`, принимает опциональные `text` (0-4096
+символов после парсинга entities; пустой текст показывает плейсхолдер
+«Thinking…»), `message_thread_id`, `parse_mode`/`entities` и возвращает `True`.
+Draft — **эфемерный**: это временный ~30-секундный предпросмотр, поэтому после
+завершения генерации финальный текст все равно нужно сохранить обычным
+`sendMessage`. Изменения draft с одним и тем же `draft_id` анимируются, поэтому в
+рамках одного ответа переиспользуется единый id. С 1 марта 2026 метод доступен
+всем ботам, а с 8 мая 2026 разрешен пустой `text`.
+
+Поскольку pinned `aiogram==3.3.0` (Bot API 7.0) не имеет typed wrapper для этого
+метода Bot API 10.0, реализация — изолированный raw Bot API helper в
+`bot/services/send_message_draft.py`: он POST-ит JSON на endpoint
+`sendMessageDraft` через `httpx`, не завися от typed aiogram метода. URL берется
+из сессии бота, поэтому local Bot API server тоже поддерживается. Нулевой
+`draft_id` и слишком длинный `text` отклоняются исключением
+`SendMessageDraftError` до обращения к Telegram; transport-ошибки и ответы
+Telegram `ok: false` поднимаются тем же исключением. Текст draft несет
+пользовательский/Claude-контент, поэтому в structured logs пишутся только
+структурные метаданные (чат, `draft_id`, длина текста, признак плейсхолдера и
+forum topic), но не сам текст.
+
+Выбран сценарий из scope issue: использовать эфемерный draft preview как
+альтернативу частым `editMessageText` во время генерации ответа. В
+`bot/handlers/chat.py` функция `handle_streaming_with_draft` сразу показывает
+плейсхолдер «Thinking…», затем по мере генерации обновляет draft частичным
+текстом (обновления throttled до `DRAFT_UPDATE_INTERVAL_SECONDS`, чтобы не
+заваливать эндпоинт мелкими дельтами), а по завершении сохраняет финальный ответ
+обычными `sendMessage`. Ошибки показа эфемерного preview логируются и
+проглатываются, чтобы сбой предпросмотра не ломал сам ответ. Draft-стриминг
+включается флагом `TELEGRAM_MESSAGE_DRAFT_ENABLED` (по умолчанию `false`) и
+применяется только в private chats (метод работает только в них); остальные чаты
+сохраняют прежний edit-based streaming, а при `false` поведение не меняется.
+
+Дополнительно admin-команда `/messagedraft [text]` запускает draft вручную (в
+основном для проверки): без текста показывается плейсхолдер «Thinking…», а
+опциональный текст ограничен 4096 символами с валидацией до обращения к Telegram.
+`draft_id` берется из `message_id` (всегда положительный, значит ненулевой).
+
+`/messagedraft` относится к исходящим ответам и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- слишком длинный текст отклоняется с сообщением об ошибке и не обращается к
+  Telegram;
+- ошибки Telegram (например, чат не private или отсутствие прав) возвращаются
+  пользователю.
+
+Автоматический draft-стриминг не требует admin-прав и работает для обычных
+пользователей в private chats в рамках уже разрешенных чатов. Глобальный
+`RateLimitMiddleware` применяется к `/messagedraft` так же, как к другим
+командам.
+
+### sendMediaGroup
+
+Команда `/mediagroup` вызывает typed aiogram API `Bot.send_media_group()` для
+метода Telegram `sendMediaGroup`. По официальной документации метод требует
+`chat_id` и `media` (массив из 2-10 элементов `InputMediaPhoto`,
+`InputMediaVideo`, `InputMediaDocument` или `InputMediaAudio`) и возвращает
+список отправленных `Message`. Telegram разрешает только определенные сочетания
+типов в одном альбоме: документы группируются с документами, аудио — с аудио, а
+фото и видео можно смешивать; передача элементов одного типа поэтому всегда дает
+валидное сочетание. Параметры соответствуют typed wrapper'у pinned
+`aiogram==3.3.0` (Bot API 7.0).
+
+Выбран admin-сценарий исходящего медиа: оператор отправляет несколько медиа в
+чат как единый альбом, а не отдельными сообщениями или только текстовой
+интерпретацией. Целевой чат всегда тот, где вызвана команда. Синтаксис:
+`/mediagroup <type> <url_or_file_id> <url_or_file_id> [<url_or_file_id> ...] [caption <text>]`.
+`type` — один из `photo`, `video`, `document`, `audio`, и все элементы альбома
+одного типа. Медиа передаются как URL, которые Telegram скачивает, или `file_id`
+уже загруженных на серверы Telegram файлов.
+
+Единый caption strategy: опциональная подпись следует за литеральным ключевым
+словом `caption`, остаток сообщения становится текстом подписи (может содержать
+пробелы) и применяется к альбому через `caption` только у первого элемента — так
+Telegram отображает подпись альбома. Тип проверяется по списку поддерживаемых,
+количество элементов — на диапазон 2-10, а длина caption — на лимит 1024 символа
+до обращения к Telegram, чтобы validation path не зависел от ошибки Telegram.
+Сам helper `bot/services/send_media_group.py` — тонкий typed-обертка, который
+пишет в structured logs количество элементов и id отправленных сообщений.
+
+`/mediagroup` относится к исходящему медиа и закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствии типа или медиа команда показывает usage, при неподдерживаемом
+  типе — сообщение о допустимых типах, при количестве вне диапазона 2-10 —
+  сообщение о допустимом диапазоне, а при слишком длинном caption — сообщение о
+  превышении лимита, и во всех случаях не обращается к Telegram;
+- ошибки Telegram (например, недоступный чат или неверный `file_id`)
+  возвращаются пользователю, а отправка не выполняется.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/mediagroup` так же, как к другим командам.
+
 ### Текстовые сообщения
 
 Личные чаты используют историю сообщений пользователя в конкретном чате.
@@ -414,9 +1356,16 @@ fallback'ится на plain text.
 `TELEGRAM_ADMIN_CHAT_IDS` парсится тем же способом и ограничивает доступ к
 admin-командам `/webhook` и `/deletewebhook`. Для диагностики и lifecycle
 команд при пустом списке используется fallback на `TELEGRAM_ALLOWED_CHAT_IDS`;
-если оба списка пустые, эти команды недоступны. Для деструктивных `/logout`
-и `/close` fallback не применяется: команды требуют непустой
-`TELEGRAM_ADMIN_CHAT_IDS`, иначе они отключены.
+если оба списка пустые, эти команды недоступны. Для деструктивных `/logout`,
+`/close`, для message-relay `/forward`, `/forwards`, `/copy`, `/copies` и для
+исходящего медиа `/photo`, `/audio`, `/livephoto`, `/document`, `/video`,
+`/videonote`, `/animation`, `/voice`, `/paidmedia`, `/location`, `/venue`,
+`/poll`, `/contact`, `/dice`, `/chataction`, `/messagedraft` и `/checklist`
+fallback не применяется: команды требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`,
+иначе они отключены. Автоматический `typing…`-индикатор (управляемый
+`TELEGRAM_CHAT_ACTION_ENABLED`) и draft-стриминг (управляемый
+`TELEGRAM_MESSAGE_DRAFT_ENABLED`) admin-прав не требуют и работают для обычных
+пользователей в уже разрешенных чатах.
 
 ## Безопасность и ограничения доступа
 
@@ -430,6 +1379,29 @@ admin-командам `/webhook` и `/deletewebhook`. Для диагности
   `/logout confirm` для деструктивного выхода из cloud Bot API;
 - строгий admin allowlist без fallback и обязательное подтверждение
   `/close confirm` для деструктивного закрытия bot instance;
+- строгий admin allowlist без fallback для `/forward` и `protect_content` по
+  умолчанию, чтобы пересланный контент нельзя было переслать или сохранить
+  дальше;
+- строгий admin allowlist без fallback для `/forwards` и `protect_content` по
+  умолчанию для пакетной пересылки с сохранением album grouping;
+- строгий admin allowlist без fallback для `/copy` и `protect_content` по
+  умолчанию, чтобы скопированный контент нельзя было переслать или сохранить
+  дальше;
+- строгий admin allowlist без fallback для `/copies` и `protect_content` по
+  умолчанию для пакетного копирования без ссылки на источник с сохранением
+  album grouping;
+- строгий admin allowlist без fallback для `/photo`, чтобы только операторы
+  могли заставить бота публиковать произвольные изображения как фото;
+- строгий admin allowlist без fallback для `/audio`, чтобы только операторы
+  могли заставить бота публиковать произвольные аудиофайлы как музыкальные
+  треки;
+- строгий admin allowlist без fallback для `/livephoto`, чтобы только операторы
+  могли заставить бота публиковать произвольные live photo как видео с обложкой;
+- строгий admin allowlist без fallback для `/document`, чтобы только операторы
+  могли заставить бота публиковать произвольные файлы как документы;
+- строгий admin allowlist без fallback для `/paidmedia`, чтобы только операторы
+  могли заставить бота публиковать произвольное платное медиа с ценой в Telegram
+  Stars;
 - per-user rate limit в sliding window на 60 секунд;
 - guest mode для групп;
 - экранирование HTML в LLM-ответах перед Telegram HTML.
@@ -447,6 +1419,32 @@ admin-командам `/webhook` и `/deletewebhook`. Для диагности
 - `/close` деструктивен (закрытие bot instance на текущем Bot API сервере),
   поэтому требует явного admin allowlist и подтверждения, и его нельзя
   открывать публично;
+- `/forward` переносит чужой контент между чатами, поэтому требует явного admin
+  allowlist и по умолчанию защищает пересланную копию `protect_content`; его
+  нельзя открывать публично;
+- `/forwards` переносит пакет чужих сообщений между чатами с сохранением album
+  grouping, поэтому требует явного admin allowlist и по умолчанию защищает
+  пересланные копии `protect_content`; его нельзя открывать публично;
+- `/copy` переносит чужой контент между чатами без ссылки на источник, поэтому
+  требует явного admin allowlist и по умолчанию защищает скопированное сообщение
+  `protect_content`; его нельзя открывать публично;
+- `/copies` переносит пакет чужих сообщений между чатами без ссылки на источник
+  с сохранением album grouping, поэтому требует явного admin allowlist и по
+  умолчанию защищает скопированные сообщения `protect_content`; его нельзя
+  открывать публично;
+- `/photo` заставляет бота публиковать произвольное изображение по URL или
+  `file_id`, поэтому требует явного admin allowlist; его нельзя открывать
+  публично;
+- `/audio` заставляет бота публиковать произвольный аудиофайл по URL или
+  `file_id`, поэтому требует явного admin allowlist; его нельзя открывать
+  публично;
+- `/livephoto` заставляет бота публиковать произвольное live photo по `file_id`,
+  поэтому требует явного admin allowlist; его нельзя открывать публично;
+- `/document` заставляет бота публиковать произвольный файл по URL или `file_id`,
+  поэтому требует явного admin allowlist; его нельзя открывать публично;
+- `/paidmedia` заставляет бота публиковать произвольное платное медиа с ценой в
+  Telegram Stars по URL или `file_id`, поэтому требует явного admin allowlist;
+  его нельзя открывать публично;
 - нет persistent audit log, admin panel или метрик;
 - нет отдельной проверки размера входных файлов перед скачиванием и обработкой.
 
@@ -468,6 +1466,48 @@ admin-командам `/webhook` и `/deletewebhook`. Для диагности
 
 `perform_close()` логирует `bot_closed` с результатом успешного вызова; при
 ошибке Telegram API логируется `bot_close_failed` с типом исключения.
+
+`perform_forward_message()` логирует `message_forwarded` с `chat_id`,
+`from_chat_id`, `message_id`, флагом `protect_content` и id новой копии; при
+ошибке Telegram API логируется `forward_message_failed` с типом исключения,
+`from_chat_id` и `message_id`.
+
+`perform_forward_messages()` логирует `messages_forwarded` с `chat_id`,
+`from_chat_id`, `message_ids`, флагом `protect_content` и `forwarded_count`; при
+ошибке Telegram API логируется `forward_messages_failed` с типом исключения,
+`from_chat_id` и `message_ids`.
+
+`perform_copy_message()` логирует `message_copied` с `chat_id`, `from_chat_id`,
+`message_id`, флагом `protect_content` и id новой копии; при ошибке Telegram API
+логируется `copy_message_failed` с типом исключения, `from_chat_id` и
+`message_id`.
+
+`perform_copy_messages()` логирует `messages_copied` с `chat_id`, `from_chat_id`,
+`message_ids`, флагами `protect_content`, `remove_caption` и `copied_count`; при
+ошибке Telegram API логируется `copy_messages_failed` с типом исключения,
+`from_chat_id` и `message_ids`.
+
+`perform_send_photo()` логирует `photo_sent` с `chat_id`, флагами `has_caption`,
+`has_spoiler`, `protect_content` и id отправленного сообщения; при ошибке
+Telegram API логируется `send_photo_failed` с типом исключения и `chat_id`. URL
+или `file_id` фото в логи не попадают.
+
+`perform_send_audio()` логирует `audio_sent` с `chat_id`, флагами `has_caption`,
+`has_performer`, `has_title`, `protect_content` и id отправленного сообщения;
+при ошибке Telegram API логируется `send_audio_failed` с типом исключения и
+`chat_id`. URL или `file_id` аудио в логи не попадают.
+
+`perform_send_live_photo()` логирует `live_photo_sent` с `chat_id`, флагами
+`has_caption`, `has_spoiler`, `protect_content` и id отправленного сообщения;
+при ошибке транспорта или ответе Telegram с `ok: false` логируется
+`send_live_photo_failed` с типом исключения либо `error_code`/описанием и
+`chat_id`. `file_id` live photo и обложки в логи не попадают.
+
+`perform_send_document()` логирует `document_sent` с `chat_id`, флагами
+`has_caption`, `has_thumbnail`, `disable_content_type_detection`,
+`protect_content` и id отправленного сообщения; при ошибке Telegram API
+логируется `send_document_failed` с типом исключения и `chat_id`. URL или
+`file_id` документа в логи не попадают.
 
 `LOG_LEVEL` присутствует в настройках, но сейчас не применяется к конфигурации
 logging. Фактическая детализация логов зависит от дефолтного окружения.
@@ -512,6 +1552,42 @@ logging. Фактическая детализация логов зависит
 - вызов typed aiogram `close()`, обработку Telegram API ошибок (включая
   429/`TelegramRetryAfter`), admin allowlist и требование подтверждения для
   `/close`;
+- вызов typed aiogram `forward_message()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
+  аргументов, `protect_content` по умолчанию и переключение через `share` для
+  `/forward`;
+- вызов typed aiogram `forward_messages()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
+  списка message ids (нечисловые, нарушение строгого порядка, дубли, лимит
+  1-100), `protect_content` по умолчанию, переключение через `share` и отчет о
+  числе фактически пересланных сообщений для `/forwards`;
+- вызов typed aiogram `copy_message()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
+  аргументов, `protect_content` по умолчанию и переключение через `share` для
+  `/copy`;
+- вызов typed aiogram `copy_messages()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
+  списка message ids (нечисловые, нарушение строгого порядка, дубли, лимит
+  1-100), `protect_content` по умолчанию, переключение через `share`,
+  `remove_caption` через `nocaption` и отчет о числе фактически скопированных
+  сообщений для `/copies`;
+- вызов typed aiogram `send_photo()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
+  photo-аргумента и caption с пробелами, validation path для слишком длинного
+  caption и отправку с caption и без него для `/photo`;
+- вызов typed aiogram `send_audio()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
+  audio-аргумента и caption с пробелами, validation path для слишком длинного
+  caption и отправку с caption и без него для `/audio`;
+- raw Bot API helper `send_live_photo()`: формирование payload и URL, ответ
+  Telegram с `ok: false` (`SendLivePhotoError`), ошибку транспорта, admin
+  allowlist, парсинг двух `file_id`-аргументов и caption с пробелами, validation
+  path для слишком длинного caption и отправку с caption и без него для
+  `/livephoto`;
+- вызов typed aiogram `send_document()`, обработку Telegram API ошибок
+  (`TelegramBadRequest`/`TelegramForbiddenError`), admin allowlist, парсинг
+  document-аргумента и caption с пробелами, validation path для слишком длинного
+  caption и отправку с caption и без него для `/document`;
 - извлечение текста из plain text и поведение на неизвестном MIME;
 - rate limit middleware;
 - Markdown/HTML форматирование, удаление mention и разбивку Telegram сообщений.
@@ -519,14 +1595,15 @@ logging. Фактическая детализация логов зависит
 Integration tests описаны для живого proxy, но сейчас всегда skipped через
 module-level `pytestmark`.
 
-Локальная проверка на Python 3.12.3:
+Локальная проверка на Python 3.14.4:
 
 ```text
 python -m pytest -v
-49 passed, 2 skipped, 6 warnings
+133 passed, 2 skipped
 ```
 
-Предупреждения связаны с pydantic deprecated `__fields__` при использовании
+На более старых рантаймах (например, Python 3.12) дополнительно появляются
+предупреждения о pydantic deprecated `__fields__` при использовании
 `MagicMock(spec=types.Message)` в тестах rate limit middleware.
 
 ## Выявленные пробелы
@@ -550,8 +1627,8 @@ python -m pytest -v
 9. Нет тестов обработчиков команд `/model`, `/settings`, `/clear` с моками
    Telegram message objects.
 10. Нет теста webhook secret validation и `/health`.
-11. Покрытие Telegram Bot API ограничено десятью методами; official Guest Mode,
-    callback flows, rich outbound media, bot profile/commands management,
+11. Покрытие Telegram Bot API ограничено четырнадцатью методами; official Guest
+    Mode, callback flows, rich outbound media, bot profile/commands management,
     moderation, payments/Stars/gifts, business и managed-bot методы не
     реализованы.
 

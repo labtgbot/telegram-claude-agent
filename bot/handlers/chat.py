@@ -1,5 +1,7 @@
 import base64
 import re
+import time
+from contextlib import asynccontextmanager
 from html import escape as html_escape
 
 import structlog
@@ -8,6 +10,11 @@ from aiogram.types import Message
 
 from bot.config import settings
 from bot.services.claude_proxy import ClaudeProxyClient
+from bot.services.send_chat_action import keep_chat_action
+from bot.services.send_message_draft import (
+    SendMessageDraftError,
+    perform_send_message_draft,
+)
 from bot.utils.media import extract_document_text, transcribe_voice
 from bot.utils.storage import storage
 
@@ -16,6 +23,27 @@ logger = structlog.get_logger()
 router = Router()
 
 TELEGRAM_MESSAGE_LIMIT = 4096
+
+# Telegram clears a message draft after about 30 seconds and animates updates
+# that reuse the same draft_id, so refresh the preview at most this often to show
+# steady progress without flooding the ephemeral endpoint with tiny deltas.
+DRAFT_UPDATE_INTERVAL_SECONDS = 0.5
+
+
+@asynccontextmanager
+async def _typing_indicator(message: Message):
+    """Show a "typing…" chat action while Claude/proxy handles the request.
+
+    Wraps :func:`keep_chat_action` so the bot refreshes the indicator until the
+    block exits, signalling that a noticeably long request is in progress. The
+    indicator is skipped entirely when ``telegram_chat_action_enabled`` is off,
+    keeping behaviour unchanged for deployments that opt out.
+    """
+    if not settings.telegram_chat_action_enabled:
+        yield
+        return
+    async with keep_chat_action(message.bot, chat_id=message.chat.id, action="typing"):
+        yield
 
 
 def text_to_content_blocks(text: str) -> list:
@@ -135,6 +163,86 @@ async def handle_streaming(message: Message, client: ClaudeProxyClient, messages
     return full_text
 
 
+def _should_use_message_draft(message: Message) -> bool:
+    """Decide whether to stream the reply via ephemeral ``sendMessageDraft``.
+
+    ``sendMessageDraft`` only targets private chats, so the ephemeral preview
+    alternative to ``editMessageText`` is used only there and only when opted in
+    via ``telegram_message_draft_enabled``; every other chat keeps the existing
+    edit-based streaming.
+    """
+    return settings.telegram_message_draft_enabled and message.chat.type == "private"
+
+
+async def _send_draft_preview(message: Message, draft_id: int, text: str) -> None:
+    """Show a partial reply as an ephemeral ``sendMessageDraft`` preview.
+
+    Best-effort wrapper around :func:`perform_send_message_draft`: a failure to
+    display the ephemeral preview is logged and swallowed so it never breaks the
+    streaming response being generated. ``text`` is clamped to the Telegram
+    message limit; an empty string shows the "Thinking…" placeholder.
+    """
+    try:
+        await perform_send_message_draft(
+            message.bot,
+            chat_id=message.chat.id,
+            draft_id=draft_id,
+            text=text[:TELEGRAM_MESSAGE_LIMIT],
+        )
+    except SendMessageDraftError as exc:
+        logger.warning("message_draft_preview_failed", error=str(exc))
+
+
+async def handle_streaming_with_draft(
+    message: Message, client: ClaudeProxyClient, messages: list
+) -> str:
+    """Stream the reply as ephemeral draft previews, then persist the final text.
+
+    Used in private chats as an alternative to repeatedly calling
+    ``editMessageText`` while Claude generates an answer: partial text is shown
+    through the ephemeral Telegram ``sendMessageDraft`` preview (a single,
+    non-zero ``draft_id`` per response keeps the updates animated) instead of
+    creating and editing a real message. Because the draft is only a temporary
+    30-second preview, the finished answer is still persisted with real
+    ``sendMessage`` calls once generation completes. Draft previews are
+    throttled to :data:`DRAFT_UPDATE_INTERVAL_SECONDS` to avoid flooding the
+    endpoint with tiny deltas.
+    """
+    # draft_id must be non-zero; reuse one id per response so updates animate.
+    draft_id = message.message_id or 1
+
+    # Show the "Thinking…" placeholder immediately.
+    await _send_draft_preview(message, draft_id, "")
+
+    # Any streaming failure propagates to the outer handler, which reports it to
+    # the user; the ephemeral draft simply expires on its own.
+    full_text = ""
+    last_update = time.monotonic()
+    stream = await client.send_message(
+        messages=messages,
+        model=settings.free_claude_default_model,
+        stream=True,
+    )
+    async for chunk in stream:
+        if chunk.get("type") != "content_block_delta":
+            continue
+        delta = chunk.get("delta", {})
+        if delta.get("type") != "text_delta":
+            continue
+        text = delta.get("text", "")
+        if not text:
+            continue
+        full_text += text
+        now = time.monotonic()
+        if now - last_update >= DRAFT_UPDATE_INTERVAL_SECONDS:
+            last_update = now
+            await _send_draft_preview(message, draft_id, full_text)
+
+    reply_text = full_text or "Claude returned no text response."
+    await send_reply_safely(message, md_to_html(reply_text))
+    return reply_text
+
+
 @router.message(F.text | F.photo | F.voice | F.document)
 async def handle_chat_message(message: Message):
     user_id = message.from_user.id
@@ -235,20 +343,24 @@ async def handle_chat_message(message: Message):
         settings.free_claude_timeout_seconds,
     )
     try:
-        if settings.free_claude_streaming_enabled:
-            reply_text = await handle_streaming(message, client, messages)
-        else:
-            response = await client.send_message(
-                messages=messages,
-                model=settings.free_claude_default_model,
-            )
-            reply_text = ""
-            for block in response.get("content", []):
-                if block.get("type") == "text":
-                    reply_text += block.get("text", "")
-            if not reply_text:
-                reply_text = "Claude returned no text response."
-            await send_reply_safely(message, md_to_html(reply_text))
+        use_draft_stream = _should_use_message_draft(message)
+        async with _typing_indicator(message):
+            if settings.free_claude_streaming_enabled and use_draft_stream:
+                reply_text = await handle_streaming_with_draft(message, client, messages)
+            elif settings.free_claude_streaming_enabled:
+                reply_text = await handle_streaming(message, client, messages)
+            else:
+                response = await client.send_message(
+                    messages=messages,
+                    model=settings.free_claude_default_model,
+                )
+                reply_text = ""
+                for block in response.get("content", []):
+                    if block.get("type") == "text":
+                        reply_text += block.get("text", "")
+                if not reply_text:
+                    reply_text = "Claude returned no text response."
+                await send_reply_safely(message, md_to_html(reply_text))
 
         if use_history and reply_text:
             storage.add_message(chat.id, user_id, "user", content_blocks)

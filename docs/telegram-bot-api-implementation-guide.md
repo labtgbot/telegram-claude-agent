@@ -167,6 +167,7 @@ Area label: `area:message-relay`. Priority baseline: `priority:P2`
 #### BOTAPI-005: `forwardMessage`
 
 - Title: `telegram-api: реализовать forwardMessage`
+- Status: implemented in PR #180 as restricted admin `/forward` relay command.
 - Official docs: https://core.telegram.org/bots/api#forwardmessage
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:message-relay`, `priority:P2`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
@@ -182,6 +183,7 @@ Area label: `area:message-relay`. Priority baseline: `priority:P2`
 #### BOTAPI-006: `forwardMessages`
 
 - Title: `telegram-api: реализовать forwardMessages`
+- Status: implemented in PR #182 as restricted admin `/forwards` batch relay command.
 - Official docs: https://core.telegram.org/bots/api#forwardmessages
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:message-relay`, `priority:P2`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
@@ -197,6 +199,7 @@ Area label: `area:message-relay`. Priority baseline: `priority:P2`
 #### BOTAPI-007: `copyMessage`
 
 - Title: `telegram-api: реализовать copyMessage`
+- Status: implemented in PR #181 as restricted admin `/copy` relay command.
 - Official docs: https://core.telegram.org/bots/api#copymessage
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:message-relay`, `priority:P2`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
@@ -212,6 +215,7 @@ Area label: `area:message-relay`. Priority baseline: `priority:P2`
 #### BOTAPI-008: `copyMessages`
 
 - Title: `telegram-api: реализовать copyMessages`
+- Status: implemented in PR #184 as restricted admin `/copies` batch relay command.
 - Official docs: https://core.telegram.org/bots/api#copymessages
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:message-relay`, `priority:P2`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
@@ -251,7 +255,8 @@ Area label: `area:outbound-media`. Priority baseline: `priority:P1`
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:outbound-media`, `priority:P1`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Добавить поддержку `sendLivePhoto` в область: исходящие ответы бота за пределами plain text, включая typing/draft feedback, медиа, polls, checklist и reactions. Определить конкретный сценарий: расширение chat handler или отдельный response builder, который выбирает Telegram output по результату Claude/proxy.
-- Method note: Новый метод Bot API 10.0; aiogram 3.3.0 может не иметь typed wrapper.
+- Method note: Новый метод Bot API 10.0; aiogram 3.3.0 не имеет typed wrapper.
+- Status: implemented in PR #186 as restricted admin `/livephoto` outbound media command via an isolated raw Bot API helper.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API
@@ -267,6 +272,7 @@ Area label: `area:outbound-media`. Priority baseline: `priority:P1`
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:outbound-media`, `priority:P1`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Добавить поддержку `sendAudio` в область: исходящие ответы бота за пределами plain text, включая typing/draft feedback, медиа, polls, checklist и reactions. Определить конкретный сценарий: расширение chat handler или отдельный response builder, который выбирает Telegram output по результату Claude/proxy.
+- Status: implemented in PR #185 as restricted admin `/audio` outbound media command.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API
@@ -282,6 +288,7 @@ Area label: `area:outbound-media`. Priority baseline: `priority:P1`
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:outbound-media`, `priority:P1`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Возвращать большие текстовые, PDF или исходные артефакты как document, когда sendMessage не подходит.
+- Status: implemented in PR #187 as restricted admin `/document` outbound media command.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API
@@ -297,6 +304,7 @@ Area label: `area:outbound-media`. Priority baseline: `priority:P1`
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:outbound-media`, `priority:P1`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Добавить поддержку `sendVideo` в область: исходящие ответы бота за пределами plain text, включая typing/draft feedback, медиа, polls, checklist и reactions. Определить конкретный сценарий: расширение chat handler или отдельный response builder, который выбирает Telegram output по результату Claude/proxy.
+- Status: implemented in PR #188 as restricted admin `/video` outbound media command.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API
@@ -327,6 +335,7 @@ Area label: `area:outbound-media`. Priority baseline: `priority:P1`
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:outbound-media`, `priority:P1`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Добавить поддержку `sendVoice` в область: исходящие ответы бота за пределами plain text, включая typing/draft feedback, медиа, polls, checklist и reactions. Определить конкретный сценарий: расширение chat handler или отдельный response builder, который выбирает Telegram output по результату Claude/proxy.
+- Status: implemented in PR #190 as restricted admin `/voice` outbound media command.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API
@@ -358,6 +367,7 @@ Area label: `area:outbound-media`. Priority baseline: `priority:P1`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Добавить поддержку `sendPaidMedia` в область: исходящие ответы бота за пределами plain text, включая typing/draft feedback, медиа, polls, checklist и reactions. Определить конкретный сценарий: расширение chat handler или отдельный response builder, который выбирает Telegram output по результату Claude/proxy.
 - Method note: Требует отдельного решения по paid content, payload, цене и доступу к purchased_paid_media updates.
+- Status: implemented in PR #191 as restricted admin `/paidmedia` outbound media command via an isolated raw Bot API helper (`aiogram==3.3.0` ships no typed wrapper for this Bot API 7.6 method).
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API
@@ -479,6 +489,8 @@ Area label: `area:outbound-media`. Priority baseline: `priority:P1`
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:outbound-media`, `priority:P1`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Использовать ephemeral draft preview как альтернативу частым editMessageText во время генерации ответа.
+- Method note: Новый метод Bot API 10.0; aiogram 3.3.0 не имеет typed wrapper; работает только в private chats, draft эфемерный (~30 секунд) и требует ненулевой `draft_id`.
+- Status: implemented in PR #201 — изолированный raw Bot API helper `bot/services/send_message_draft.py`, опциональный draft-стриминг ответа в private chats (`TELEGRAM_MESSAGE_DRAFT_ENABLED`) и admin-команда `/messagedraft`.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API
