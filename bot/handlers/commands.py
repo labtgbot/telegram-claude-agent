@@ -125,6 +125,11 @@ from bot.services.get_chat_administrators import (
     format_get_chat_administrators_result,
     perform_get_chat_administrators,
 )
+from bot.services.get_forum_topic_icon_stickers import (
+    GetForumTopicIconStickersError,
+    format_forum_topic_icon_stickers,
+    perform_get_forum_topic_icon_stickers,
+)
 from bot.services.get_user_personal_chat_messages import (
     GET_USER_PERSONAL_CHAT_MESSAGES_MAX_LIMIT,
     GET_USER_PERSONAL_CHAT_MESSAGES_MIN_LIMIT,
@@ -866,6 +871,18 @@ GET_CHAT_ADMINISTRATORS_USAGE = (
     "Usage: <code>/getchatadministrators &lt;chat_id&gt;</code>"
 )
 
+FORUM_TOPIC_ICON_STICKERS_USAGE = (
+    "<b>forumtopiciconstickers usage</b>\n"
+    "Fetches the custom emoji stickers Telegram allows as forum topic icons "
+    "through <code>getForumTopicIconStickers</code>. This is an admin triage "
+    "helper for choosing <code>icon_custom_emoji_id</code> values before "
+    "creating or editing forum topics in supergroups. The method has no "
+    "parameters and needs no special update subscription. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/forumtopiciconstickers</code>"
+)
+
 GET_USER_PERSONAL_CHAT_MESSAGES_USAGE = (
     "<b>userpersonalchatmessages usage</b>\n"
     "Fetches recent messages from the personal chat between a user and this "
@@ -1067,6 +1084,7 @@ async def cmd_help(message: Message):
         "/getchatmember - Fetch a chat member status from Telegram (admin only)\n"
         "/getchatmembercount - Fetch chat member count from Telegram (admin only)\n"
         "/getchatadministrators - Fetch chat administrators from Telegram (admin only)\n"
+        "/forumtopiciconstickers - Fetch available forum topic icon stickers (admin only)\n"
         "/banchatmember - Ban a user from a chat (admin only)\n"
         "/banchatsenderchat - Ban a sender chat from a chat (admin only)\n"
         "/unbanchatmember - Unban a user from a chat (admin only)\n"
@@ -2620,6 +2638,28 @@ async def cmd_get_chat_administrators(message: Message):
 
     await message.answer(
         format_get_chat_administrators_result(chat_id, administrators),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("forumtopiciconstickers"))
+async def cmd_forum_topic_icon_stickers(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    if (message.text or "").split()[1:]:
+        await message.answer(FORUM_TOPIC_ICON_STICKERS_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        stickers = await perform_get_forum_topic_icon_stickers(message.bot)
+    except GetForumTopicIconStickersError as exc:
+        await message.answer(f"Could not get forum topic icon stickers: {exc}")
+        return
+
+    await message.answer(
+        format_forum_topic_icon_stickers(stickers),
         parse_mode="HTML",
     )
 

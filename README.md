@@ -190,6 +190,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/getchat <chat_id>` – Fetch Telegram chat metadata for a private chat, group, supergroup, or channel (admin only).
 - `/getchatadministrators <chat_id>` – Fetch the administrator list and rights for a group, supergroup, or channel known to the bot (admin only).
 - `/getchatmembercount <chat_id>` – Fetch the member count for a group, supergroup, or channel known to the bot (admin only).
+- `/forumtopiciconstickers` – Fetch available forum topic icon stickers and their `custom_emoji_id` values (admin only).
 - `/userpersonalchatmessages <user_id> [limit]` – Fetch recent messages from the user's personal chat with the bot (admin only).
 - `/leavechat <chat_id> confirm` – Make the bot leave a group, supergroup, or channel (admin only, requires confirmation).
 - `/createchatinvitelink <chat_id> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Create an additional invite link where the bot has `can_invite_users` (admin only).
@@ -1347,6 +1348,35 @@ the other admin commands:
 - the global rate-limit middleware still applies;
 - rollback is operational: remove the command chat from
   `TELEGRAM_ADMIN_CHAT_IDS` or revoke the bot's access to the target chat.
+
+### Forum topic icon stickers
+
+The `/forumtopiciconstickers` admin command calls Telegram Bot API
+`getForumTopicIconStickers` through an isolated raw Bot API helper because the
+project pins `aiogram==3.3.0`. It is intended for trusted operations chats when
+a moderator prepares forum-topic automation and needs to inspect which custom
+emoji stickers Telegram allows as topic icons before creating or editing topics
+in a supergroup.
+
+The Telegram method has no parameters and returns `Sticker` objects. The bot
+responds with the number of available stickers and, for each item, the emoji,
+`custom_emoji_id` and sticker set name when Telegram includes them. Those
+`custom_emoji_id` values can later be used as `icon_custom_emoji_id` in forum
+topic management flows. No special update subscription is required because the
+scenario starts from a normal command message. Telegram transport, rate-limit
+or API errors are reported back to the admin chat.
+
+This command does not call `free-claude-code`, does not mutate chat state and
+has no Telegram-side rollback step. To disable the operational surface, remove
+the command chat from `TELEGRAM_ADMIN_CHAT_IDS`.
+
+Because the command exposes operational metadata for forum-topic automation, it
+is guarded like the other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
 
 ### Get user personal chat messages
 
