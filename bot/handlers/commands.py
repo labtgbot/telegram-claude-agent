@@ -156,6 +156,10 @@ from bot.services.unpin_chat_message import (
     format_unpin_chat_message_result,
     perform_unpin_chat_message,
 )
+from bot.services.unpin_all_chat_messages import (
+    format_unpin_all_chat_messages_result,
+    perform_unpin_all_chat_messages,
+)
 from bot.services.pin_chat_message import (
     format_pin_chat_message_result,
     perform_pin_chat_message,
@@ -669,6 +673,19 @@ UNPIN_CHAT_MESSAGE_USAGE = (
     "Omit <code>message_id</code> to unpin the most recent pinned message. "
     "Rollback is manual: pin the message again in Telegram or with another "
     "operational tool."
+)
+
+UNPIN_ALL_CHAT_MESSAGES_USAGE = (
+    "<b>unpinallchatmessages usage</b>\n"
+    "Unpins all pinned messages from the specified group, supergroup or "
+    "channel. The bot must be an administrator with "
+    "<code>can_pin_messages</code> in groups and supergroups or "
+    "<code>can_edit_messages</code> in channels. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/unpinallchatmessages &lt;chat_id&gt;</code>\n"
+    "Rollback is manual: pin required messages again in Telegram or with "
+    "<code>/pinchatmessage</code>."
 )
 
 PIN_CHAT_MESSAGE_USAGE = (
@@ -2142,6 +2159,29 @@ async def cmd_unpin_chat_message(message: Message):
 
     await message.answer(
         format_unpin_chat_message_result(chat_id=chat_id, message_id=message_id),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("unpinallchatmessages"))
+async def cmd_unpin_all_chat_messages(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    chat_id = _parse_unpin_all_chat_messages_args(message.text or "")
+    if chat_id is None:
+        await message.answer(UNPIN_ALL_CHAT_MESSAGES_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        await perform_unpin_all_chat_messages(message.bot, chat_id=chat_id)
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not unpin all chat messages: {exc}")
+        return
+
+    await message.answer(
+        format_unpin_all_chat_messages_result(chat_id=chat_id),
         parse_mode="HTML",
     )
 
@@ -3994,6 +4034,18 @@ def _parse_unpin_chat_message_args(text: str):
         return None
 
     return chat_id, message_id
+
+
+def _parse_unpin_all_chat_messages_args(text: str):
+    """Parse ``/unpinallchatmessages`` args into ``chat_id``."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
 
 
 def _parse_pin_chat_message_args(text: str):
