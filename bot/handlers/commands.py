@@ -17,6 +17,11 @@ from bot.services.forward_messages import perform_forward_messages
 from bot.services.log_out import perform_log_out
 from bot.services.send_animation import perform_send_animation
 from bot.services.send_audio import perform_send_audio
+from bot.services.send_chat_action import (
+    CHAT_ACTIONS,
+    SendChatActionError,
+    perform_send_chat_action,
+)
 from bot.services.send_checklist import SendChecklistError, perform_send_checklist
 from bot.services.send_contact import perform_send_contact
 from bot.services.send_dice import perform_send_dice
@@ -321,6 +326,16 @@ DICE_USAGE = (
     + "."
 )
 
+CHAT_ACTION_USAGE = (
+    "<b>chataction usage</b>\n"
+    "Shows a chat action (a transient status like \"typing…\") in this chat via "
+    "the Telegram <code>sendChatAction</code> method. The status clears itself "
+    "after about five seconds or when the bot next posts a message.\n"
+    "Usage: <code>/chataction [action]</code>\n"
+    "Without an argument a <code>typing</code> status is shown. The optional "
+    "action must be one of: " + ", ".join(CHAT_ACTIONS) + "."
+)
+
 CHECKLIST_TASK_SEPARATOR = "|"
 
 CHECKLIST_TITLE_MAX_LENGTH = 255
@@ -411,6 +426,7 @@ async def cmd_help(message: Message):
         "/poll - Send a native poll (question with answer options) into this chat (admin only)\n"
         "/contact - Send a phone contact (name and phone number) into this chat (admin only)\n"
         "/dice - Send an animated dice (random value) into this chat (admin only)\n"
+        "/chataction - Show a chat action (e.g. typing…) in this chat (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/clear - Clear conversation history\n"
@@ -1135,6 +1151,33 @@ async def cmd_dice(message: Message):
 
     await message.answer("Sent dice.")
 
+@router.message(Command("chataction"))
+async def cmd_chat_action(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_chat_action_args(message.text or "")
+    if parsed is None:
+        await message.answer(CHAT_ACTION_USAGE, parse_mode="HTML")
+        return
+
+    (action,) = parsed
+    try:
+        await perform_send_chat_action(
+            message.bot,
+            chat_id=message.chat.id,
+            action=action,
+        )
+    except SendChatActionError:
+        await message.answer(CHAT_ACTION_USAGE, parse_mode="HTML")
+        return
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not show the chat action: {exc}")
+        return
+
+    await message.answer(f"Showed the {action} chat action.")
+
 @router.message(Command("checklist"))
 async def cmd_checklist(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -1745,6 +1788,29 @@ def _parse_dice_args(text: str):
         return None
 
     return (emoji,)
+
+
+def _parse_chat_action_args(text: str):
+    """Parse ``/chataction`` args into a single-element ``(action,)`` tuple.
+
+    Splits the raw command text into the command and an optional action token.
+    With no argument the action defaults to ``typing``. When a single token is
+    given it must be one of the supported chat actions (:data:`CHAT_ACTIONS`);
+    the parsed action is returned wrapped in a one-element tuple. Returns
+    ``None`` when an unsupported action or more than one argument is supplied so
+    the caller can show usage.
+    """
+    parts = (text or "").split()
+    if len(parts) == 1:
+        return ("typing",)
+    if len(parts) > 2:
+        return None
+
+    action = parts[1]
+    if action not in CHAT_ACTIONS:
+        return None
+
+    return (action,)
 
 
 def _parse_checklist_args(text: str):
