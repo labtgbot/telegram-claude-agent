@@ -51,6 +51,7 @@ from bot.services.set_message_reaction import (
     REACTION_EMOJI,
     perform_set_message_reaction,
 )
+from bot.services.set_user_emoji_status import perform_set_user_emoji_status
 from bot.services.webhook_delete import delete_webhook
 from bot.services.webhook_info import fetch_webhook_info, format_webhook_info
 from bot.utils.storage import storage
@@ -434,6 +435,19 @@ REACT_USAGE = (
     "Non-premium bots can set at most one reaction per message."
 )
 
+SET_EMOJI_STATUS_USAGE = (
+    "<b>setemojistatus usage</b>\n"
+    "Sets or removes the emoji status of a Telegram user who previously granted "
+    "the bot permission to manage their emoji status via the Mini App method "
+    "<code>requestEmojiStatusAccess</code>. "
+    "Pass an empty string as the custom emoji ID to remove the current status. "
+    "Without the user's explicit grant the call will fail with a Telegram error.\n"
+    "Usage: <code>/setemojistatus &lt;user_id&gt; [custom_emoji_id]</code>\n"
+    "The <code>user_id</code> is required. The optional "
+    "<code>custom_emoji_id</code> is the custom emoji identifier to set; "
+    "omit it or pass an empty string to remove the user's current emoji status."
+)
+
 MEDIA_GROUP_CAPTION_LIMIT = 1024
 
 MEDIA_GROUP_MIN_ITEMS = 2
@@ -506,6 +520,7 @@ async def cmd_help(message: Message):
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/react - Set or remove a reaction on a message in this chat (admin only)\n"
+        "/setemojistatus - Set or remove the emoji status of a user (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
         "- Text messages\n"
@@ -1445,6 +1460,37 @@ async def cmd_react(message: Message):
         await message.answer(f"Removed reactions from message {message_id}.")
 
 
+@router.message(Command("setemojistatus"))
+async def cmd_set_emoji_status(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_emoji_status_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_EMOJI_STATUS_USAGE, parse_mode="HTML")
+        return
+
+    user_id, custom_emoji_id = parsed
+
+    try:
+        await perform_set_user_emoji_status(
+            message.bot,
+            user_id=user_id,
+            emoji_status_custom_emoji_id=custom_emoji_id,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not set the emoji status: {exc}")
+        return
+
+    if custom_emoji_id:
+        await message.answer(
+            f"Set emoji status {custom_emoji_id!r} for user {user_id}."
+        )
+    else:
+        await message.answer(f"Removed emoji status for user {user_id}.")
+
+
 @router.message(Command("mediagroup"))
 async def cmd_media_group(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -2215,3 +2261,27 @@ def _build_media_group_items(media_type: str, references: list[str], caption):
         else:
             items.append(media_class(media=reference))
     return items
+
+
+def _parse_set_emoji_status_args(text: str):
+    """Parse ``/setemojistatus`` args into ``(user_id, custom_emoji_id)``.
+
+    Splits the raw command text into the command, the required integer
+    ``user_id`` and the optional ``custom_emoji_id`` string. Returns ``None``
+    when ``user_id`` is missing or not a valid integer so the caller can show
+    usage.  ``custom_emoji_id`` defaults to ``None`` (remove status) when not
+    provided. The caller does not validate the custom emoji id format — that is
+    left to Telegram.
+    """
+    parts = (text or "").split()
+    if len(parts) < 2:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+
+    custom_emoji_id = parts[2] if len(parts) >= 3 else None
+
+    return user_id, custom_emoji_id
