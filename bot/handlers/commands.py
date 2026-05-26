@@ -39,6 +39,10 @@ from bot.services.set_chat_photo import (
     format_set_chat_photo_result,
     perform_set_chat_photo,
 )
+from bot.services.set_chat_sticker_set import (
+    format_set_chat_sticker_set_result,
+    perform_set_chat_sticker_set,
+)
 from bot.services.copy_message import perform_copy_message
 from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
@@ -766,6 +770,15 @@ SET_CHAT_TITLE_USAGE = (
     f"The title is limited to {SET_CHAT_TITLE_LIMIT} characters."
 )
 
+SET_CHAT_STICKER_SET_USAGE = (
+    "<b>setchatstickerset usage</b>\n"
+    "Sets a sticker set for the specified supergroup. The bot must be an "
+    "administrator with the right to change chat information in the target "
+    "chat. This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setchatstickerset &lt;chat_id&gt; &lt;sticker_set_name&gt;</code>"
+)
+
 PROMOTE_CHAT_MEMBER_USAGE = (
     "<b>promotechatmember usage</b>\n"
     "Promotes or demotes a user in the specified group, supergroup or channel. "
@@ -1065,6 +1078,7 @@ async def cmd_help(message: Message):
         "/setchatphoto - Set a group or supergroup photo (admin only)\n"
         "/setchatdescription - Set or clear a chat description (admin only)\n"
         "/setchattitle - Set a group, supergroup or channel title (admin only)\n"
+        "/setchatstickerset - Set a supergroup sticker set (admin only)\n"
         "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
         "/approvechatjoinrequest - Approve a pending chat join request (admin only)\n"
         "/declinechatjoinrequest - Decline a pending chat join request (admin only)\n"
@@ -2404,6 +2418,38 @@ async def cmd_set_chat_title(message: Message):
 
     await message.answer(
         format_set_chat_title_result(chat_id=chat_id, title=title),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setchatstickerset"))
+async def cmd_set_chat_sticker_set(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_chat_sticker_set_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_CHAT_STICKER_SET_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, sticker_set_name = parsed
+
+    try:
+        await perform_set_chat_sticker_set(
+            message.bot,
+            chat_id=chat_id,
+            sticker_set_name=sticker_set_name,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not set the chat sticker set: {exc}")
+        return
+
+    await message.answer(
+        format_set_chat_sticker_set_result(
+            chat_id=chat_id,
+            sticker_set_name=sticker_set_name,
+        ),
         parse_mode="HTML",
     )
 
@@ -4419,6 +4465,24 @@ def _parse_set_chat_title_args(text: str):
         return None
 
     return chat_id, title
+
+
+def _parse_set_chat_sticker_set_args(text: str):
+    """Parse ``/setchatstickerset`` args into ``chat_id`` and sticker set name."""
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) != 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    sticker_set_name = parts[2].strip()
+    if not sticker_set_name or any(char.isspace() for char in sticker_set_name):
+        return None
+
+    return chat_id, sticker_set_name
 
 
 def _parse_approve_chat_join_request_args(text: str):
