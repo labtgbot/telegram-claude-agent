@@ -183,6 +183,8 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
   (admin only).
 - `/setchatstickerset <chat_id> <sticker_set_name>` – Set a supergroup sticker
   set where the bot can change chat information (admin only).
+- `/deletechatstickerset <chat_id>` – Delete a supergroup sticker set where
+  the bot can change chat information (admin only).
 - `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` – Promote or demote a group, supergroup, or channel member where the bot has `can_promote_members` (admin only).
 - `/approvechatjoinrequest <chat_id> <user_id>` – Approve a pending join request where the bot has `can_invite_users` (admin only).
 - `/declinechatjoinrequest <chat_id> <user_id>` – Decline a pending join request where the bot has `can_invite_users` (admin only).
@@ -1187,6 +1189,30 @@ administrator in the target supergroup with the right to change chat
 information. No special update subscription is required because the command is
 initiated by a normal Telegram message update. Telegram permission, chat type,
 or sticker set validation errors are reported back to the admin chat.
+
+Because the command changes visible chat metadata, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
+### Delete chat sticker set
+
+The `/deletechatstickerset <chat_id>` admin command calls Telegram Bot API
+`deleteChatStickerSet` through aiogram's typed API. It is intended for trusted
+operators to remove the group sticker set from a supergroup.
+
+The command takes only the target `chat_id`. Telegram only supports this method
+for supergroups, and the bot must already be an administrator in the target
+supergroup with the right to change chat information. No special update
+subscription is required because the command is initiated by a normal Telegram
+message update. Telegram permission, chat type, missing sticker set, or unknown
+chat errors are reported back to the admin chat.
+
+Rollback is manual: run `/setchatstickerset <chat_id> <sticker_set_name>` with
+the previous sticker set name.
 
 Because the command changes visible chat metadata, it is guarded like the other
 admin commands:
