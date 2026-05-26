@@ -172,6 +172,11 @@ from bot.services.reopen_general_forum_topic import (
     format_reopen_general_forum_topic_result,
     perform_reopen_general_forum_topic,
 )
+from bot.services.hide_general_forum_topic import (
+    HideGeneralForumTopicError,
+    format_hide_general_forum_topic_result,
+    perform_hide_general_forum_topic,
+)
 from bot.services.delete_forum_topic import (
     DeleteForumTopicError,
     format_delete_forum_topic_result,
@@ -1025,6 +1030,16 @@ REOPEN_GENERAL_FORUM_TOPIC_USAGE = (
     "is deny-by-default and only works from "
     "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
     "Usage: <code>/reopengeneralforumtopic &lt;chat_id&gt;</code>"
+)
+
+HIDE_GENERAL_FORUM_TOPIC_USAGE = (
+    "<b>hidegeneralforumtopic usage</b>\n"
+    "Hides the General forum topic in a supergroup through "
+    "<code>hideGeneralForumTopic</code>. The bot must be an administrator "
+    "with the right to manage topics in the target supergroup. This command "
+    "is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/hidegeneralforumtopic &lt;chat_id&gt;</code>"
 )
 
 DELETE_FORUM_TOPIC_USAGE = (
@@ -3088,6 +3103,32 @@ async def cmd_reopen_general_forum_topic(message: Message):
     )
 
 
+@router.message(Command("hidegeneralforumtopic"))
+async def cmd_hide_general_forum_topic(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    chat_id = _parse_hide_general_forum_topic_args(message.text or "")
+    if chat_id is None:
+        await message.answer(HIDE_GENERAL_FORUM_TOPIC_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        await perform_hide_general_forum_topic(
+            message.bot,
+            chat_id=chat_id,
+        )
+    except HideGeneralForumTopicError as exc:
+        await message.answer(f"Could not hide General forum topic: {exc}")
+        return
+
+    await message.answer(
+        format_hide_general_forum_topic_result(chat_id=chat_id),
+        parse_mode="HTML",
+    )
+
+
 @router.message(Command("deleteforumtopic"))
 async def cmd_delete_forum_topic(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -4965,6 +5006,18 @@ def _parse_reopen_general_forum_topic_args(text: str):
 
 def _parse_close_general_forum_topic_args(text: str):
     """Parse ``/closegeneralforumtopic`` args into closeGeneralForumTopic parameters."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
+
+
+def _parse_hide_general_forum_topic_args(text: str):
+    """Parse ``/hidegeneralforumtopic`` args into hideGeneralForumTopic parameters."""
     parts = (text or "").split()
     if len(parts) != 2:
         return None
