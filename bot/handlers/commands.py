@@ -40,6 +40,11 @@ from bot.services.edit_chat_invite_link import (
     format_edit_chat_invite_link_result,
     perform_edit_chat_invite_link,
 )
+from bot.services.revoke_chat_invite_link import (
+    RevokeChatInviteLinkError,
+    format_revoke_chat_invite_link_result,
+    perform_revoke_chat_invite_link,
+)
 from bot.services.edit_chat_subscription_invite_link import (
     EditChatSubscriptionInviteLinkError,
     format_edit_chat_subscription_invite_link_result,
@@ -686,6 +691,17 @@ EDIT_CHAT_INVITE_LINK_USAGE = (
     "<code>member_limit</code>."
 )
 
+REVOKE_CHAT_INVITE_LINK_USAGE = (
+    "<b>revokechatinvitelink usage</b>\n"
+    "Revokes an invite link created by the bot for the specified group, "
+    "supergroup or channel. If the primary link is revoked, Telegram "
+    "automatically generates a new one. The bot must be an administrator with "
+    "the <code>can_invite_users</code> right in the target chat. This command "
+    "is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/revokechatinvitelink &lt;chat_id&gt; &lt;invite_link&gt;</code>"
+)
+
 CREATE_CHAT_SUBSCRIPTION_INVITE_LINK_USAGE = (
     "<b>createchatsubscriptioninvitelink usage</b>\n"
     "Creates a subscription invite link for the specified supergroup or "
@@ -819,6 +835,7 @@ async def cmd_help(message: Message):
         "/approvechatjoinrequest - Approve a pending chat join request (admin only)\n"
         "/exportchatinvitelink - Export a new primary chat invite link (admin only)\n"
         "/editchatinvitelink - Edit a non-primary chat invite link (admin only)\n"
+        "/revokechatinvitelink - Revoke a chat invite link (admin only)\n"
         "/editchatsubscriptioninvitelink - Edit a subscription invite link (admin only)\n"
         "/setchatadministratortitle - Set a chat administrator custom title (admin only)\n"
         "/setchatmembertag - Set or clear a chat member tag (admin only)\n"
@@ -2101,6 +2118,34 @@ async def cmd_edit_chat_invite_link(message: Message):
 
     await message.answer(
         format_edit_chat_invite_link_result(chat_id=chat_id, link=link),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("revokechatinvitelink"))
+async def cmd_revoke_chat_invite_link(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_revoke_chat_invite_link_args(message.text or "")
+    if parsed is None:
+        await message.answer(REVOKE_CHAT_INVITE_LINK_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, invite_link = parsed
+    try:
+        link = await perform_revoke_chat_invite_link(
+            message.bot,
+            chat_id=chat_id,
+            invite_link=invite_link,
+        )
+    except (TelegramAPIError, RevokeChatInviteLinkError) as exc:
+        await message.answer(f"Could not revoke the chat invite link: {exc}")
+        return
+
+    await message.answer(
+        format_revoke_chat_invite_link_result(chat_id=chat_id, link=link),
         parse_mode="HTML",
     )
 
@@ -3597,6 +3642,23 @@ def _parse_edit_chat_invite_link_args(text: str):
         return None
 
     return chat_id, parts[2], options
+
+
+def _parse_revoke_chat_invite_link_args(text: str):
+    """Parse ``/revokechatinvitelink`` args into chat id and invite link."""
+    parts = (text or "").split()
+    if len(parts) != 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    if not parts[2]:
+        return None
+
+    return chat_id, parts[2]
 
 
 def _parse_create_chat_subscription_invite_link_args(text: str):
