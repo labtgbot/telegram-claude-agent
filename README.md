@@ -1517,6 +1517,32 @@ topic and is guarded by `TELEGRAM_ADMIN_CHAT_IDS` with no fallback to
 `/reopenforumtopic` after confirming the same `chat_id` and
 `message_thread_id`.
 
+### Close General forum topic
+
+The `/closegeneralforumtopic` admin command calls Telegram Bot API
+`closeGeneralForumTopic` through an isolated raw Bot API helper because the
+project pins `aiogram==3.3.0`. It is intended for trusted operations chats when
+a moderator needs to close the General topic in a forum-enabled supergroup,
+separate from the normal Claude chat flow and from non-General topic
+management.
+
+Usage:
+
+```text
+/closegeneralforumtopic <chat_id>
+```
+
+The bot must be an administrator in the target supergroup with the right to
+manage topics. No special update subscription is required because the scenario
+starts from a normal admin command message. Telegram transport, rate-limit or
+API errors are reported back to the admin chat.
+
+This command does not call `free-claude-code`, mutates only the General topic
+state in the addressed supergroup, and is guarded by `TELEGRAM_ADMIN_CHAT_IDS`
+with no fallback to `TELEGRAM_ALLOWED_CHAT_IDS`. Rollback is operational:
+reopen the General topic with `/reopengeneralforumtopic` after confirming the
+same `chat_id`.
+
 ### Reopen forum topic
 
 The `/reopenforumtopic` admin command calls Telegram Bot API
@@ -1566,8 +1592,8 @@ API errors are reported back to the admin chat.
 This command does not call `free-claude-code`, mutates only the General topic
 state in the addressed supergroup, and is guarded by `TELEGRAM_ADMIN_CHAT_IDS`
 with no fallback to `TELEGRAM_ALLOWED_CHAT_IDS`. Rollback is operational: close
-the General topic again in Telegram or with a future General topic lifecycle
-command when available.
+the General topic again with `/closegeneralforumtopic` after confirming the
+same `chat_id`.
 
 ### Delete forum topic
 
