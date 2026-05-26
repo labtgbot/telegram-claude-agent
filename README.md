@@ -188,6 +188,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/getchat <chat_id>` – Fetch Telegram chat metadata for a private chat, group, supergroup, or channel (admin only).
 - `/getchatadministrators <chat_id>` – Fetch the administrator list and rights for a group, supergroup, or channel known to the bot (admin only).
 - `/getchatmembercount <chat_id>` – Fetch the member count for a group, supergroup, or channel known to the bot (admin only).
+- `/userpersonalchatmessages <user_id> [limit]` – Fetch recent messages from the user's personal chat with the bot (admin only).
 - `/leavechat <chat_id> confirm` – Make the bot leave a group, supergroup, or channel (admin only, requires confirmation).
 - `/createchatinvitelink <chat_id> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Create an additional invite link where the bot has `can_invite_users` (admin only).
 - `/editchatinvitelink <chat_id> <invite_link> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` – Edit an existing non-primary invite link where the bot has `can_invite_users` (admin only).
@@ -1299,6 +1300,32 @@ the other admin commands:
 - the global rate-limit middleware still applies;
 - rollback is operational: remove the command chat from
   `TELEGRAM_ADMIN_CHAT_IDS` or revoke the bot's access to the target chat.
+
+### Get user personal chat messages
+
+The `/userpersonalchatmessages <user_id> [limit]` admin command calls Telegram
+Bot API `getUserPersonalChatMessages` through aiogram's typed API. It is
+intended for trusted operations chats when an administrator needs to inspect
+recent messages in the personal chat between a known user and the bot.
+
+The command takes the target `user_id` and an optional `limit` from 1 to 100
+(default 100). It returns a concise HTML summary with the number of messages
+Telegram returned and basic message metadata: message id, personal chat id,
+chat type, title when present, and date. Telegram permission errors such as an
+unknown user, unavailable personal chat history, restricted access or rate
+limits are reported back to the admin chat. No special update subscriptions are
+required because the scenario starts from a normal command message.
+
+Because the command can expose private conversation metadata, it is guarded
+like the other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies;
+- rollback is operational: remove the command chat from
+  `TELEGRAM_ADMIN_CHAT_IDS` or revoke the bot's access to the user's personal
+  chat.
 
 ### Export chat invite link
 
