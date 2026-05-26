@@ -146,6 +146,11 @@ from bot.services.edit_forum_topic import (
     format_edit_forum_topic_result,
     perform_edit_forum_topic,
 )
+from bot.services.close_forum_topic import (
+    CloseForumTopicError,
+    format_close_forum_topic_result,
+    perform_close_forum_topic,
+)
 from bot.services.reopen_forum_topic import (
     ReopenForumTopicError,
     format_reopen_forum_topic_result,
@@ -941,6 +946,17 @@ EDIT_FORUM_TOPIC_USAGE = (
     f"{FORUM_TOPIC_NAME_LIMIT} characters."
 )
 
+CLOSE_FORUM_TOPIC_USAGE = (
+    "<b>closeforumtopic usage</b>\n"
+    "Closes a forum topic in a supergroup through "
+    "<code>closeForumTopic</code>. The bot must be an administrator with the "
+    "right to manage topics in the target supergroup. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/closeforumtopic &lt;chat_id&gt; "
+    "&lt;message_thread_id&gt;</code>"
+)
+
 REOPEN_FORUM_TOPIC_USAGE = (
     "<b>reopenforumtopic usage</b>\n"
     "Reopens a closed forum topic in a supergroup through "
@@ -1156,6 +1172,7 @@ async def cmd_help(message: Message):
         "/forumtopiciconstickers - Fetch available forum topic icon stickers (admin only)\n"
         "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
+        "/closeforumtopic - Close a forum topic in a supergroup (admin only)\n"
         "/reopenforumtopic - Reopen a closed forum topic in a supergroup (admin only)\n"
         "/banchatmember - Ban a user from a chat (admin only)\n"
         "/banchatsenderchat - Ban a sender chat from a chat (admin only)\n"
@@ -2828,6 +2845,38 @@ async def cmd_create_forum_topic(message: Message):
             topic=topic,
             icon_color=icon_color,
             icon_custom_emoji_id=icon_custom_emoji_id,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("closeforumtopic"))
+async def cmd_close_forum_topic(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_close_forum_topic_args(message.text or "")
+    if parsed is None:
+        await message.answer(CLOSE_FORUM_TOPIC_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, message_thread_id = parsed
+
+    try:
+        await perform_close_forum_topic(
+            message.bot,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+        )
+    except CloseForumTopicError as exc:
+        await message.answer(f"Could not close forum topic: {exc}")
+        return
+
+    await message.answer(
+        format_close_forum_topic_result(
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
         ),
         parse_mode="HTML",
     )
@@ -4630,6 +4679,24 @@ def _parse_create_forum_topic_args(text: str):
 
 def _parse_reopen_forum_topic_args(text: str):
     """Parse ``/reopenforumtopic`` args into reopenForumTopic parameters."""
+    parts = (text or "").split()
+    if len(parts) != 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+        message_thread_id = int(parts[2])
+    except ValueError:
+        return None
+
+    if message_thread_id <= 0:
+        return None
+
+    return chat_id, message_thread_id
+
+
+def _parse_close_forum_topic_args(text: str):
+    """Parse ``/closeforumtopic`` args into closeForumTopic parameters."""
     parts = (text or "").split()
     if len(parts) != 3:
         return None
