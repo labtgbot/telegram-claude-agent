@@ -197,6 +197,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/deletechatphoto <chat_id>` – Delete the current group/supergroup photo where the bot can change chat information (admin only).
 - `/setmyname <name> [language=<code>]` – Set or clear the bot display name shown in Telegram clients (admin only).
 - `/setmydescription <description> [language=<code>]` – Set or clear the public bot profile description shown in Telegram clients (admin only).
+- `/removemyprofilephoto confirm` – Remove the bot profile photo through Bot API 10.0 (admin only, requires confirmation; rollback is `/setmyprofilephoto <photo_path>` with the previous image).
 - `/getmyname [language=<code>]` – Fetch the bot display name shown in Telegram clients (admin only).
 - `/setchatdescription <chat_id> [description]` – Set or clear a group,
   supergroup, or channel description where the bot can change chat information

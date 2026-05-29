@@ -98,6 +98,11 @@ from bot.services.set_my_profile_photo import (
     format_set_my_profile_photo_result,
     perform_set_my_profile_photo,
 )
+from bot.services.remove_my_profile_photo import (
+    RemoveMyProfilePhotoError,
+    format_remove_my_profile_photo_result,
+    perform_remove_my_profile_photo,
+)
 from bot.services.set_chat_sticker_set import (
     format_set_chat_sticker_set_result,
     perform_set_chat_sticker_set,
@@ -1015,6 +1020,18 @@ SET_MY_PROFILE_PHOTO_USAGE = (
     "remove the photo in BotFather/Telegram if needed."
 )
 
+REMOVE_MY_PROFILE_PHOTO_USAGE = (
+    "<b>removemyprofilephoto usage</b>\n"
+    "Removes the current profile photo from this bot. Telegram does not require "
+    "chat administrator rights or specific update types for this Bot API "
+    "method, but it changes the public bot profile. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/removemyprofilephoto confirm</code>\n"
+    "Rollback: run <code>/setmyprofilephoto &lt;photo_path&gt;</code> with the "
+    "previous image."
+)
+
 SET_CHAT_DESCRIPTION_USAGE = (
     "<b>setchatdescription usage</b>\n"
     "Sets the description for the specified group, supergroup or channel. The "
@@ -1656,6 +1673,7 @@ async def cmd_help(message: Message):
         "/unpinchatmessage - Unpin a message from a chat (admin only)\n"
         "/setchatphoto - Set a group or supergroup photo (admin only)\n"
         "/setmyprofilephoto - Set the bot profile photo (admin only)\n"
+        "/removemyprofilephoto - Remove the bot profile photo (admin only)\n"
         "/setchatdescription - Set or clear a chat description (admin only)\n"
         "/setchattitle - Set a group, supergroup or channel title (admin only)\n"
         "/setmyname - Set or clear the bot display name (admin only)\n"
@@ -3182,6 +3200,28 @@ async def cmd_set_my_profile_photo(message: Message):
 
     await message.answer(
         format_set_my_profile_photo_result(photo_path=photo_path),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("removemyprofilephoto"))
+async def cmd_remove_my_profile_photo(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    if not _parse_remove_my_profile_photo_args(message.text or ""):
+        await message.answer(REMOVE_MY_PROFILE_PHOTO_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        await perform_remove_my_profile_photo(message.bot)
+    except RemoveMyProfilePhotoError as exc:
+        await message.answer(f"Could not remove the bot profile photo: {exc}")
+        return
+
+    await message.answer(
+        format_remove_my_profile_photo_result(),
         parse_mode="HTML",
     )
 
@@ -6340,6 +6380,15 @@ def _parse_set_my_profile_photo_args(text: str) -> str | None:
         return None
 
     return photo_path
+
+
+def _parse_remove_my_profile_photo_args(text: str) -> bool:
+    """Parse ``/removemyprofilephoto`` confirmation args."""
+    parts = (text or "").split(maxsplit=1)
+    if len(parts) != 2:
+        return False
+
+    return parts[1].strip().lower() == "confirm"
 
 
 def _parse_set_chat_description_args(text: str):
