@@ -1572,6 +1572,42 @@ state в Telegram обратным действием не откатывает�
 Глобальный `RateLimitMiddleware` применяется к `/readbusinessmessage` так же,
 как к другим командам.
 
+### setBusinessAccountName
+
+Команда `/setbusinessaccountname <business_connection_id> <first_name>
+[last_name]` меняет имя подключенного business account методом
+`setBusinessAccountName` (Bot API 10.0). Метод принимает live
+`business_connection_id`, обязательный `first_name` и опциональный `last_name`;
+Telegram на своей стороне проверяет, что подключение активно, принадлежит
+боту и текущие business rights позволяют менять профиль.
+
+Pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода, поэтому
+реализация идет через изолированный raw Bot API helper
+`bot/services/set_business_account_name.py`. Helper POST'ит JSON payload
+`{"business_connection_id": ..., "first_name": ..., "last_name": ...}` на
+endpoint `setBusinessAccountName` через `httpx`, берет URL через
+`bot.session.api.api_url(...)` для поддержки local Bot API server и ожидает
+Telegram result `true`. Если `last_name` не передан, поле не добавляется в
+payload. Транспортные ошибки, невалидный JSON, Telegram `ok: false` и
+неожиданный result поднимаются как `SetBusinessAccountNameError`.
+
+Сценарий намеренно ограничен простой CLI-формой: `first_name` и `last_name`
+парсятся как одиночные токены длиной до 64 символов каждый. При ошибке ввода
+показывается usage и Telegram не вызывается. Значение `business_connection_id`
+должно приходить из live business connection update или другого доверенного
+operator source.
+
+Security/privacy impact: команда меняет публичные profile metadata business
+account, поэтому доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не
+делает fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; при пустом admin allowlist
+команда отключена. Structured logs содержат только `business_connection_id`,
+признак наличия `last_name` и форму ошибки; сами значения имени не логируются.
+Rollback операционный: вернуть прежнее имя через Telegram или отключить
+поверхность, убрав admin chat из `TELEGRAM_ADMIN_CHAT_IDS`/удалив handler.
+
+Глобальный `RateLimitMiddleware` применяется к `/setbusinessaccountname` так
+же, как к другим командам.
+
 ### getManagedBotToken
 
 Команда `/managedbottoken <managed_bot_user_id>` получает строковый токен

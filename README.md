@@ -185,6 +185,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
 - `/businessconnection` – Fetch metadata for a connected Telegram business account by `business_connection_id` (admin only).
 - `/readbusinessmessage` – Mark one connected business-account message as read by `business_connection_id` and `message_id` (admin only).
+- `/setbusinessaccountname` – Set the first and optional last name of a connected business account by `business_connection_id` (admin only).
 - `/deletebusinessmessages` – Delete connected business-account messages by `business_connection_id` and `message_ids` (admin only, requires confirmation).
 - `/managedbottoken` – Fetch the live token of a managed bot by its Telegram user id (admin only).
 - `/managedbotaccess` – Fetch access settings for a managed bot by its Telegram user id (admin only).
@@ -1370,6 +1371,31 @@ Usage: `/readbusinessmessage <business_connection_id> <message_id>`
 
 The command does not call `free-claude-code`. Rollback is operational: remove
 the admin chat from `TELEGRAM_ADMIN_CHAT_IDS` or remove the command handler.
+
+### Set business account name
+
+The restricted `/setbusinessaccountname` command calls Telegram Bot API
+`setBusinessAccountName` to update the first and optional last name of a
+connected business account. Because the pinned `aiogram==3.3.0` does not expose
+a typed wrapper for this Bot API 10.0 method, the command uses an isolated raw
+Bot API helper (`bot/services/set_business_account_name.py`) over `httpx`.
+
+Usage: `/setbusinessaccountname <business_connection_id> <first_name> [last_name]`
+
+- `business_connection_id` must come from a live business connection update or
+  another trusted operator source;
+- `first_name` is required and `last_name` is optional; both are parsed as
+  single tokens and limited to 64 characters each;
+- Telegram enforces connection ownership, current business rights and expired or
+  unknown connection handling; those errors are reported back without retry;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- structured logs contain only the connection id, whether a last name was
+  supplied and the error shape; name values are kept out of structured logs.
+
+The command does not call `free-claude-code`. Rollback is operational: set the
+previous name through Telegram or remove the admin chat from
+`TELEGRAM_ADMIN_CHAT_IDS` before further changes.
 
 ### Delete business messages
 
@@ -2818,6 +2844,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/messagedraft` command makes the bot post an ephemeral message draft into the (private) chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the draft text is kept out of the structured logs. The automatic draft-based streaming preview is independent of this command and is controlled by `TELEGRAM_MESSAGE_DRAFT_ENABLED`.
 - The `/checklist` command makes the bot post an arbitrary checklist into the chat on behalf of a connected business account, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the title and task texts are kept out of the structured logs.
 - The `/businessconnection` command fetches business connection owner/lifecycle metadata by `business_connection_id`, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps returned owner fields out of structured logs.
+- The `/setbusinessaccountname` command changes connected business account profile metadata, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps name values out of structured logs.
 - The `/managedbottoken` command returns a live managed-bot token, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps the token itself out of structured logs.
 - The `/managedbotaccess` command returns managed-bot access allowlist metadata, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps returned user objects out of structured logs.
 - The `/replacemanagedbottoken` command rotates and returns a live managed-bot token, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, explicit `confirm`, is unavailable when that list is empty, and keeps token values out of structured logs.
