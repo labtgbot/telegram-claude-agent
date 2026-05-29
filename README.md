@@ -176,6 +176,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/sticker` – Send a sticker or custom emoji into this chat via a URL or file_id (admin only).
 - `/getstickerset <sticker_set_name>` – Fetch sticker set metadata and sticker file_ids by set name (admin only).
 - `/customemojistickers <custom_emoji_id> [...]` – Fetch custom emoji sticker metadata by up to 200 custom emoji ids (admin only).
+- `/addstickertoset <user_id> <name> <sticker_format> <sticker_file_id> <emoji[,emoji...]>` – Add a pre-uploaded sticker to an existing sticker set (admin only).
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
 - `/paidmedia` – Send a paid photo into this chat that users must pay for with Telegram Stars to access, via a URL or file_id (admin only).
 - `/answerwebappquery` – Answer a Telegram Web App query with one inline result (admin only).
@@ -264,6 +265,7 @@ typed method when available and an isolated raw Bot API helper on pinned
   file_ids by set name (admin only).
 - `/customemojistickers <custom_emoji_id> [...]` – Fetch custom emoji sticker
   metadata by id for sticker/custom emoji lifecycle review (admin only).
+- `/addstickertoset <user_id> <name> <sticker_format> <sticker_file_id> <emoji[,emoji...]>` – Add a pre-uploaded sticker to an existing sticker set (admin only).
 - `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` – Promote or demote a group, supergroup, or channel member where the bot has `can_promote_members` (admin only).
 - `/approvechatjoinrequest <chat_id> <user_id>` – Approve a pending join request where the bot has `can_invite_users` (admin only).
 - `/declinechatjoinrequest <chat_id> <user_id>` – Decline a pending join request where the bot has `can_invite_users` (admin only).
@@ -1073,6 +1075,20 @@ commands:
   **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
   is empty, the command is disabled;
 - Telegram validation and rate-limit errors are reported back to the operator;
+
+### Add a sticker to a set
+
+The restricted `/addstickertoset` command calls Telegram Bot API
+`addStickerToSet` through the same raw Bot API path as sticker set creation.
+It appends one pre-uploaded sticker `file_id` to an existing set owned by the
+target user.
+
+Usage: `/addstickertoset <user_id> <name> <sticker_format> <sticker_file_id> <emoji[,emoji...]>`
+
+- use `/uploadstickerfile` first when the asset is a local file on the bot host;
+- `sticker_format` must be `static`, `animated` or `video`;
+- the target user must own the existing sticker set;
+- Telegram validation and rate-limit errors are reported back to the operator.
 - rollback is manual: delete or replace the created sticker set through the
   Telegram sticker lifecycle tools.
 
