@@ -276,6 +276,12 @@ from bot.services.approve_suggested_post import (
     format_approve_suggested_post_result,
     perform_approve_suggested_post,
 )
+from bot.services.decline_suggested_post import (
+    DECLINE_SUGGESTED_POST_COMMENT_LIMIT,
+    DeclineSuggestedPostError,
+    format_decline_suggested_post_result,
+    perform_decline_suggested_post,
+)
 from bot.services.send_venue import perform_send_venue
 from bot.services.send_video import perform_send_video
 from bot.services.send_video_note import perform_send_video_note
@@ -887,6 +893,18 @@ APPROVE_SUGGESTED_POST_USAGE = (
     "The bot must have the required Telegram rights for the direct messages "
     "chat. Without <code>send_date</code>, Telegram publishes the approved post "
     "at the date chosen in the suggestion."
+)
+
+DECLINE_SUGGESTED_POST_USAGE = (
+    "<b>declinesuggestedpost usage</b>\n"
+    "Declines a suggested post in a direct messages chat via "
+    "<code>declineSuggestedPost</code>. Pass the direct messages chat id, the "
+    "suggested post message id, and optionally a comment for the creator.\n"
+    "Usage: <code>/declinesuggestedpost &lt;chat_id&gt; &lt;message_id&gt; "
+    "[comment]</code>\n"
+    "The bot must have the <code>can_manage_direct_messages</code> Telegram "
+    "administrator right for the corresponding channel chat. The optional "
+    "comment is limited to 128 characters."
 )
 
 CONTACT_NAME_SEPARATOR = "|"
@@ -2527,6 +2545,7 @@ async def cmd_help(message: Message):
         "/venue - Send a venue (named place with title and address) into this chat (admin only)\n"
         "/poll - Send a native poll (question with answer options) into this chat (admin only)\n"
         "/approvesuggestedpost - Approve a direct messages suggested post (admin only)\n"
+        "/declinesuggestedpost - Decline a direct messages suggested post (admin only)\n"
         "/contact - Send a phone contact (name and phone number) into this chat (admin only)\n"
         "/dice - Send an animated dice (random value) into this chat (admin only)\n"
         "/chataction - Show a chat action (e.g. typing…) in this chat (admin only)\n"
@@ -3521,6 +3540,40 @@ async def cmd_approve_suggested_post(message: Message):
         ),
         parse_mode="HTML",
     )
+
+
+@router.message(Command("declinesuggestedpost"))
+async def cmd_decline_suggested_post(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_decline_suggested_post_args(message.text or "")
+    if parsed is None:
+        await message.answer(DECLINE_SUGGESTED_POST_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, message_id, comment = parsed
+    try:
+        await perform_decline_suggested_post(
+            message.bot,
+            chat_id=chat_id,
+            message_id=message_id,
+            comment=comment,
+        )
+    except DeclineSuggestedPostError as exc:
+        await message.answer(f"Could not decline the suggested post: {exc}")
+        return
+
+    await message.answer(
+        format_decline_suggested_post_result(
+            chat_id=chat_id,
+            message_id=message_id,
+            comment=comment,
+        ),
+        parse_mode="HTML",
+    )
+
 
 @router.message(Command("contact"))
 async def cmd_contact(message: Message):
@@ -8131,6 +8184,40 @@ def _parse_approve_suggested_post_args(
             return None
 
     return chat_id, message_id, send_date
+
+
+def _parse_decline_suggested_post_args(
+    text: str,
+) -> tuple[int | str, int, str | None] | None:
+    """Parse ``/declinesuggestedpost`` args into chat id, message id and comment."""
+    parts = (text or "").split(maxsplit=3)
+    if len(parts) not in (3, 4):
+        return None
+
+    raw_chat_id = parts[1].strip()
+    if not raw_chat_id:
+        return None
+    try:
+        chat_id: int | str = int(raw_chat_id)
+    except ValueError:
+        if not raw_chat_id.startswith("@"):
+            return None
+        chat_id = raw_chat_id
+
+    try:
+        message_id = int(parts[2])
+    except ValueError:
+        return None
+    if message_id <= 0:
+        return None
+
+    comment = None
+    if len(parts) == 4:
+        comment = parts[3].strip()
+        if len(comment) > DECLINE_SUGGESTED_POST_COMMENT_LIMIT:
+            return None
+
+    return chat_id, message_id, comment
 
 
 def _parse_delete_story_args(text: str):

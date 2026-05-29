@@ -1538,6 +1538,45 @@ Success log содержит только target chat/message id и факт н�
 `RateLimitMiddleware` применяется к `/approvesuggestedpost` так же, как к другим
 командам.
 
+### declineSuggestedPost
+
+Команда `/declinesuggestedpost` вызывает raw Bot API helper для метода Telegram
+`declineSuggestedPost`, потому что pinned `aiogram==3.3.0` не содержит typed
+wrapper для Bot API 10.0. По официальной документации метод требует `chat_id`
+direct messages chat и `message_id` suggested post, опционально принимает
+`comment` для автора suggested post длиной 0-128 символов и возвращает `True`
+при успехе.
+
+Выбран отдельный admin message-management сценарий: оператор отклоняет suggested
+post по chat/message id из trusted update или другого operator-controlled
+источника. Синтаксис: `/declinesuggestedpost <chat_id> <message_id> [comment]`.
+`chat_id` принимает numeric id или username вида `@channel`, `message_id` должен
+быть положительным числом, `comment` при наличии передается Telegram после
+trim-validation и не может быть длиннее 128 символов.
+
+Telegram сам проверяет ключевые ограничения: целевое сообщение должно быть
+declinable suggested post, бот должен иметь `can_manage_direct_messages`
+administrator right в соответствующем channel chat, а состояние suggested post
+должно позволять отклонение. При ошибках Telegram команда возвращает текст
+ошибки в admin chat и пишет warning log с target chat/message id без текста
+comment. Success log содержит только target chat/message id и факт наличия
+comment.
+
+`/declinesuggestedpost` закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при невалидном вводе команда показывает usage или validation error и не
+  обращается к Telegram;
+- rollback для уже отклоненного suggested post отсутствует в этом helper:
+  повторная отправка или новый suggested post должны выполняться отдельным
+  Telegram flow.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/declinesuggestedpost` так же, как к другим
+командам.
+
 ### sendContact
 
 Команда `/contact` вызывает typed aiogram API `Bot.send_contact()` для метода
