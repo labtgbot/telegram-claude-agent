@@ -481,6 +481,11 @@ from bot.services.get_business_account_star_balance import (
     format_business_account_star_balance,
     perform_get_business_account_star_balance,
 )
+from bot.services.get_my_star_balance import (
+    GetMyStarBalanceError,
+    format_my_star_balance,
+    perform_get_my_star_balance,
+)
 from bot.services.get_business_account_gifts import (
     GET_BUSINESS_ACCOUNT_GIFTS_MAX_LIMIT,
     GET_BUSINESS_ACCOUNT_GIFTS_MIN_LIMIT,
@@ -1275,6 +1280,16 @@ GET_BUSINESS_ACCOUNT_STAR_BALANCE_USAGE = (
     "The id must come from a live business connection update or another "
     "trusted operator source. Telegram requires the bot's current "
     "<code>can_view_gifts_and_stars</code> business right."
+)
+
+GET_MY_STAR_BALANCE_USAGE = (
+    "<b>mystarbalance usage</b>\n"
+    "Fetches Telegram <code>getMyStarBalance</code> for this bot. This is an "
+    "admin-only diagnostic because it exposes the bot's Telegram Stars "
+    "balance.\n"
+    "Usage: <code>/mystarbalance</code>\n"
+    "This command is unavailable unless <code>TELEGRAM_ADMIN_CHAT_IDS</code> "
+    "contains the current chat."
 )
 
 GET_BUSINESS_ACCOUNT_GIFTS_USAGE = (
@@ -2946,6 +2961,7 @@ async def cmd_help(message: Message):
         "/paidmedia - Send a paid photo into this chat priced in Telegram Stars (admin only)\n"
         "/sendinvoice - Send a Telegram Stars test invoice (admin only)\n"
         "/createinvoicelink - Create a Telegram Stars invoice link (admin only)\n"
+        "/mystarbalance - Fetch this bot's Telegram Stars balance (admin only)\n"
         "/answerwebappquery - Answer a Web App query with an inline result (admin only)\n"
         "/savepreparedinline - Save a prepared inline message for a user (admin only)\n"
         "/savepreparedkeyboard - Save a prepared keyboard button for a Mini App user (admin only)\n"
@@ -4719,6 +4735,28 @@ async def cmd_business_star_balance(message: Message):
         ),
         parse_mode="HTML",
     )
+
+
+@router.message(Command("mystarbalance"))
+async def cmd_my_star_balance(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    if not _parse_get_my_star_balance_args(message.text or ""):
+        await message.answer(
+            GET_MY_STAR_BALANCE_USAGE,
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        balance = await perform_get_my_star_balance(message.bot)
+    except GetMyStarBalanceError as exc:
+        await message.answer(f"Could not fetch the bot Star balance: {exc}")
+        return
+
+    await message.answer(format_my_star_balance(balance), parse_mode="HTML")
 
 
 @router.message(Command("businessgifts"))
@@ -9473,6 +9511,11 @@ def _parse_get_business_account_star_balance_args(text: str) -> str | None:
 
     business_connection_id = parts[1].strip()
     return business_connection_id or None
+
+
+def _parse_get_my_star_balance_args(text: str) -> bool:
+    """Parse ``/mystarbalance`` args."""
+    return len((text or "").split()) == 1
 
 
 def _parse_get_business_account_gifts_args(

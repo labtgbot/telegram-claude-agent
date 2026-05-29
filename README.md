@@ -189,6 +189,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
 - `/paidmedia` – Send a paid photo into this chat that users must pay for with Telegram Stars to access, via a URL or file_id (admin only).
 - `/sendinvoice` – Send a Telegram Stars test invoice into this chat (admin only).
+- `/mystarbalance` – Fetch this bot's Telegram Stars balance (admin only).
 - `/answerwebappquery` – Answer a Telegram Web App query with one inline result (admin only).
 - `/savepreparedinline` – Save one prepared inline message for a user (admin only).
 - `/savepreparedkeyboard` – Save a prepared keyboard button for a Mini App user (admin only).
@@ -2039,6 +2040,30 @@ Usage: `/businessstarbalance <business_connection_id>`
 
 The command does not call `free-claude-code` and is read-only. Transfers from
 the business account balance require a separate explicit flow.
+
+### Get bot Star balance
+
+The restricted `/mystarbalance` command calls Telegram Bot API
+`getMyStarBalance` to fetch this bot's `StarAmount`. Because the pinned
+`aiogram==3.3.0` does not expose a typed wrapper for this Bot API 10.0 method,
+the command uses an isolated raw Bot API helper
+(`bot/services/get_my_star_balance.py`) over `httpx`.
+
+Usage: `/mystarbalance`
+
+- the method has no parameters and no special update subscription is required
+  because the scenario starts from a normal admin command message;
+- Telegram validates the bot token and may return transport, permission,
+  balance or rate-limit errors, which are reported back without retry;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- structured logs contain only the response shape and error shape, not the
+  returned Stars amount.
+
+The command does not call `free-claude-code`, is read-only, and is intended for
+operators to audit available Stars before separate invoice, refund, gift or
+subscription flows. Rollback is operational: remove the admin chat from
+`TELEGRAM_ADMIN_CHAT_IDS` or remove the command handler.
 
 ### Get business account gifts
 
