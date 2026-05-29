@@ -461,6 +461,35 @@ It is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
 is empty, the command is disabled. The global rate-limit middleware still
 applies.
 
+### Get bot short description
+
+The restricted `/getmyshortdescription` command calls Telegram Bot API
+`getMyShortDescription` through aiogram's typed
+`Bot.get_my_short_description()` wrapper. It is a read-only diagnostic for
+checking the default or localized bot short description that Telegram currently
+serves after startup sync, `/setmyshortdescription` or BotFather changes.
+Startup also audits the configured language variant after optional
+`TELEGRAM_BOT_SHORT_DESCRIPTION` sync.
+
+Usage: `/getmyshortdescription [language=<code>]`
+
+Examples:
+
+- `/getmyshortdescription`
+- `/getmyshortdescription language=ru`
+
+- Telegram accepts only optional `language_code` and returns
+  `BotShortDescription`.
+- The method does not require chat administrator rights and does not need
+  special update types.
+- The command is admin-only because profile diagnostics belong to the
+  reproducible BotFather/startup-sync operational flow.
+
+It is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+**not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+is empty, the command is disabled. The global rate-limit middleware still
+applies.
+
 ### Set bot description
 
 The restricted `/setmydescription` command calls Telegram Bot API
