@@ -58,7 +58,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
 `sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
 `sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup`, `sendVenue`,
-`sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `editMessageLiveLocation`, `postStory`,
+`sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `editMessageLiveLocation`,
+`stopMessageLiveLocation`, `postStory`,
 `editStory`, `sendChatAction`,
 `sendMessageDraft`, `getUserProfilePhotos`, `setMessageReaction`,
 `setUserEmojiStatus`, `getUserProfileAudios`, `banChatMember`,
@@ -72,7 +73,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `unpinAllForumTopicMessages`, `unpinAllGeneralForumTopicMessages`,
 `unhideGeneralForumTopic`, `setMyName`, `getMyName`, `setMyDescription`,
 `getChatMenuButton`;
-остается 108 пока не
+остается 107 пока не
 интегрированных метода.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
@@ -117,6 +118,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `savePreparedKeyboardButton` | `bot/services/save_prepared_keyboard_button.py`, `/savepreparedkeyboard` в `bot/handlers/commands.py` | Admin-flow сохранения prepared keyboard button для Telegram Mini App пользователя по `user_id` и `prepared_message_id` через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; сценарий предполагает проверенную Mini App init data и prepared inline message, команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, не требует chat administrator rights, rollback выполняется заменой prepared message/button или снятием Mini App entry point. |
 | `sendLocation` | `bot/services/send_location.py`, `/location` в `bot/handlers/commands.py` | Admin-flow отправки точки на карте в текущий чат как настоящей Telegram-локации по широте и долготе, через typed aiogram API; у локаций нет caption, координаты валидируются по диапазонам и не пишутся в structured logs. |
 | `editMessageLiveLocation` | `bot/services/edit_message_live_location.py`, `/editlivelocation` в `bot/handlers/commands.py` | Admin-flow обновления координат активной live location, ранее отправленной ботом, по `chat_id` + `message_id` или `inline_message_id`; используется изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`, координаты и optional `horizontal_accuracy`/`heading`/`proximity_alert_radius` валидируются до обращения к Telegram и не пишутся в structured logs. |
+| `stopMessageLiveLocation` | `bot/services/stop_message_live_location.py`, `/stoplivelocation` в `bot/handlers/commands.py` | Admin-flow остановки активной live location, ранее отправленной ботом, по `chat_id` + `message_id` или `inline_message_id`; используется изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`, optional `reply_markup` поддержан на уровне сервиса, а structured logs фиксируют только target message и наличие inline/reply markup. |
 | `sendMediaGroup` | `bot/services/send_media_group.py`, `/mediagroup` в `bot/handlers/commands.py` | Admin-flow отправки 2-10 медиа в текущий чат как единого альбома (media group) по URL или `file_id`, через typed aiogram API; все элементы одного типа (photo/video/document/audio), единый caption применяется к первому элементу. |
 | `sendVenue` | `bot/services/send_venue.py`, `/venue` в `bot/handlers/commands.py` | Admin-flow отправки заведения (venue) — именованного места с названием и адресом, закрепленного на карте — в текущий чат по широте, долготе, title и address, через typed aiogram API; координаты валидируются по диапазонам, а сами координаты, title и address не пишутся в structured logs. |
 | `sendPoll` | `bot/services/send_poll.py`, `/poll` в `bot/handlers/commands.py` | Admin-flow отправки нативного опроса (poll) — интерактивного вопроса с 2-10 вариантами ответа — в текущий чат, через typed aiogram API; длины вопроса (до 300) и вариантов (до 100) и их количество валидируются до обращения к Telegram, а сам вопрос и варианты ответа не пишутся в structured logs. |
@@ -234,7 +236,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
    `sendChecklist`,
    `sendMessageDraft`, `setMessageReaction` (все четыре уже интегрированы).
 4. Управление сообщениями: `editMessageCaption`, `editMessageMedia`,
-   `editMessageLiveLocation` (уже интегрирован), `stopMessageLiveLocation`,
+   `editMessageLiveLocation` и `stopMessageLiveLocation` (уже интегрированы),
    `editMessageChecklist`, `editMessageReplyMarkup`, `stopPoll`,
    `approveSuggestedPost`, `declineSuggestedPost`, `deleteMessage`,
    `deleteMessages`, `deleteMessageReaction`, `deleteAllMessageReactions`.
@@ -1339,6 +1341,39 @@ optional параметров, но не latitude/longitude. Команда за
 и не вызывает `free-claude-code`. Rollback выполняется повторным вызовом с
 предыдущими координатами либо остановкой live location через отдельный
 `stopMessageLiveLocation`/ручное действие Telegram. Ошибки Telegram,
+авторизации, transport и rate-limit возвращаются оператору в admin chat.
+
+### stopMessageLiveLocation
+
+Команда `/stoplivelocation` вызывает Telegram Bot API
+`stopMessageLiveLocation` через изолированный raw Bot API helper. Метод
+останавливает активную live location, ранее отправленную ботом, и принимает
+либо `chat_id` + `message_id`, либо `inline_message_id`. Telegram возвращает
+отредактированный `Message` для обычного сообщения или `True` для
+inline-сообщения. Optional `reply_markup` поддержан на уровне сервиса для
+совместимости с официальной сигнатурой, но не выставлен в пользовательский
+синтаксис команды, чтобы не принимать сложный JSON из admin-чата.
+
+Выбран тот же message-management admin-сценарий для streaming, moderation и
+media flows: оператор может завершить уже опубликованную live location без
+ручного перехода в Telegram client. Синтаксис:
+`/stoplivelocation <chat_id> <message_id>` или
+`/stoplivelocation inline=<inline_message_id>`.
+
+Параметры валидируются до обращения к Telegram: для обычного target нужны оба
+поля `chat_id` и `message_id`, `message_id` должен быть положительным, а inline
+target нельзя смешивать с regular target. Команда не требует дополнительных
+update types, так как запускается обычным сообщением из admin-чата. Telegram
+проверяет, что бот может редактировать целевое live-location сообщение; метод
+применим только к live locations, отправленным ботом, включая inline target.
+
+Privacy/security impact ниже, чем у обновления координат: команда не принимает
+новые координаты и structured logs фиксируют только идентификаторы target
+message, наличие inline target и наличие reply markup. Команда закрыта строгим
+`TELEGRAM_ADMIN_CHAT_IDS`, не использует fallback на
+`TELEGRAM_ALLOWED_CHAT_IDS` и не вызывает `free-claude-code`. Rollback прямым
+повторным вызовом невозможен: после остановки нужно отправить новую live
+location или восстановить состояние вручную в Telegram. Ошибки Telegram,
 авторизации, transport и rate-limit возвращаются оператору в admin chat.
 
 ### sendVenue

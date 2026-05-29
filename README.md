@@ -1211,6 +1211,39 @@ commands:
   reported back to the admin chat, and the global rate-limit middleware still
   applies.
 
+### Stop a live location
+
+The restricted `/stoplivelocation` command calls Telegram Bot API
+`stopMessageLiveLocation` through an isolated raw Bot API helper. It lets an
+operator stop an active live location message that was previously sent by the
+bot, either by regular `chat_id` + `message_id` or by `inline_message_id`.
+
+Usage: `/stoplivelocation <chat_id> <message_id>`
+Usage: `/stoplivelocation inline=<inline_message_id>`
+
+- `message_id` is validated before Telegram is called;
+- the command only stops active live locations sent by the bot, and Telegram
+  returns a validation error when the target message cannot be edited;
+- no special update type is required for the command path; the bot must have
+  normal permission to edit its own target message in the destination chat;
+- the service does not log coordinates or message contents, only target ids and
+  whether inline mode/reply markup were used;
+- rollback requires sending a new live location or restoring state manually in
+  Telegram.
+
+Because this is a message-management action, it is guarded like the other admin
+commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the command does not call `free-claude-code`; it is an operator action for
+  streaming, moderation and media workflows that need to stop an existing
+  Telegram live-location message;
+- Telegram validation, authorization, transport and rate-limit errors are
+  reported back to the admin chat, and the global rate-limit middleware still
+  applies.
+
 ### Send a poll
 
 The restricted `/poll` command calls Telegram Bot API `sendPoll` through

@@ -205,6 +205,10 @@ from bot.services.edit_message_live_location import (
     EditMessageLiveLocationError,
     perform_edit_message_live_location,
 )
+from bot.services.stop_message_live_location import (
+    StopMessageLiveLocationError,
+    perform_stop_message_live_location,
+)
 from bot.services.gift_premium_subscription import (
     GiftPremiumSubscriptionError,
     MAX_PREMIUM_MONTHS,
@@ -962,6 +966,16 @@ EDIT_MESSAGE_LIVE_LOCATION_USAGE = (
     "Coordinates are decimal degrees. Optional trailing flags: "
     "<code>accuracy=&lt;0-1500&gt;</code>, <code>heading=&lt;1-360&gt;</code>, "
     "<code>proximity=&lt;1-100000&gt;</code>."
+)
+
+STOP_MESSAGE_LIVE_LOCATION_USAGE = (
+    "<b>stoplivelocation usage</b>\n"
+    "Stops an active live location message previously sent by this bot. This "
+    "is an admin-only message-management command. Target a regular message "
+    "with <code>chat_id</code> and <code>message_id</code>, or target inline "
+    "mode with <code>inline=&lt;inline_message_id&gt;</code>.\n"
+    "Usage: <code>/stoplivelocation &lt;chat_id&gt; &lt;message_id&gt;</code>\n"
+    "Usage: <code>/stoplivelocation inline=&lt;inline_message_id&gt;</code>"
 )
 
 POST_STORY_USAGE = (
@@ -2454,6 +2468,7 @@ async def cmd_help(message: Message):
         "/editcaption - Edit or clear a media message caption (admin only)\n"
         "/editmedia - Replace media in a previously sent media message (admin only)\n"
         "/editlivelocation - Move an active live location message (admin only)\n"
+        "/stoplivelocation - Stop an active live location message (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/poststory - Post a photo story via a business connection (admin only)\n"
         "/repoststory - Repost a story between managed business accounts (admin only)\n"
@@ -3661,6 +3676,35 @@ async def cmd_edit_message_live_location(message: Message):
         return
 
     await message.answer("Edited inline live location.")
+
+
+@router.message(Command("stoplivelocation"))
+async def cmd_stop_message_live_location(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    target = _parse_message_management_target_args(message.text or "")
+    if target is None:
+        await message.answer(STOP_MESSAGE_LIVE_LOCATION_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        result = await perform_stop_message_live_location(message.bot, **target)
+    except StopMessageLiveLocationError as exc:
+        await message.answer(f"Could not stop the live location: {exc}")
+        return
+
+    if isinstance(result, dict):
+        result_message_id = result.get("message_id")
+        await message.answer(
+            f"Stopped live location for message {result_message_id}."
+            if result_message_id is not None
+            else "Stopped message live location."
+        )
+        return
+
+    await message.answer("Stopped inline live location.")
 
 
 @router.message(Command("poststory"))
@@ -7714,6 +7758,32 @@ def _parse_edit_message_live_location_args(text: str):
             return None
 
     return target, latitude, longitude, options
+
+
+def _parse_message_management_target_args(text: str):
+    """Parse command args into a regular or inline message target."""
+    parts = (text or "").split()
+    if len(parts) < 2:
+        return None
+
+    if parts[1].startswith("inline="):
+        if len(parts) != 2:
+            return None
+        inline_message_id = parts[1].split("=", maxsplit=1)[1].strip()
+        if not inline_message_id:
+            return None
+        return {"inline_message_id": inline_message_id}
+
+    if len(parts) != 3:
+        return None
+    try:
+        chat_id = int(parts[1])
+        message_id = int(parts[2])
+    except ValueError:
+        return None
+    if message_id <= 0:
+        return None
+    return {"chat_id": chat_id, "message_id": message_id}
 
 
 def _parse_delete_story_args(text: str):
