@@ -1840,10 +1840,45 @@ Structured logs содержат `business_connection_id`, `show_gift_button`, �
 отключить поверхность, убрав admin chat из `TELEGRAM_ADMIN_CHAT_IDS`/удалив
 handler.
 
+Команда `/businessgifts <business_connection_id>
+[exclude_unsaved=true|false] [exclude_saved=true|false]
+[exclude_unlimited=true|false] [exclude_limited=true|false]
+[exclude_unique=true|false] [sort_by_price=true|false] [offset=<offset>]
+[limit=1..100]` получает страницу `OwnedGifts` подключенного business account
+методом `getBusinessAccountGifts` (Bot API 10.0). Метод принимает live
+`business_connection_id`, опциональные фильтры сохраненности и типов подарков,
+`sort_by_price`, pagination `offset` и `limit` от 1 до 100. Required update
+types для самого вызова не нужны, но `business_connection_id` должен прийти из
+business connection update или другого доверенного operator source. Telegram
+на своей стороне проверяет, что подключение активно, принадлежит боту и текущие
+business rights позволяют просматривать gifts/Stars.
+
+Pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода, поэтому
+реализация идет через изолированный raw Bot API helper
+`bot/services/get_business_account_gifts.py`. Helper POST'ит JSON payload на
+endpoint `getBusinessAccountGifts` через `httpx`, берет URL через
+`bot.session.api.api_url(...)` для поддержки local Bot API server и поднимает
+validation errors, транспортные ошибки, невалидный JSON, Telegram `ok: false`
+и неожиданный result как `GetBusinessAccountGiftsError`.
+
+Сценарий строго read-only и отделен от convert/upgrade/transfer gift flows:
+команда только отображает до 10 элементов и next offset, а операции с
+ценностью требуют отдельных явных команд. Security/privacy impact: список
+owned gifts раскрывает активы business account, поэтому команда доступна
+только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает fallback на
+`TELEGRAM_ALLOWED_CHAT_IDS`; при пустом admin allowlist команда отключена.
+Structured logs содержат `business_connection_id`, количество элементов,
+наличие `next_offset` и форму ошибки, но не полный gift payload. Rollback
+операционный: прекратить использовать команду, убрать admin chat из
+`TELEGRAM_ADMIN_CHAT_IDS`, удалить handler или ограничить business rights в
+Telegram. Интеграционные проверки opt-in, потому что нужен реальный bot token
+и live business connection id.
+
 Глобальный `RateLimitMiddleware` применяется к `/setbusinessaccountname`,
 `/setbusinessaccountusername`, `/setbusinessaccountbio`,
 `/setbusinessaccountprofilephoto`, `/removebusinessaccountprofilephoto` и
 `/setbusinessaccountgiftsettings` так же, как к другим командам.
+`/businessgifts` также проходит через общий rate-limit pipeline команд.
 `/transferbusinessstars` также проходит через общий rate-limit pipeline команд.
 
 ### getManagedBotToken
