@@ -1052,6 +1052,49 @@ Product rules и audit log:
 - Telegram permission/balance/transport/rate-limit errors возвращаются в admin
   chat.
 
+### giftPremiumSubscription
+
+Команда `/giftpremium` вызывает Telegram `giftPremiumSubscription` (Bot API
+10.0) для подарка Telegram Premium пользователю. По официальной документации
+метод требует `user_id`, `month_count` и `star_count`: именно это количество
+Telegram Stars будет списано с баланса бота. Дополнительно поддерживаются
+`text`, `text_parse_mode` и `text_entities`. Метод возвращает boolean `True`.
+Специальные update types не нужны, потому что сценарий запускается обычным
+admin message update; существование пользователя, права/доступность Premium
+gift и баланс Stars проверяет Telegram.
+
+Так как pinned `aiogram==3.3.0` не имеет typed wrapper для
+`giftPremiumSubscription`, реализация использует изолированный raw Bot API
+helper `bot/services/gift_premium_subscription.py`. Helper POST'ит JSON-payload
+на endpoint `giftPremiumSubscription`, использует URL из
+`bot.session.api.api_url(...)` для поддержки local Bot API server, валидирует
+`user_id`, `month_count` и `star_count` до HTTP-вызова и поднимает
+transport/Telegram `ok: false`/unexpected-result ошибки как
+`GiftPremiumSubscriptionError`.
+
+Выбран отдельный admin billing/rewards scenario:
+`/giftpremium <user_id> <month_count> <star_count> confirm [text]`. Оператор
+должен заранее проверить текущую Telegram цену Premium gift, product rules,
+получателя, баланс Stars и связь действия с verification/rewards flow. Команда
+не вызывает `free-claude-code` и не смешивается с обычными gifts или
+verification actions. Rollback ограничен операционными действиями: Premium gift
+нельзя отменить этим ботом, поэтому ошибочные расходы нужно разбирать по audit
+log и балансу Stars.
+
+Product rules и audit log:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если список пустой, команда
+  отключена;
+- команда требует literal `confirm` в том же сообщении, которое запускает
+  расход Stars;
+- parser принимает positive `user_id`, `month_count` в диапазоне `3..12` и
+  positive `star_count`; optional text ограничен 128 символами до отправки;
+- structured logs включают `user_id`, `month_count`, `star_count` и факт
+  наличия текста, но не сам текст и не unrelated chat data;
+- Telegram permission/balance/transport/rate-limit errors возвращаются в admin
+  chat.
+
 ### sendLocation
 
 Команда `/location` вызывает typed aiogram API `Bot.send_location()` для метода

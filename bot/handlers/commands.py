@@ -189,6 +189,12 @@ from bot.services.send_message_draft import (
     SendMessageDraftError,
     perform_send_message_draft,
 )
+from bot.services.gift_premium_subscription import (
+    GiftPremiumSubscriptionError,
+    MAX_PREMIUM_MONTHS,
+    MIN_PREMIUM_MONTHS,
+    perform_gift_premium_subscription,
+)
 from bot.services.send_gift import SendGiftError, perform_send_gift
 from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
 from bot.services.send_photo import perform_send_photo
@@ -875,6 +881,33 @@ SEND_GIFT_WARNING = (
     "confirming. Gift delivery itself cannot be rolled back by this bot.\n"
     "Run <code>/sendgift &lt;user|chat&gt; &lt;receiver_id&gt; &lt;gift_id&gt; "
     "confirm [text]</code> to proceed."
+)
+
+GIFT_PREMIUM_CONFIRM_KEYWORD = "confirm"
+GIFT_PREMIUM_TEXT_LIMIT = 128
+
+GIFT_PREMIUM_USAGE = (
+    "<b>giftpremium usage</b>\n"
+    "Calls Telegram <code>giftPremiumSubscription</code> for a user. This "
+    "spends Telegram Stars from the bot balance, so the command is admin-only, "
+    "requires product-rule review and requires an explicit confirmation "
+    "keyword in the same command.\n"
+    "Usage: <code>/giftpremium &lt;user_id&gt; &lt;month_count&gt; "
+    "&lt;star_count&gt; confirm [text]</code>\n"
+    f"<code>month_count</code> must be {MIN_PREMIUM_MONTHS}-"
+    f"{MAX_PREMIUM_MONTHS}. <code>star_count</code> must match Telegram's "
+    "current Premium gift price reviewed by the operator. No special update "
+    "type is required."
+)
+
+GIFT_PREMIUM_WARNING = (
+    "<b>giftpremium confirmation required</b>\n"
+    "This will gift Telegram Premium to a user and withdraw the specified "
+    "Stars amount from the bot balance. Review the user id, month count, "
+    "current Telegram price, available balance, verification action and "
+    "rollback plan before confirming.\n"
+    "Run <code>/giftpremium &lt;user_id&gt; &lt;month_count&gt; "
+    "&lt;star_count&gt; confirm [text]</code> to proceed."
 )
 
 USER_PROFILE_PHOTOS_USAGE = (
@@ -1773,6 +1806,7 @@ async def cmd_help(message: Message):
         "/replacemanagedbottoken - Rotate a managed bot token by user id (admin only)\n"
         "/availablegifts - Fetch the current Telegram gift catalog (admin only)\n"
         "/sendgift - Send a Telegram gift with explicit confirmation (admin only)\n"
+        "/giftpremium - Gift Telegram Premium with explicit Stars confirmation (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
@@ -2961,6 +2995,45 @@ async def cmd_send_gift(message: Message):
         return
 
     await message.answer("Sent gift.")
+
+
+@router.message(Command("giftpremium"))
+async def cmd_gift_premium(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_gift_premium_args(message.text or "")
+    if parsed is None:
+        await message.answer(GIFT_PREMIUM_USAGE, parse_mode="HTML")
+        return
+
+    user_id, month_count, star_count, confirmed, text = parsed
+    if not confirmed:
+        await message.answer(GIFT_PREMIUM_WARNING, parse_mode="HTML")
+        return
+
+    if text is not None and len(text) > GIFT_PREMIUM_TEXT_LIMIT:
+        await message.answer(
+            f"Premium gift text is too long: {len(text)} characters "
+            f"(max {GIFT_PREMIUM_TEXT_LIMIT})."
+        )
+        return
+
+    try:
+        await perform_gift_premium_subscription(
+            message.bot,
+            user_id=user_id,
+            month_count=month_count,
+            star_count=star_count,
+            text=text,
+            text_parse_mode="HTML" if text else None,
+        )
+    except GiftPremiumSubscriptionError as exc:
+        await message.answer(f"Could not gift Premium subscription: {exc}")
+        return
+
+    await message.answer("Gifted Premium subscription.")
 
 
 @router.message(Command("userprofilephotos"))
@@ -5761,6 +5834,38 @@ def _parse_send_gift_args(
 
     gift_text = parts[5].strip() if len(parts) == 6 else None
     return receiver_type, receiver_id, gift_id, True, gift_text or None
+
+
+def _parse_gift_premium_args(
+    text: str,
+) -> tuple[int, int, int, bool, str | None] | None:
+    """Parse ``/giftpremium`` args into product terms and confirmation state."""
+    parts = (text or "").split(maxsplit=5)
+    if len(parts) not in (4, 5, 6):
+        return None
+
+    try:
+        user_id = int(parts[1])
+        month_count = int(parts[2])
+        star_count = int(parts[3])
+    except ValueError:
+        return None
+
+    if user_id <= 0:
+        return None
+    if not (MIN_PREMIUM_MONTHS <= month_count <= MAX_PREMIUM_MONTHS):
+        return None
+    if star_count <= 0:
+        return None
+
+    if len(parts) == 4:
+        return user_id, month_count, star_count, False, None
+
+    if parts[4].strip().lower() != GIFT_PREMIUM_CONFIRM_KEYWORD:
+        return None
+
+    gift_text = parts[5].strip() if len(parts) == 6 else None
+    return user_id, month_count, star_count, True, gift_text or None
 
 
 def _parse_user_profile_photos_args(text: str):
