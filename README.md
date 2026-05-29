@@ -1397,6 +1397,32 @@ The command does not call `free-claude-code`. Rollback is operational: set the
 previous name through Telegram or remove the admin chat from
 `TELEGRAM_ADMIN_CHAT_IDS` before further changes.
 
+### Set business account username
+
+The restricted `/setbusinessaccountusername` command calls Telegram Bot API
+`setBusinessAccountUsername` to update the public username of a connected
+business account. Because the pinned `aiogram==3.3.0` does not expose a typed
+wrapper for this Bot API 10.0 method, the command uses an isolated raw Bot API
+helper (`bot/services/set_business_account_username.py`) over `httpx`.
+
+Usage: `/setbusinessaccountusername <business_connection_id> <username>`
+
+- `business_connection_id` must come from a live business connection update or
+  another trusted operator source;
+- `username` may be passed with or without `@`, is parsed as a single token and
+  must be 5-32 characters long;
+- Telegram enforces connection ownership, current business rights, username
+  availability and expired or unknown connection handling; those errors are
+  reported back without retry;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- structured logs contain only the connection id and the error shape; username
+  values are kept out of structured logs.
+
+The command does not call `free-claude-code`. Rollback is operational: set the
+previous username through Telegram or remove the admin chat from
+`TELEGRAM_ADMIN_CHAT_IDS` before further changes.
+
 ### Delete business messages
 
 The restricted `/deletebusinessmessages` command calls Telegram Bot API
