@@ -314,6 +314,11 @@ from bot.services.get_managed_bot_access_settings import (
     format_managed_bot_access_settings,
     perform_get_managed_bot_access_settings,
 )
+from bot.services.get_available_gifts import (
+    GetAvailableGiftsError,
+    format_available_gifts,
+    perform_get_available_gifts,
+)
 from bot.services.set_managed_bot_access_settings import (
     SetManagedBotAccessSettingsError,
     format_set_managed_bot_access_settings_result,
@@ -820,6 +825,29 @@ REPLACE_MANAGED_BOT_TOKEN_WARNING = (
     "update deployments and secret stores immediately after success.\n"
     "Run <code>/replacemanagedbottoken &lt;managed_bot_user_id&gt; "
     "confirm</code> to proceed."
+)
+
+GET_AVAILABLE_GIFTS_CONFIRM_KEYWORD = "confirm"
+
+GET_AVAILABLE_GIFTS_USAGE = (
+    "<b>availablegifts usage</b>\n"
+    "Fetches Telegram <code>getAvailableGifts</code> for the current regular "
+    "gift catalog. The call is read-only and takes no Bot API parameters, but "
+    "it is kept admin-only because the catalog is used in billing/rewards "
+    "flows before Telegram Stars can be spent by separate gift actions.\n"
+    "Usage: <code>/availablegifts confirm</code>\n"
+    "This command is disabled unless <code>TELEGRAM_ADMIN_CHAT_IDS</code> "
+    "contains the current chat. No chat administrator rights or special update "
+    "types are required by Telegram."
+)
+
+GET_AVAILABLE_GIFTS_WARNING = (
+    "<b>availablegifts confirmation required</b>\n"
+    "This fetches the current Telegram gift catalog for an admin billing/"
+    "rewards review. It does not spend Stars or send gifts, and any future "
+    "spending or verification action must stay in a separate confirmed command "
+    "with its own audit log.\n"
+    "Run <code>/availablegifts confirm</code> to proceed."
 )
 
 USER_PROFILE_PHOTOS_USAGE = (
@@ -1716,6 +1744,7 @@ async def cmd_help(message: Message):
         "/managedbotaccess - Fetch managed bot access settings by user id (admin only)\n"
         "/setmanagedbotaccess - Update managed bot access settings by user id (admin only)\n"
         "/replacemanagedbottoken - Rotate a managed bot token by user id (admin only)\n"
+        "/availablegifts - Fetch the current Telegram gift catalog (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
@@ -2838,6 +2867,30 @@ async def cmd_replace_managed_bot_token(message: Message):
         format_replaced_managed_bot_token(user_id=user_id, token=token),
         parse_mode="HTML",
     )
+
+
+@router.message(Command("availablegifts"))
+async def cmd_available_gifts(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    confirmed = _parse_available_gifts_args(message.text or "")
+    if confirmed is None:
+        await message.answer(GET_AVAILABLE_GIFTS_USAGE, parse_mode="HTML")
+        return
+
+    if not confirmed:
+        await message.answer(GET_AVAILABLE_GIFTS_WARNING, parse_mode="HTML")
+        return
+
+    try:
+        gifts = await perform_get_available_gifts(message.bot)
+    except GetAvailableGiftsError as exc:
+        await message.answer(f"Could not fetch available gifts: {exc}")
+        return
+
+    await message.answer(format_available_gifts(gifts), parse_mode="HTML")
 
 
 @router.message(Command("userprofilephotos"))
@@ -5584,6 +5637,18 @@ def _parse_replace_managed_bot_token_args(text: str) -> tuple[int, bool] | None:
     if parts[2] != REPLACE_MANAGED_BOT_TOKEN_CONFIRM_KEYWORD:
         return None
     return user_id, True
+
+
+def _parse_available_gifts_args(text: str) -> bool | None:
+    """Parse ``/availablegifts`` args into confirmation state."""
+    parts = (text or "").split()
+    if len(parts) == 1:
+        return False
+    if len(parts) == 2:
+        if parts[1].strip().lower() != GET_AVAILABLE_GIFTS_CONFIRM_KEYWORD:
+            return None
+        return True
+    return None
 
 
 def _parse_user_profile_photos_args(text: str):

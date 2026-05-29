@@ -188,6 +188,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/managedbotaccess` – Fetch access settings for a managed bot by its Telegram user id (admin only).
 - `/setmanagedbotaccess` – Update access settings for a managed bot by its Telegram user id (admin only, requires confirmation).
 - `/replacemanagedbottoken` – Rotate the live token of a managed bot by its Telegram user id (admin only, requires confirmation).
+- `/availablegifts` – Fetch the current Telegram gift catalog for billing/rewards review (admin only, requires confirmation).
 - `/mediagroup` – Send 2-10 media items into this chat as a single album (media group) via URLs or file_ids (admin only).
 - `/banchatmember <chat_id> <user_id> [until_date_unix] [revoke=true|false]` – Ban a user from a group, supergroup, or channel where the bot has `can_restrict_members` (admin only).
 - `/banchatsenderchat <chat_id> <sender_chat_id>` – Ban a channel chat from sending messages as itself into a supergroup or channel where the bot has `can_restrict_members` (admin only).
@@ -1463,6 +1464,37 @@ admin command:
 - structured logs include only `user_id` and token length, never the token;
 - Telegram permission, unknown managed-bot, token lifecycle, transport and
   rate-limit errors are reported back to the admin chat.
+
+### Get available gifts
+
+The restricted `/availablegifts` command calls Telegram Bot API
+`getAvailableGifts` to fetch the current regular gift catalog. The method takes
+no Bot API parameters and returns a `Gifts` object with a `gifts` list. Because
+the pinned `aiogram==3.3.0` does not expose a typed wrapper for this Bot API
+10.0 method, the command uses an isolated raw Bot API helper
+(`bot/services/get_available_gifts.py`) over `httpx`.
+
+Usage: `/availablegifts confirm`
+
+This is a read-only admin billing/rewards diagnostic. It does not spend
+Telegram Stars, send gifts, verify users, or call `free-claude-code`. The
+command still requires the literal `confirm` argument because the returned
+catalog is intended to precede separate spending or verification actions, which
+must remain in their own confirmed commands with their own audit logs. Rollback
+is to ignore the fetched catalog or remove the command; no Telegram state is
+changed.
+
+The command is guarded like the other sensitive billing/admin surfaces:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- structured logs include only gift count and gift ids, not unrelated chat or
+  user data;
+- no special update subscription or chat administrator rights are required
+  because the command starts from a normal admin message;
+- Telegram transport, permission and rate-limit errors are reported back to the
+  admin chat.
 
 ### Send a media group
 
