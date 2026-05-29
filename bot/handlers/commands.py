@@ -259,6 +259,10 @@ from bot.services.send_contact import perform_send_contact
 from bot.services.send_dice import perform_send_dice
 from bot.services.send_document import perform_send_document
 from bot.services.send_game import SendGameValidationError, perform_send_game
+from bot.services.set_game_score import (
+    SetGameScoreValidationError,
+    perform_set_game_score,
+)
 from bot.services.send_live_photo import SendLivePhotoError, perform_send_live_photo
 from bot.services.send_location import perform_send_location
 from bot.services.send_media_group import perform_send_media_group
@@ -1122,6 +1126,20 @@ GAME_USAGE = (
     "it by its short name.\n"
     "Usage: <code>/game &lt;game_short_name&gt;</code>\n"
     "The short name is required and must be a single non-empty token."
+)
+
+SET_GAME_SCORE_USAGE = (
+    "<b>setgamescore usage</b>\n"
+    "Sets a Telegram game score via <code>setGameScore</code>. Target a normal "
+    "game message with <code>chat_id</code> and <code>message_id</code>, or an "
+    "inline game message with <code>inline_message_id</code>.\n"
+    "Usage: <code>/setgamescore &lt;user_id&gt; &lt;score&gt; "
+    "chat_id=&lt;chat_id&gt; message_id=&lt;message_id&gt; "
+    "[force=true] [disable_edit_message=true]</code>\n"
+    "Usage: <code>/setgamescore &lt;user_id&gt; &lt;score&gt; "
+    "inline_message_id=&lt;inline_message_id&gt; "
+    "[force=true] [disable_edit_message=true]</code>\n"
+    "The score must be a non-negative integer."
 )
 
 CHAT_ACTION_USAGE = (
@@ -3082,6 +3100,7 @@ async def cmd_help(message: Message):
         "/contact - Send a phone contact (name and phone number) into this chat (admin only)\n"
         "/dice - Send an animated dice (random value) into this chat (admin only)\n"
         "/game - Send a Telegram game by BotFather short name into this chat (admin only)\n"
+        "/setgamescore - Set a Telegram game score for a user (admin only)\n"
         "/chataction - Show a chat action (e.g. typing…) in this chat (admin only)\n"
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/editcaption - Edit or clear a media message caption (admin only)\n"
@@ -4337,6 +4356,26 @@ async def cmd_game(message: Message):
         return
 
     await message.answer("Sent game.")
+
+
+@router.message(Command("setgamescore"))
+async def cmd_set_game_score(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_game_score_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_GAME_SCORE_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        await perform_set_game_score(message.bot, **parsed)
+    except (SetGameScoreValidationError, TelegramAPIError) as exc:
+        await message.answer(f"Could not set the game score: {exc}")
+        return
+
+    await message.answer("Set game score.")
 
 
 @router.message(Command("chataction"))
@@ -9317,6 +9356,74 @@ def _parse_game_args(text: str):
         return None
 
     return (game_short_name,)
+
+
+def _parse_bool_option(value: str):
+    normalized = value.strip().lower()
+    if normalized in {"true", "1", "yes", "on"}:
+        return True
+    if normalized in {"false", "0", "no", "off"}:
+        return False
+    return None
+
+
+def _parse_set_game_score_args(text: str):
+    """Parse ``/setgamescore`` args into kwargs for ``perform_set_game_score``."""
+    parts = (text or "").split()
+    if len(parts) < 4:
+        return None
+
+    try:
+        user_id = int(parts[1])
+        score = int(parts[2])
+    except ValueError:
+        return None
+
+    kwargs = {
+        "user_id": user_id,
+        "score": score,
+        "chat_id": None,
+        "message_id": None,
+        "inline_message_id": None,
+        "force": None,
+        "disable_edit_message": None,
+    }
+    allowed_keys = {
+        "chat_id",
+        "message_id",
+        "inline_message_id",
+        "force",
+        "disable_edit_message",
+    }
+    seen = set()
+    for raw_part in parts[3:]:
+        if "=" not in raw_part:
+            return None
+        key, value = raw_part.split("=", 1)
+        if key not in allowed_keys or key in seen or value == "":
+            return None
+        seen.add(key)
+        if key in {"chat_id", "message_id"}:
+            try:
+                kwargs[key] = int(value)
+            except ValueError:
+                return None
+        elif key in {"force", "disable_edit_message"}:
+            parsed_bool = _parse_bool_option(value)
+            if parsed_bool is None:
+                return None
+            kwargs[key] = parsed_bool
+        else:
+            kwargs[key] = value
+
+    has_chat_message = kwargs["chat_id"] is not None or kwargs["message_id"] is not None
+    has_inline_message = kwargs["inline_message_id"] is not None
+    if has_chat_message == has_inline_message:
+        return None
+    if has_chat_message and (kwargs["chat_id"] is None or kwargs["message_id"] is None):
+        return None
+
+    return kwargs
 
 
 def _parse_chat_action_args(text: str):

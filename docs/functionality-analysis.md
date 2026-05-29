@@ -150,6 +150,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendContact` | `bot/services/send_contact.py`, `/contact` в `bot/handlers/commands.py` | Admin-flow отправки телефонного контакта (contact) — имени с номером телефона, который получатель может сохранить в адресную книгу — в текущий чат, через typed aiogram API; phone_number и first_name обязательны, last_name опционален, а номер телефона и имя контакта не пишутся в structured logs. |
 | `sendDice` | `bot/services/send_dice.py`, `/dice` в `bot/handlers/commands.py` | Admin-flow отправки анимированной кости (dice) — анимированного эмодзи со случайным значением, которое выбирает Telegram — в текущий чат, через typed aiogram API; опциональный emoji ограничен набором 🎲/🎯/🏀/⚽/🎳/🎰 и валидируется до обращения к Telegram, без аргумента отправляется 🎲. |
 | `sendGame` | `bot/services/send_game.py`, `/game` в `bot/handlers/commands.py` | Admin-flow отправки Telegram game, заранее созданной для бота в BotFather, в текущий чат по `game_short_name`, через typed aiogram API; short name обязателен и валидируется до обращения к Telegram, команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, не требует специальных update types или chat administrator rights, а rollback выполняется удалением game message или отключением game в BotFather. |
+| `setGameScore` | `bot/services/set_game_score.py`, `/setgamescore` в `bot/handlers/commands.py` | Admin-flow установки очков Telegram game после внешней проверки результата: принимает `user_id`, неотрицательный `score` и ровно один target (`chat_id`+`message_id` или `inline_message_id`), использует typed aiogram API, закрыт строгим `TELEGRAM_ADMIN_CHAT_IDS`, логирует только структурные ids/flags, а rollback выполняется явной установкой предыдущего score при допустимом `force=true` или отключением команды через allowlist. |
 | `sendChecklist` | `bot/services/send_checklist.py`, `/checklist` в `bot/handlers/commands.py` | Admin-flow отправки чеклиста (checklist) — озаглавленного списка из 1-30 задач — в текущий чат от имени подключенного business account, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 9.1; требует `business_connection_id`, длины title (до 255) и задач (до 100) и их количество валидируются до обращения к Telegram, а title и тексты задач не пишутся в structured logs. |
 | `postStory` | `bot/services/post_story.py`, `/poststory` в `bot/handlers/commands.py` | Admin-flow публикации photo story от имени managed business account по `business_connection_id`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, требует Telegram business right `can_manage_stories`, принимает `active_period` только 21600/43200/86400/172800, caption до 2048 символов и использует изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, rollback выполняется удалением или архивированием story в Telegram. |
 | `repostStory` | `bot/services/repost_story.py`, `/repoststory` в `bot/handlers/commands.py` | Admin-flow репоста story между managed business accounts по destination `business_connection_id`, source `from_chat_id`, `from_story_id` и `active_period`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, требует Telegram business right `can_manage_stories` для обоих business accounts, принимает `active_period` только 21600/43200/86400/172800 и использует изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; source story должна быть ранее опубликована или репостнута этим ботом, rollback выполняется удалением или архивированием reposted story в Telegram. |
@@ -2027,6 +2028,47 @@ usage и не обращается к Telegram.
 только chat id, game short name и id отправленного сообщения. Rollback:
 удалить отправленное game message в Telegram, убрать команду из allowlist или
 отключить/удалить game в BotFather.
+
+### setGameScore
+
+Команда `/setgamescore` вызывает typed aiogram API `Bot.set_game_score()` для
+метода Telegram `setGameScore`. По официальной документации метод требует
+`user_id`, `score` и target существующего game message: либо пару `chat_id` и
+`message_id`, либо `inline_message_id`. `score` должен быть неотрицательным;
+опциональный `force` позволяет снизить score, когда Telegram принимает такую
+операцию, а `disable_edit_message` запрещает автоматическое обновление game
+message со scoreboard. В pinned `aiogram==3.3.0` typed wrapper доступен, поэтому
+raw Bot API helper не нужен.
+
+Выбран изолированный admin-сценарий game platform: оператор переносит результат,
+уже проверенный внешней игровой логикой или админским процессом, в Telegram
+scoreboard. Синтаксис:
+`/setgamescore <user_id> <score> chat_id=<chat_id> message_id=<message_id> [force=true] [disable_edit_message=true]`
+или
+`/setgamescore <user_id> <score> inline_message_id=<inline_message_id> [force=true] [disable_edit_message=true]`.
+Команда валидирует обязательные числа, неотрицательность score и ровно один
+target до обращения к Telegram.
+
+`/setgamescore` закрыта строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- специальных update types не требуется, потому что сценарий запускается
+  обычным message command update; для inline game target оператор должен знать
+  `inline_message_id` из связанного game flow;
+- chat administrator rights не требуются сами по себе, но бот должен иметь
+  доступ к целевому game message, а сама game должна быть создана для этого
+  бота в BotFather;
+- ошибки Telegram (`message is not a game`, невозможность снизить score без
+  `force`, запрет доступа, rate limit) возвращаются оператору без retry.
+
+Команда не взаимодействует с `free-claude-code`. Structured logs содержат
+только user id, score, chat/message ids или факт наличия inline id, а также
+flags `force` и `disable_edit_message`; inline id целиком не логируется.
+Rollback: явно вернуть предыдущий score, если Telegram принимает такую операцию
+для этой игры (обычно с `force=true`), убрать команду из allowlist или отключить
+game в BotFather.
 
 ### sendChecklist
 

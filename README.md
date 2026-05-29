@@ -206,6 +206,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/contact` – Send a phone contact (a name with a phone number that can be saved to the address book) into this chat (admin only).
 - `/dice` – Send an animated dice (an emoji that shows a random value) into this chat (admin only).
 - `/game` – Send a Telegram game by its BotFather short name into this chat (admin only).
+- `/setgamescore` – Set a Telegram game score for a user on a chat or inline game message (admin only).
 - `/chataction` – Show a chat action (a transient status such as `typing…`) in this chat (admin only).
 - `/messagedraft` – Stream an ephemeral message draft (a ~30-second preview shown above the input field) into this private chat (admin only).
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
@@ -1810,6 +1811,38 @@ The command is an admin-only outbound action, so it requires a non-empty
 `TELEGRAM_ALLOWED_CHAT_IDS`. It does not call `free-claude-code`; rollback is
 deleting the game message in Telegram or disabling/removing the game in
 BotFather.
+
+### Set a game score
+
+The restricted `/setgamescore` command calls Telegram Bot API `setGameScore`
+through aiogram's typed `Bot.set_game_score()` wrapper. It lets an operator set
+a user's score for an existing Telegram game message after the game backend has
+validated the result.
+
+Usage for a normal game message:
+`/setgamescore <user_id> <score> chat_id=<chat_id> message_id=<message_id> [force=true] [disable_edit_message=true]`
+
+Usage for an inline game message:
+`/setgamescore <user_id> <score> inline_message_id=<inline_message_id> [force=true] [disable_edit_message=true]`
+
+- `score` must be a non-negative integer;
+- exactly one target form is required: `chat_id` plus `message_id`, or
+  `inline_message_id`;
+- `force=true` allows lowering a score when Telegram permits it;
+- `disable_edit_message=true` keeps Telegram from editing the game message with
+  the updated scoreboard;
+- invalid input shows usage and does not contact Telegram;
+- Telegram game, permission, or rate-limit errors are reported back to the
+  operator.
+
+The command is an admin-only game platform operation, so it requires a non-empty
+`TELEGRAM_ADMIN_CHAT_IDS` entry for the chat and never falls back to
+`TELEGRAM_ALLOWED_CHAT_IDS`. The bot must have received the game message context
+needed to identify the score target; no special admin rights are required beyond
+access to the relevant chat or inline game. It does not call `free-claude-code`.
+Rollback is setting the previous score explicitly when Telegram allows it
+(usually with `force=true`) or disabling the command by removing the chat from
+the admin allowlist.
 
 ### Show a chat action
 
