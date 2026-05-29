@@ -185,6 +185,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
 - `/businessconnection` – Fetch metadata for a connected Telegram business account by `business_connection_id` (admin only).
 - `/businessstarbalance` – Fetch the Telegram Stars balance of a connected business account by `business_connection_id` (admin only).
+- `/transferbusinessstars` – Transfer Telegram Stars from a connected business account to the bot balance (admin only, requires confirmation).
 - `/readbusinessmessage` – Mark one connected business-account message as read by `business_connection_id` and `message_id` (admin only).
 - `/setbusinessaccountname` – Set the first and optional last name of a connected business account by `business_connection_id` (admin only).
 - `/setbusinessaccountbio` – Set or clear the bio of a connected business account by `business_connection_id` (admin only).
@@ -1374,6 +1375,34 @@ Usage: `/businessstarbalance <business_connection_id>`
 
 The command does not call `free-claude-code` and is read-only. Transfers from
 the business account balance require a separate explicit flow.
+
+### Transfer business account Stars
+
+The restricted `/transferbusinessstars` command calls Telegram Bot API
+`transferBusinessAccountStars` to move Telegram Stars from a connected business
+account balance to this bot's balance for withdrawal. Because the pinned
+`aiogram==3.3.0` does not expose a typed wrapper for this Bot API 10.0 method,
+the command uses an isolated raw Bot API helper
+(`bot/services/transfer_business_account_stars.py`) over `httpx`.
+
+Usage: `/transferbusinessstars <business_connection_id> <star_count> confirm`
+
+- `business_connection_id` must come from a live business connection update or
+  another trusted operator source;
+- `star_count` must be a positive integer amount of whole Telegram Stars;
+- Telegram requires the current `can_transfer_stars` business right and
+  enforces connection ownership, expired connection and available-balance
+  checks;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- `confirm` is required because the operation moves value out of the business
+  account and cannot be reversed by this bot;
+- structured logs contain the connection id, requested Star count and error
+  shape, but no owner profile data or business connection object.
+
+The command does not call `free-claude-code`. Rollback is operational only:
+stop using the command, remove the admin chat from `TELEGRAM_ADMIN_CHAT_IDS`,
+or adjust the bot's business rights in Telegram.
 
 ### Read a business message
 

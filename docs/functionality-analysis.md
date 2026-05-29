@@ -120,6 +120,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendChecklist` | `bot/services/send_checklist.py`, `/checklist` в `bot/handlers/commands.py` | Admin-flow отправки чеклиста (checklist) — озаглавленного списка из 1-30 задач — в текущий чат от имени подключенного business account, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 9.1; требует `business_connection_id`, длины title (до 255) и задач (до 100) и их количество валидируются до обращения к Telegram, а title и тексты задач не пишутся в structured logs. |
 | `getBusinessConnection` | `bot/services/get_business_connection.py`, `/businessconnection` в `bot/handlers/commands.py` | Admin-flow получения `BusinessConnection` по live `business_connection_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, показывает owner/user chat/lifecycle/can_reply/enabled metadata и не пишет owner-поля или полный объект в structured logs. |
 | `getBusinessAccountStarBalance` | `bot/services/get_business_account_star_balance.py`, `/businessstarbalance` в `bot/handlers/commands.py` | Read-only admin-flow получения `StarAmount` для подключенного business account по live `business_connection_id`; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует Telegram business right `can_view_gifts_and_stars`, а ownership/permission errors возвращаются оператору без retry; structured logs содержат connection id и форму результата, но не сумму Stars. |
+| `transferBusinessAccountStars` | `bot/services/transfer_business_account_stars.py`, `/transferbusinessstars` в `bot/handlers/commands.py` | Destructive admin-flow перевода Telegram Stars с подключенного business account на баланс бота по live `business_connection_id` и положительному `star_count`; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует явный `confirm`, Telegram business right `can_transfer_stars` и Telegram ownership/balance checks; structured logs содержат connection id, amount и форму ошибки. |
 | `readBusinessMessage` | `bot/services/read_business_message.py`, `/readbusinessmessage` в `bot/handlers/commands.py` | Admin-flow отметки одного сообщения подключенного business account как прочитанного по live `business_connection_id` и положительному `message_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, а Telegram ownership/rights errors возвращаются оператору без retry. |
 | `deleteBusinessMessages` | `bot/services/delete_business_messages.py`, `/deletebusinessmessages` в `bot/handlers/commands.py` | Destructive admin-flow удаления 1-100 сообщений подключенного business account по live `business_connection_id` и положительным `message_ids`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует явный `confirm`, а Telegram ownership/rights errors возвращаются оператору без retry; structured logs содержат connection id, count и error shape, но не содержимое сообщений. |
 | `setBusinessAccountProfilePhoto` | `bot/services/set_business_account_profile_photo.py`, `/setbusinessaccountprofilephoto` в `bot/handlers/commands.py` | Admin-flow установки static JPG profile photo подключенного business account по live `business_connection_id`, локальному `photo_path` и опциональному `public=true`; используется изолированный raw multipart Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0, а Telegram требует fresh upload через `InputProfilePhotoStatic`; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, а Telegram ownership/`can_edit_profile_photo` errors возвращаются оператору без retry; structured logs содержат connection id, path, visibility flag и error shape, но не содержимое файла. |
@@ -1569,6 +1570,40 @@ Security/privacy impact: команда раскрывает финансовы�
 выполняет transfer; для перевода Stars должен использоваться отдельный явный
 flow.
 
+### transferBusinessAccountStars
+
+Команда `/transferbusinessstars <business_connection_id> <star_count> confirm`
+переводит Telegram Stars с баланса подключенного business account на баланс
+бота методом `transferBusinessAccountStars` (Bot API 10.0). Метод принимает
+live `business_connection_id` и положительный целочисленный `star_count`;
+Telegram на своей стороне проверяет, что подключение активно, принадлежит
+боту, на балансе достаточно Stars и текущие business rights включают
+`can_transfer_stars`.
+
+Pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода, поэтому
+реализация идет через изолированный raw Bot API helper
+`bot/services/transfer_business_account_stars.py`. Helper POST'ит JSON payload
+`{"business_connection_id": ..., "star_count": ...}` на endpoint
+`transferBusinessAccountStars` через `httpx`, берет URL через
+`bot.session.api.api_url(...)` для поддержки local Bot API server и поднимает
+validation errors, транспортные ошибки, невалидный JSON, Telegram `ok: false`
+и неожиданный result как `TransferBusinessAccountStarsError`.
+
+Сценарий намеренно отделен от read-only `/businessstarbalance`: сначала
+оператор может проверить баланс, затем выполнить перевод только отдельной
+командой с явным `confirm`. Команда доступна только chat id из
+`TELEGRAM_ADMIN_CHAT_IDS` и не делает fallback на
+`TELEGRAM_ALLOWED_CHAT_IDS`; при пустом admin allowlist команда отключена.
+Security/privacy impact: команда перемещает финансовую ценность с business
+account на баланс бота, поэтому она не вызывается автоматически, не связана с
+`free-claude-code` и не использует обычный allowed-chat режим. Structured logs
+содержат `business_connection_id`, `star_count` и форму ошибки, но не полный
+объект business connection или owner metadata.
+
+Rollback ограничен операционно: сам перевод не откатывается ботом. Для
+остановки сценария нужно убрать admin chat из `TELEGRAM_ADMIN_CHAT_IDS`, удалить
+handler или отозвать у бота Telegram business right `can_transfer_stars`.
+
 ### readBusinessMessage
 
 Команда `/readbusinessmessage <business_connection_id> <message_id>` помечает
@@ -1809,6 +1844,7 @@ handler.
 `/setbusinessaccountusername`, `/setbusinessaccountbio`,
 `/setbusinessaccountprofilephoto`, `/removebusinessaccountprofilephoto` и
 `/setbusinessaccountgiftsettings` так же, как к другим командам.
+`/transferbusinessstars` также проходит через общий rate-limit pipeline команд.
 
 ### getManagedBotToken
 
