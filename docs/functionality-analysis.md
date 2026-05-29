@@ -67,8 +67,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `approveChatJoinRequest`, `createChatInviteLink`, `editChatInviteLink`,
 `setChatPhoto`, `deleteChatPhoto`, `pinChatMessage`, `unpinChatMessage`,
 `unpinAllChatMessages`, `getChatMember`, `getUserPersonalChatMessages`,
-`getBusinessAccountStarBalance`, `getForumTopicIconStickers`, `editForumTopic`,
-`editGeneralForumTopic`,
+`getBusinessAccountStarBalance`, `getStickerSet`,
+`getForumTopicIconStickers`, `editForumTopic`, `editGeneralForumTopic`,
 `closeForumTopic`, `closeGeneralForumTopic`, `reopenForumTopic`,
 `unpinAllForumTopicMessages`, `unpinAllGeneralForumTopicMessages`,
 `unhideGeneralForumTopic`, `setMyName`, `getMyName`, `setMyDescription`,
@@ -112,6 +112,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendVideoNote` | `bot/services/send_video_note.py`, `/videonote` в `bot/handlers/commands.py` | Admin-flow отправки видеосообщения-кружка (круглого квадратного видео) в текущий чат по `file_id`, через typed aiogram API; у видеосообщений нет caption, и Telegram не поддерживает их отправку по URL. |
 | `sendAnimation` | `bot/services/send_animation.py`, `/animation` в `bot/handlers/commands.py` | Admin-flow отправки анимации (GIF или видео без звука) в текущий чат как проигрываемого зацикленного клипа по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendSticker` | `bot/services/send_sticker.py`, `/sticker` в `bot/handlers/commands.py` | Admin-flow отправки sticker/custom emoji в текущий чат по URL или `file_id`, через typed aiogram API; сценарий изолирован от основного Claude chat flow и закрыт строгим admin allowlist. |
+| `getStickerSet` | `bot/services/get_sticker_set.py`, `/getstickerset` в `bot/handlers/commands.py` | Admin-flow просмотра metadata sticker/custom emoji set по `sticker_set_name`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, метод принимает только set `name` и не требует специальных update types, так как сценарий запускается обычной командой из admin-чата; используется изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`, результат парсится в aiogram `StickerSet` и выводит title, type, количество stickers и первые `file_id`; команда не вызывает `free-claude-code`, не меняет состояние Telegram и нужна для creative/media module и lifecycle sticker sets triage, а ошибки транспорта, Telegram API validation или rate limit возвращаются оператору. |
 | `sendVoice` | `bot/services/send_voice.py`, `/voice` в `bot/handlers/commands.py` | Admin-flow отправки голосового сообщения в текущий чат как проигрываемого аудиоклипа (в виде waveform) по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendPaidMedia` | `bot/services/send_paid_media.py`, `/paidmedia` в `bot/handlers/commands.py` | Admin-flow отправки платного фото в текущий чат, доступ к которому пользователи оплачивают Telegram Stars, по URL или `file_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 7.6. |
 | `answerWebAppQuery` | `bot/services/answer_web_app_query.py`, `/answerwebappquery` в `bot/handlers/commands.py` | Admin-flow ответа на Telegram Web App query одним `InlineQueryResult` от имени пользователя через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, не вызывает `free-claude-code`, а Telegram проверяет действительность `web_app_query_id`. |
@@ -165,6 +166,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `removeMyProfilePhoto` | `bot/services/remove_my_profile_photo.py`, `/removemyprofilephoto` в `bot/handlers/commands.py` | Admin-flow удаления текущей фотографии профиля бота; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, требует явный `confirm`, потому что меняет публичный профиль бота; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; параметров метода нет, специальных update types и прав в чатах не требуется, rollback выполняется повторной установкой прежней фотографии через `/setmyprofilephoto <photo_path>`, а ошибки Telegram и rate-limit ответы возвращаются оператору. |
 | `setChatStickerSet` | `bot/services/set_chat_sticker_set.py`, `/setchatstickerset` в `bot/handlers/commands.py` | Admin-flow установки sticker set для супергруппы по `chat_id` и `sticker_set_name`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевой супергруппы с правом изменять информацию чата; используется typed aiogram API `Bot.set_chat_sticker_set`, специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, а ошибки Telegram по правам, типу чата, неизвестному чату или невалидному sticker set возвращаются оператору. |
 | `deleteChatStickerSet` | `bot/services/delete_chat_sticker_set.py`, `/deletechatstickerset` в `bot/handlers/commands.py` | Admin-flow удаления sticker set из супергруппы по `chat_id`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевой супергруппы с правом изменять информацию чата; используется typed aiogram API `Bot.delete_chat_sticker_set`, специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата; rollback выполняется ручным повторным `/setchatstickerset` с прежним `sticker_set_name`, а ошибки Telegram по правам, типу чата, неизвестному чату или отсутствующему sticker set возвращаются оператору. |
+| `getStickerSet` | `bot/services/get_sticker_set.py`, `/getstickerset` в `bot/handlers/commands.py` | Admin-flow просмотра metadata sticker/custom emoji set по `sticker_set_name`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, метод принимает только set `name`, специальных update types и прав в чатах не требует; используется изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`, результат парсится в aiogram `StickerSet` и выводит title, type, количество stickers и первые `file_id`; команда не вызывает `free-claude-code`, не меняет состояние Telegram, rollback не нужен, а ошибки транспорта, Telegram API validation или rate limit возвращаются оператору. |
 | `pinChatMessage` | `bot/services/pin_chat_message.py`, `/pinchatmessage` в `bot/handlers/commands.py` | Admin-flow закрепления сообщения в группе, супергруппе или канале по `chat_id`, `message_id` и optional notification flag (`silent`, `loud`), через typed aiogram API `Bot.pin_chat_message`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с `can_pin_messages` в группах/супергруппах или `can_edit_messages` в каналах; специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, rollback выполняется ручным откреплением или `/unpinchatmessage`, а ошибки Telegram по правам, неизвестному чату или сообщению возвращаются оператору. |
 | `unpinChatMessage` | `bot/services/unpin_chat_message.py`, `/unpinchatmessage` в `bot/handlers/commands.py` | Admin-flow открепления конкретного или последнего закрепленного сообщения в группе, супергруппе или канале по `chat_id` и optional `message_id`, через typed aiogram API `Bot.unpin_chat_message`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с `can_pin_messages` в группах/супергруппах или `can_edit_messages` в каналах; специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, rollback выполняется ручным повторным закреплением, а ошибки Telegram по правам, неизвестному чату или незакрепленному сообщению возвращаются оператору. |
 | `unpinAllChatMessages` | `bot/services/unpin_all_chat_messages.py`, `/unpinallchatmessages` в `bot/handlers/commands.py` | Admin-flow массового открепления всех закрепленных сообщений в группе, супергруппе или канале по `chat_id`, через typed aiogram API `Bot.unpin_all_chat_messages`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с `can_pin_messages` в группах/супергруппах или `can_edit_messages` в каналах; специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, rollback выполняется ручным повторным закреплением нужных сообщений, а ошибки Telegram по правам или неизвестному чату возвращаются оператору. |
@@ -960,6 +962,37 @@ Rollback не требует миграций: удалить команду и�
 emoji hint, protect flag и id отправленного сообщения, без sticker file_id/URL.
 Глобальный `RateLimitMiddleware` применяется к `/sticker` так же, как к другим
 командам.
+
+### getStickerSet
+
+Команда `/getstickerset` вызывает Telegram Bot API `getStickerSet` через
+изолированный raw Bot API helper, потому что проект закреплен на
+`aiogram==3.3.0`. По официальной документации метод принимает обязательный
+параметр `name` и возвращает объект `StickerSet` с title, type и списком
+`Sticker`. Отдельные права администратора в целевых чатах и специальные update
+types не требуются: сценарий запускается обычной командой из admin-чата и
+только читает публично доступную для бота информацию sticker set.
+
+Выбран отдельный admin-сценарий creative/media module: оператор проверяет
+sticker/custom emoji set по имени перед использованием в lifecycle sticker
+sets или медиа-командах. Это не часть основного Claude chat flow, не вызывает
+`free-claude-code`, не меняет состояние Telegram и не требует rollback.
+
+Синтаксис: `/getstickerset <sticker_set_name>`.
+
+`/getstickerset` закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующем или неоднозначном имени sticker set команда показывает
+  usage и не обращается к Telegram;
+- ошибки транспорта, Telegram API validation и rate limit возвращаются
+  оператору.
+
+Ответ показывает имя, title, type, количество stickers и первые `file_id`.
+Structured logs пишут имя sticker set, количество stickers и type без полного
+перечня sticker file ids.
 
 ### sendVoice
 
