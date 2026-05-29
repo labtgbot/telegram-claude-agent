@@ -1,0 +1,307 @@
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import httpx
+import pytest
+
+from bot.handlers import commands
+from bot.services import set_custom_emoji_sticker_set_thumbnail
+from bot.services.set_custom_emoji_sticker_set_thumbnail import (
+    SetCustomEmojiStickerSetThumbnailError,
+    format_set_custom_emoji_sticker_set_thumbnail_result,
+    perform_set_custom_emoji_sticker_set_thumbnail,
+    validate_custom_emoji_id,
+)
+
+
+class _FakeResponse:
+    def __init__(self, data):
+        self._data = data
+
+    def json(self):
+        return self._data
+
+
+class _FakeClient:
+    def __init__(self, *, response=None, exc=None):
+        self._response = response
+        self._exc = exc
+        self.posted = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def post(self, url, json):
+        self.posted = {"url": url, "json": json}
+        if self._exc is not None:
+            raise self._exc
+        return self._response
+
+
+def _bot(token="123:abc"):
+    return SimpleNamespace(
+        token=token,
+        session=SimpleNamespace(
+            api=SimpleNamespace(
+                api_url=lambda token, method: (
+                    f"https://api.telegram.org/bot{token}/{method}"
+                )
+            )
+        ),
+    )
+
+
+def _message(
+    text: str = "/setcustomemojithumbnail CustomEmojiSet_by_bot 5368324170671202286",
+    chat_id: int = 42,
+):
+    return SimpleNamespace(
+        text=text,
+        chat=SimpleNamespace(id=chat_id),
+        bot=object(),
+        answer=AsyncMock(),
+    )
+
+
+def _install_client(monkeypatch, client):
+    monkeypatch.setattr(
+        set_custom_emoji_sticker_set_thumbnail.httpx,
+        "AsyncClient",
+        lambda *a, **k: client,
+    )
+
+
+async def test_perform_set_custom_emoji_sticker_set_thumbnail_posts_raw_payload(
+    monkeypatch,
+):
+    client = _FakeClient(response=_FakeResponse({"ok": True, "result": True}))
+    _install_client(monkeypatch, client)
+
+    result = await perform_set_custom_emoji_sticker_set_thumbnail(
+        _bot(),
+        name=" CustomEmojiSet_by_bot ",
+        custom_emoji_id=" 5368324170671202286 ",
+    )
+
+    assert result is True
+    assert client.posted == {
+        "url": (
+            "https://api.telegram.org/bot123:abc/"
+            "setCustomEmojiStickerSetThumbnail"
+        ),
+        "json": {
+            "name": "CustomEmojiSet_by_bot",
+            "custom_emoji_id": "5368324170671202286",
+        },
+    }
+
+
+async def test_perform_set_custom_emoji_sticker_set_thumbnail_clears_thumbnail(
+    monkeypatch,
+):
+    client = _FakeClient(response=_FakeResponse({"ok": True, "result": True}))
+    _install_client(monkeypatch, client)
+
+    result = await perform_set_custom_emoji_sticker_set_thumbnail(
+        _bot(),
+        name="CustomEmojiSet_by_bot",
+        custom_emoji_id="-",
+    )
+
+    assert result is True
+    assert client.posted["json"] == {"name": "CustomEmojiSet_by_bot"}
+
+
+async def test_perform_set_custom_emoji_sticker_set_thumbnail_rejects_invalid_input(
+    monkeypatch,
+):
+    client = _FakeClient(response=_FakeResponse({"ok": True, "result": True}))
+    _install_client(monkeypatch, client)
+
+    with pytest.raises(SetCustomEmojiStickerSetThumbnailError):
+        await perform_set_custom_emoji_sticker_set_thumbnail(
+            _bot(),
+            name=" ",
+            custom_emoji_id="5368324170671202286",
+        )
+
+    with pytest.raises(SetCustomEmojiStickerSetThumbnailError):
+        await perform_set_custom_emoji_sticker_set_thumbnail(
+            _bot(),
+            name="CustomEmojiSet_by_bot",
+            custom_emoji_id=" ",
+        )
+
+    assert client.posted is None
+
+
+async def test_perform_set_custom_emoji_sticker_set_thumbnail_raises_on_telegram_error(
+    monkeypatch,
+):
+    client = _FakeClient(
+        response=_FakeResponse(
+            {
+                "ok": False,
+                "error_code": 400,
+                "description": "Bad Request: STICKERSET_INVALID",
+            }
+        )
+    )
+    _install_client(monkeypatch, client)
+
+    with pytest.raises(SetCustomEmojiStickerSetThumbnailError) as excinfo:
+        await perform_set_custom_emoji_sticker_set_thumbnail(
+            _bot(),
+            name="bad",
+            custom_emoji_id="5368324170671202286",
+        )
+
+    assert excinfo.value.error_code == 400
+    assert "STICKERSET_INVALID" in str(excinfo.value)
+
+
+async def test_perform_set_custom_emoji_sticker_set_thumbnail_raises_on_transport_error(
+    monkeypatch,
+):
+    client = _FakeClient(exc=httpx.ConnectError("boom"))
+    _install_client(monkeypatch, client)
+
+    with pytest.raises(SetCustomEmojiStickerSetThumbnailError) as excinfo:
+        await perform_set_custom_emoji_sticker_set_thumbnail(
+            _bot(),
+            name="CustomEmojiSet_by_bot",
+            custom_emoji_id="5368324170671202286",
+        )
+
+    assert "boom" in str(excinfo.value)
+
+
+def test_validate_custom_emoji_id_trims_or_clears_value():
+    assert validate_custom_emoji_id(" 5368324170671202286 ") == "5368324170671202286"
+    assert validate_custom_emoji_id("-") is None
+    assert validate_custom_emoji_id(None) is None
+
+    with pytest.raises(SetCustomEmojiStickerSetThumbnailError):
+        validate_custom_emoji_id(" ")
+
+
+def test_format_set_custom_emoji_sticker_set_thumbnail_result_escapes_fields():
+    text = format_set_custom_emoji_sticker_set_thumbnail_result(
+        name="Set<&>",
+        custom_emoji_id="id<&>",
+    )
+
+    assert "setCustomEmojiStickerSetThumbnail" in text
+    assert "Set&lt;&amp;&gt;" in text
+    assert "id&lt;&amp;&gt;" in text
+
+    cleared = format_set_custom_emoji_sticker_set_thumbnail_result(
+        name="Set",
+        custom_emoji_id="-",
+    )
+    assert "Custom emoji thumbnail: cleared" in cleared
+
+
+def test_parse_set_custom_emoji_sticker_set_thumbnail_args():
+    assert (
+        commands._parse_set_custom_emoji_sticker_set_thumbnail_args(
+            "/setcustomemojithumbnail"
+        )
+        is None
+    )
+    assert commands._parse_set_custom_emoji_sticker_set_thumbnail_args(
+        "/setcustomemojithumbnail CustomEmojiSet_by_bot 5368324170671202286"
+    ) == ("CustomEmojiSet_by_bot", "5368324170671202286")
+    assert commands._parse_set_custom_emoji_sticker_set_thumbnail_args(
+        "/setcustomemojithumbnail CustomEmojiSet_by_bot -"
+    ) == ("CustomEmojiSet_by_bot", "-")
+    assert (
+        commands._parse_set_custom_emoji_sticker_set_thumbnail_args(
+            "/setcustomemojithumbnail CustomEmojiSet_by_bot"
+        )
+        is None
+    )
+
+
+async def test_cmd_set_custom_emoji_sticker_set_thumbnail_rejects_non_admin_chat(
+    monkeypatch,
+):
+    monkeypatch.setattr(commands.settings, "telegram_admin_chat_ids", "")
+    monkeypatch.setattr(
+        commands,
+        "perform_set_custom_emoji_sticker_set_thumbnail",
+        AsyncMock(),
+    )
+    message = _message(chat_id=42)
+
+    await commands.cmd_set_custom_emoji_sticker_set_thumbnail(message)
+
+    commands.perform_set_custom_emoji_sticker_set_thumbnail.assert_not_awaited()
+    message.answer.assert_awaited_once_with(
+        "This command is restricted to admin chats."
+    )
+
+
+async def test_cmd_set_custom_emoji_sticker_set_thumbnail_shows_usage_without_args(
+    monkeypatch,
+):
+    monkeypatch.setattr(commands.settings, "telegram_admin_chat_ids", "42")
+    monkeypatch.setattr(
+        commands,
+        "perform_set_custom_emoji_sticker_set_thumbnail",
+        AsyncMock(),
+    )
+    message = _message(text="/setcustomemojithumbnail", chat_id=42)
+
+    await commands.cmd_set_custom_emoji_sticker_set_thumbnail(message)
+
+    commands.perform_set_custom_emoji_sticker_set_thumbnail.assert_not_awaited()
+    args, kwargs = message.answer.await_args
+    assert "setcustomemojithumbnail usage" in args[0]
+    assert kwargs["parse_mode"] == "HTML"
+
+
+async def test_cmd_set_custom_emoji_sticker_set_thumbnail_calls_service(
+    monkeypatch,
+):
+    monkeypatch.setattr(commands.settings, "telegram_admin_chat_ids", "42")
+    monkeypatch.setattr(
+        commands,
+        "perform_set_custom_emoji_sticker_set_thumbnail",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        commands,
+        "format_set_custom_emoji_sticker_set_thumbnail_result",
+        lambda **_: "ok",
+    )
+    message = _message(chat_id=42)
+
+    await commands.cmd_set_custom_emoji_sticker_set_thumbnail(message)
+
+    commands.perform_set_custom_emoji_sticker_set_thumbnail.assert_awaited_once_with(
+        message.bot,
+        name="CustomEmojiSet_by_bot",
+        custom_emoji_id="5368324170671202286",
+    )
+    message.answer.assert_awaited_once_with("ok", parse_mode="HTML")
+
+
+async def test_cmd_set_custom_emoji_sticker_set_thumbnail_reports_errors(
+    monkeypatch,
+):
+    monkeypatch.setattr(commands.settings, "telegram_admin_chat_ids", "42")
+    monkeypatch.setattr(
+        commands,
+        "perform_set_custom_emoji_sticker_set_thumbnail",
+        AsyncMock(side_effect=SetCustomEmojiStickerSetThumbnailError("boom")),
+    )
+    message = _message(chat_id=42)
+
+    await commands.cmd_set_custom_emoji_sticker_set_thumbnail(message)
+
+    args, _kwargs = message.answer.await_args
+    assert "Could not set the custom emoji sticker set thumbnail" in args[0]

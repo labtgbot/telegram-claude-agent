@@ -193,6 +193,11 @@ from bot.services.set_sticker_set_thumbnail import (
     format_set_sticker_set_thumbnail_result,
     perform_set_sticker_set_thumbnail,
 )
+from bot.services.set_custom_emoji_sticker_set_thumbnail import (
+    SetCustomEmojiStickerSetThumbnailError,
+    format_set_custom_emoji_sticker_set_thumbnail_result,
+    perform_set_custom_emoji_sticker_set_thumbnail,
+)
 from bot.services.delete_sticker_from_set import (
     DeleteStickerFromSetError,
     format_delete_sticker_from_set_result,
@@ -2530,6 +2535,19 @@ SET_STICKER_SET_THUMBNAIL_USAGE = (
     "&lt;sticker_set_name&gt; &lt;format&gt; &lt;thumbnail_file_id|-&gt;</code>"
 )
 
+SET_CUSTOM_EMOJI_STICKER_SET_THUMBNAIL_USAGE = (
+    "<b>setcustomemojithumbnail usage</b>\n"
+    "Sets or clears the thumbnail of a custom emoji sticker set through "
+    "<code>setCustomEmojiStickerSetThumbnail</code>. Use "
+    "<code>/getstickerset</code> first when you need to inspect the current "
+    "name and custom emoji ids. The bot can only update custom emoji sticker "
+    "sets created by the bot. Pass <code>-</code> as custom emoji id to clear "
+    "the current thumbnail. This command is deny-by-default and only works "
+    "from <code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setcustomemojithumbnail &lt;sticker_set_name&gt; "
+    "&lt;custom_emoji_id|-&gt;</code>"
+)
+
 DELETE_STICKER_FROM_SET_USAGE = (
     "<b>deletestickerfromset usage</b>\n"
     "Deletes one sticker from its current sticker set through "
@@ -2944,6 +2962,7 @@ async def cmd_help(message: Message):
         "/setstickermaskposition - Change or clear a mask sticker position (admin only)\n"
         "/setstickersettitle - Change a sticker set title (admin only)\n"
         "/setstickersetthumbnail - Set or clear a sticker set thumbnail (admin only)\n"
+        "/setcustomemojithumbnail - Set or clear a custom emoji sticker set thumbnail (admin only)\n"
         "/deletestickerfromset - Delete a sticker from its sticker set (admin only)\n"
         "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
@@ -7036,6 +7055,42 @@ async def cmd_set_sticker_set_thumbnail(message: Message):
             name=name,
             sticker_format=sticker_format,
             thumbnail=thumbnail,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setcustomemojithumbnail"))
+async def cmd_set_custom_emoji_sticker_set_thumbnail(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_custom_emoji_sticker_set_thumbnail_args(message.text or "")
+    if parsed is None:
+        await message.answer(
+            SET_CUSTOM_EMOJI_STICKER_SET_THUMBNAIL_USAGE,
+            parse_mode="HTML",
+        )
+        return
+
+    name, custom_emoji_id = parsed
+    try:
+        await perform_set_custom_emoji_sticker_set_thumbnail(
+            message.bot,
+            name=name,
+            custom_emoji_id=custom_emoji_id,
+        )
+    except SetCustomEmojiStickerSetThumbnailError as exc:
+        await message.answer(
+            f"Could not set the custom emoji sticker set thumbnail: {exc}"
+        )
+        return
+
+    await message.answer(
+        format_set_custom_emoji_sticker_set_thumbnail_result(
+            name=name,
+            custom_emoji_id=custom_emoji_id,
         ),
         parse_mode="HTML",
     )
@@ -11804,6 +11859,19 @@ def _parse_set_sticker_set_thumbnail_args(text: str):
     if not all([name, sticker_format, thumbnail]):
         return None
     return user_id, name, sticker_format, thumbnail
+
+
+def _parse_set_custom_emoji_sticker_set_thumbnail_args(text: str):
+    """Parse ``/setcustomemojithumbnail`` args into the thumbnail scenario."""
+    parts = (text or "").split()
+    if len(parts) != 3:
+        return None
+
+    name = parts[1].strip()
+    custom_emoji_id = parts[2].strip()
+    if not all([name, custom_emoji_id]):
+        return None
+    return name, custom_emoji_id
 
 
 def _parse_delete_sticker_from_set_args(text: str):
