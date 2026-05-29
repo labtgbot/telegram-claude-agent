@@ -486,6 +486,13 @@ from bot.services.get_my_star_balance import (
     format_my_star_balance,
     perform_get_my_star_balance,
 )
+from bot.services.get_star_transactions import (
+    GET_STAR_TRANSACTIONS_MAX_LIMIT,
+    GET_STAR_TRANSACTIONS_MIN_LIMIT,
+    GetStarTransactionsError,
+    format_star_transactions,
+    perform_get_star_transactions,
+)
 from bot.services.get_business_account_gifts import (
     GET_BUSINESS_ACCOUNT_GIFTS_MAX_LIMIT,
     GET_BUSINESS_ACCOUNT_GIFTS_MIN_LIMIT,
@@ -1290,6 +1297,17 @@ GET_MY_STAR_BALANCE_USAGE = (
     "Usage: <code>/mystarbalance</code>\n"
     "This command is unavailable unless <code>TELEGRAM_ADMIN_CHAT_IDS</code> "
     "contains the current chat."
+)
+
+GET_STAR_TRANSACTIONS_USAGE = (
+    "<b>startransactions usage</b>\n"
+    "Fetches Telegram <code>getStarTransactions</code> for this bot. This is "
+    "an admin-only read-only billing audit because transaction ids can be used "
+    "for reconciliation and refund workflows.\n"
+    "Usage: <code>/startransactions [offset=0] [limit=1..100]</code>\n"
+    "Telegram returns transactions in chronological order. This command is "
+    "unavailable unless <code>TELEGRAM_ADMIN_CHAT_IDS</code> contains the "
+    "current chat."
 )
 
 GET_BUSINESS_ACCOUNT_GIFTS_USAGE = (
@@ -2962,6 +2980,7 @@ async def cmd_help(message: Message):
         "/sendinvoice - Send a Telegram Stars test invoice (admin only)\n"
         "/createinvoicelink - Create a Telegram Stars invoice link (admin only)\n"
         "/mystarbalance - Fetch this bot's Telegram Stars balance (admin only)\n"
+        "/startransactions - Fetch this bot's Telegram Stars transaction history (admin only)\n"
         "/answerwebappquery - Answer a Web App query with an inline result (admin only)\n"
         "/savepreparedinline - Save a prepared inline message for a user (admin only)\n"
         "/savepreparedkeyboard - Save a prepared keyboard button for a Mini App user (admin only)\n"
@@ -4757,6 +4776,29 @@ async def cmd_my_star_balance(message: Message):
         return
 
     await message.answer(format_my_star_balance(balance), parse_mode="HTML")
+
+
+@router.message(Command("startransactions"))
+async def cmd_star_transactions(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_get_star_transactions_args(message.text or "")
+    if parsed is None:
+        await message.answer(GET_STAR_TRANSACTIONS_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        transactions = await perform_get_star_transactions(message.bot, **parsed)
+    except GetStarTransactionsError as exc:
+        await message.answer(f"Could not fetch the bot Star transactions: {exc}")
+        return
+
+    await message.answer(
+        format_star_transactions(transactions, **parsed),
+        parse_mode="HTML",
+    )
 
 
 @router.message(Command("businessgifts"))
@@ -9516,6 +9558,38 @@ def _parse_get_business_account_star_balance_args(text: str) -> str | None:
 def _parse_get_my_star_balance_args(text: str) -> bool:
     """Parse ``/mystarbalance`` args."""
     return len((text or "").split()) == 1
+
+
+def _parse_get_star_transactions_args(text: str) -> dict[str, int | None] | None:
+    """Parse ``/startransactions`` optional pagination args."""
+    parts = (text or "").split()
+    if not parts:
+        return None
+
+    parsed: dict[str, int | None] = {"offset": None, "limit": None}
+    for token in parts[1:]:
+        if "=" not in token:
+            return None
+        key, value = token.split("=", 1)
+        if key not in {"offset", "limit"} or not value:
+            return None
+        try:
+            number = int(value)
+        except ValueError:
+            return None
+        if key == "offset":
+            if number < 0:
+                return None
+            parsed["offset"] = number
+        else:
+            if not (
+                GET_STAR_TRANSACTIONS_MIN_LIMIT
+                <= number
+                <= GET_STAR_TRANSACTIONS_MAX_LIMIT
+            ):
+                return None
+            parsed["limit"] = number
+    return parsed
 
 
 def _parse_get_business_account_gifts_args(

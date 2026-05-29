@@ -190,6 +190,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/paidmedia` – Send a paid photo into this chat that users must pay for with Telegram Stars to access, via a URL or file_id (admin only).
 - `/sendinvoice` – Send a Telegram Stars test invoice into this chat (admin only).
 - `/mystarbalance` – Fetch this bot's Telegram Stars balance (admin only).
+- `/startransactions` – Fetch this bot's Telegram Stars transaction history (admin only).
 - `/answerwebappquery` – Answer a Telegram Web App query with one inline result (admin only).
 - `/savepreparedinline` – Save one prepared inline message for a user (admin only).
 - `/savepreparedkeyboard` – Save a prepared keyboard button for a Mini App user (admin only).
@@ -2063,6 +2064,30 @@ Usage: `/mystarbalance`
 The command does not call `free-claude-code`, is read-only, and is intended for
 operators to audit available Stars before separate invoice, refund, gift or
 subscription flows. Rollback is operational: remove the admin chat from
+`TELEGRAM_ADMIN_CHAT_IDS` or remove the command handler.
+
+### Get bot Star transactions
+
+The restricted `/startransactions` command calls Telegram Bot API
+`getStarTransactions` to fetch this bot's `StarTransactions` history in
+chronological order. Because the pinned `aiogram==3.3.0` does not expose a
+typed wrapper for this Bot API 10.0 method, the command uses an isolated raw Bot
+API helper (`bot/services/get_star_transactions.py`) over `httpx`.
+
+Usage: `/startransactions [offset=0] [limit=1..100]`
+
+- `offset` is the number of transactions to skip and must be zero or greater;
+- `limit` must be between 1 and 100; Telegram defaults it to 100 when omitted;
+- no special update subscription is required because the scenario starts from a
+  normal admin command message;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- structured logs contain only response shape, pagination shape and error
+  shape, not transaction amounts or identifiers.
+
+The command does not call `free-claude-code` and is read-only. It is intended as
+an operator audit/reconciliation view before separate refund or subscription
+flows. Rollback is operational: remove the admin chat from
 `TELEGRAM_ADMIN_CHAT_IDS` or remove the command handler.
 
 ### Get business account gifts
