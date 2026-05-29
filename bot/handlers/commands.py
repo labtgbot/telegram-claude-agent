@@ -343,6 +343,12 @@ from bot.services.set_business_account_name import (
     SetBusinessAccountNameError,
     perform_set_business_account_name,
 )
+from bot.services.set_business_account_username import (
+    MAX_BUSINESS_ACCOUNT_USERNAME_LENGTH,
+    MIN_BUSINESS_ACCOUNT_USERNAME_LENGTH,
+    SetBusinessAccountUsernameError,
+    perform_set_business_account_username,
+)
 from bot.services.get_managed_bot_token import (
     GetManagedBotTokenError,
     format_managed_bot_token,
@@ -813,6 +819,21 @@ SET_BUSINESS_ACCOUNT_NAME_USAGE = (
     "The business connection id must come from a live business connection "
     "update or another trusted operator source; first_name and last_name are "
     f"single tokens up to {MAX_BUSINESS_ACCOUNT_NAME_LENGTH} characters each."
+)
+
+SET_BUSINESS_ACCOUNT_USERNAME_USAGE = (
+    "<b>setbusinessaccountusername usage</b>\n"
+    "Sets the public username of a connected Telegram business account via "
+    "<code>setBusinessAccountUsername</code>. This is an admin-only "
+    "business-mode operation because it changes account profile metadata for "
+    "the supplied business connection.\n"
+    "Usage: <code>/setbusinessaccountusername &lt;business_connection_id&gt; "
+    "&lt;username&gt;</code>\n"
+    "The business connection id must come from a live business connection "
+    "update or another trusted operator source; username may be passed with "
+    "or without @ and must be a single token between "
+    f"{MIN_BUSINESS_ACCOUNT_USERNAME_LENGTH} and "
+    f"{MAX_BUSINESS_ACCOUNT_USERNAME_LENGTH} characters."
 )
 
 DELETE_BUSINESS_MESSAGES_CONFIRM_KEYWORD = "confirm"
@@ -3029,6 +3050,31 @@ async def cmd_set_business_account_name(message: Message):
         return
 
     await message.answer(f"Set business account name for {business_connection_id}.")
+
+
+@router.message(Command("setbusinessaccountusername"))
+async def cmd_set_business_account_username(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_business_account_username_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_BUSINESS_ACCOUNT_USERNAME_USAGE, parse_mode="HTML")
+        return
+
+    business_connection_id, username = parsed
+    try:
+        await perform_set_business_account_username(
+            message.bot,
+            business_connection_id=business_connection_id,
+            username=username,
+        )
+    except SetBusinessAccountUsernameError as exc:
+        await message.answer(f"Could not set the business account username: {exc}")
+        return
+
+    await message.answer(f"Set business account username for {business_connection_id}.")
 
 
 @router.message(Command("deletebusinessmessages"))
@@ -6125,6 +6171,26 @@ def _parse_set_business_account_name_args(
         return None
 
     return business_connection_id, first_name, last_name
+
+
+def _parse_set_business_account_username_args(text: str) -> tuple[str, str] | None:
+    """Parse ``/setbusinessaccountusername`` args into connection id and username."""
+    parts = (text or "").split()
+    if len(parts) != 3:
+        return None
+
+    business_connection_id = parts[1].strip()
+    username = parts[2].strip().lstrip("@")
+    if not business_connection_id or not username:
+        return None
+    if not (
+        MIN_BUSINESS_ACCOUNT_USERNAME_LENGTH
+        <= len(username)
+        <= MAX_BUSINESS_ACCOUNT_USERNAME_LENGTH
+    ):
+        return None
+
+    return business_connection_id, username
 
 
 def _parse_delete_business_messages_args(text: str) -> tuple[str, list[int], bool] | None:

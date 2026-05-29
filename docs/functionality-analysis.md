@@ -1603,10 +1603,43 @@ account, поэтому доступна только chat id из `TELEGRAM_ADM
 команда отключена. Structured logs содержат только `business_connection_id`,
 признак наличия `last_name` и форму ошибки; сами значения имени не логируются.
 Rollback операционный: вернуть прежнее имя через Telegram или отключить
+admin chat до дальнейших изменений.
+
+### setBusinessAccountUsername
+
+Команда `/setbusinessaccountusername <business_connection_id> <username>`
+меняет публичный username подключенного business account методом
+`setBusinessAccountUsername` (Bot API 10.0). Метод принимает live
+`business_connection_id` и новый `username`; Telegram на своей стороне
+проверяет, что подключение активно, принадлежит боту, текущие business rights
+позволяют менять профиль, а username валиден и доступен.
+
+Pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода, поэтому
+реализация идет через изолированный raw Bot API helper
+`bot/services/set_business_account_username.py`. Helper POST'ит JSON payload
+`{"business_connection_id": ..., "username": ...}` на endpoint
+`setBusinessAccountUsername` через `httpx`, берет URL через
+`bot.session.api.api_url(...)` для поддержки local Bot API server и ожидает
+Telegram result `true`. Транспортные ошибки, невалидный JSON, Telegram
+`ok: false` и неожиданный result поднимаются как
+`SetBusinessAccountUsernameError`.
+
+Сценарий намеренно ограничен простой CLI-формой: `username` парсится как
+одиночный токен, допускается ввод с префиксом `@`, после нормализации длина
+должна быть 5-32 символа. При ошибке ввода показывается usage и Telegram не
+вызывается. Значение `business_connection_id` должно приходить из live business
+connection update или другого доверенного operator source.
+
+Security/privacy impact: команда меняет публичные profile metadata business
+account, поэтому доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не
+делает fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; при пустом admin allowlist
+команда отключена. Structured logs содержат только `business_connection_id` и
+форму ошибки; сам username не логируется. Rollback операционный: вернуть
+прежний username через Telegram или отключить
 поверхность, убрав admin chat из `TELEGRAM_ADMIN_CHAT_IDS`/удалив handler.
 
-Глобальный `RateLimitMiddleware` применяется к `/setbusinessaccountname` так
-же, как к другим командам.
+Глобальный `RateLimitMiddleware` применяется к `/setbusinessaccountname` и
+`/setbusinessaccountusername` так же, как к другим командам.
 
 ### getManagedBotToken
 
