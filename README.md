@@ -178,6 +178,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/customemojistickers <custom_emoji_id> [...]` – Fetch custom emoji sticker metadata by up to 200 custom emoji ids (admin only).
 - `/addstickertoset <user_id> <name> <sticker_format> <sticker_file_id> <emoji[,emoji...]>` – Add a pre-uploaded sticker to an existing sticker set (admin only).
 - `/setstickerposition <sticker_file_id> <position>` – Move a sticker inside its sticker set by zero-based position (admin only).
+- `/deletestickerfromset <sticker_file_id>` – Delete a sticker from its sticker set (admin only).
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
 - `/paidmedia` – Send a paid photo into this chat that users must pay for with Telegram Stars to access, via a URL or file_id (admin only).
 - `/answerwebappquery` – Answer a Telegram Web App query with one inline result (admin only).
@@ -269,6 +270,8 @@ typed method when available and an isolated raw Bot API helper on pinned
 - `/addstickertoset <user_id> <name> <sticker_format> <sticker_file_id> <emoji[,emoji...]>` – Add a pre-uploaded sticker to an existing sticker set (admin only).
 - `/setstickerposition <sticker_file_id> <position>` – Move a sticker inside
   its sticker set by zero-based position (admin only).
+- `/deletestickerfromset <sticker_file_id>` – Delete a sticker from its
+  sticker set (admin only).
 - `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` – Promote or demote a group, supergroup, or channel member where the bot has `can_promote_members` (admin only).
 - `/approvechatjoinrequest <chat_id> <user_id>` – Approve a pending join request where the bot has `can_invite_users` (admin only).
 - `/declinechatjoinrequest <chat_id> <user_id>` – Decline a pending join request where the bot has `can_invite_users` (admin only).
@@ -1113,6 +1116,23 @@ Usage: `/setstickerposition <sticker_file_id> <position>`
 - Telegram validation and rate-limit errors are reported back to the operator;
 - rollback is manual: call `/setstickerposition` again with the previous
   position or reorder the set through Telegram sticker lifecycle tools.
+
+### Delete a sticker from a set
+
+The restricted `/deletestickerfromset` command calls Telegram Bot API
+`deleteStickerFromSet` through an isolated raw helper because the project pins
+`aiogram==3.3.0`. It removes an existing sticker from its current sticker set
+and completes the create/add/reorder/delete sticker set lifecycle.
+
+Usage: `/deletestickerfromset <sticker_file_id>`
+
+- use `/getstickerset` first to inspect current sticker file ids;
+- Telegram only allows deleting stickers from sets created by the bot;
+- no special update types are required because the scenario starts from a
+  normal admin command message;
+- Telegram validation and rate-limit errors are reported back to the operator;
+- rollback is manual: add the sticker back with `/addstickertoset` using the
+  original sticker file id and emoji metadata.
 
 ### Send a voice message
 
