@@ -1207,6 +1207,44 @@ Product rules и audit log:
 - Telegram permission/privacy/validation/transport/rate-limit errors
   возвращаются в admin chat.
 
+### removeChatVerification
+
+Команда `/removechatverification` вызывает Telegram `removeChatVerification`
+(Bot API 10.0) для удаления верификации чата от имени бота, которому Telegram
+выдал право управлять chat verification. По официальной документации метод
+требует `chat_id` и возвращает boolean `True`. Специальные update types не
+нужны, потому что сценарий запускается обычным admin message update;
+доступность чата и право бота на removal action проверяет Telegram.
+
+Так как pinned `aiogram==3.3.0` не имеет typed wrapper для
+`removeChatVerification`, реализация использует изолированный raw Bot API
+helper `bot/services/remove_chat_verification.py`. Helper POST'ит JSON-payload
+на endpoint `removeChatVerification`, использует URL из
+`bot.session.api.api_url(...)` для поддержки local Bot API server, валидирует
+non-zero numeric `chat_id` или non-empty string `chat_id` до HTTP-вызова и
+поднимает transport/Telegram `ok: false`/unexpected-result ошибки как
+`RemoveChatVerificationError`.
+
+Выбран отдельный admin verification scenario:
+`/removechatverification <chat_id|@username> confirm`. Оператор должен заранее
+проверить chat identity, product rules, право бота на verification removal,
+audit trail и rollback plan. Команда не вызывает `free-claude-code`, не тратит
+Stars и не смешивается с gifts или Premium gifting. Rollback выполняется
+отдельным confirmed `/verifychat <chat_id|@username> confirm
+[custom_description]` действием.
+
+Product rules и audit log:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если список пустой, команда
+  отключена;
+- команда требует literal `confirm` в том же сообщении, которое запускает
+  verification removal action;
+- parser принимает non-zero numeric `chat_id` или string `@username`;
+- structured logs включают `chat_id`, но не unrelated chat data;
+- Telegram permission/privacy/validation/transport/rate-limit errors
+  возвращаются в admin chat.
+
 ### sendLocation
 
 Команда `/location` вызывает typed aiogram API `Bot.send_location()` для метода
