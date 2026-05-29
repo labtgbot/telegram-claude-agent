@@ -189,6 +189,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/setbusinessaccountbio` – Set or clear the bio of a connected business account by `business_connection_id` (admin only).
 - `/setbusinessaccountprofilephoto` – Set the static JPG profile photo of a connected business account by `business_connection_id` and local `photo_path` (admin only).
 - `/removebusinessaccountprofilephoto` – Remove a profile photo of a connected business account by `business_connection_id` (admin only, requires confirmation).
+- `/setbusinessaccountgiftsettings` – Change incoming gift settings of a connected business account by `business_connection_id` (admin only).
 - `/deletebusinessmessages` – Delete connected business-account messages by `business_connection_id` and `message_ids` (admin only, requires confirmation).
 - `/managedbottoken` – Fetch the live token of a managed bot by its Telegram user id (admin only).
 - `/managedbotaccess` – Fetch access settings for a managed bot by its Telegram user id (admin only).
@@ -1510,6 +1511,36 @@ The command does not call `free-claude-code`. Rollback is operational: run
 `/setbusinessaccountprofilephoto` with the previous image, use Telegram's
 business account profile controls, or remove the admin chat from
 `TELEGRAM_ADMIN_CHAT_IDS` before further changes.
+
+### Set business account gift settings
+
+The restricted `/setbusinessaccountgiftsettings` command calls Telegram Bot API
+`setBusinessAccountGiftSettings` to change incoming gift privacy settings of a
+connected business account. Because the pinned `aiogram==3.3.0` does not expose
+a typed wrapper for this Bot API 10.0 method, the command uses an isolated raw
+Bot API helper (`bot/services/set_business_account_gift_settings.py`) over
+`httpx`.
+
+Usage: `/setbusinessaccountgiftsettings <business_connection_id> show_gift_button=true|false unlimited_gifts=true|false limited_gifts=true|false unique_gifts=true|false premium_subscription=true|false gifts_from_channels=true|false`
+
+- `business_connection_id` must come from a live business connection update or
+  another trusted operator source;
+- `show_gift_button` controls whether the gift button should always be shown in
+  the input field;
+- every `AcceptedGiftTypes` flag must be supplied explicitly so reviews can see
+  exactly which incoming gift categories are accepted;
+- Telegram enforces connection ownership, current `can_change_gift_settings`
+  business right and expired or unknown connection handling; those errors are
+  reported back without retry;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- structured logs contain the connection id, gift button flag, count of enabled
+  gift types and error shape.
+
+The command does not call `free-claude-code`. Rollback is operational: run the
+command again with the previous values, use Telegram's business account gift
+privacy controls, or remove the admin chat from `TELEGRAM_ADMIN_CHAT_IDS`
+before further changes.
 
 ### Delete business messages
 
@@ -2959,6 +2990,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/checklist` command makes the bot post an arbitrary checklist into the chat on behalf of a connected business account, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the title and task texts are kept out of the structured logs.
 - The `/businessconnection` command fetches business connection owner/lifecycle metadata by `business_connection_id`, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps returned owner fields out of structured logs.
 - The `/setbusinessaccountname` command changes connected business account profile metadata, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps name values out of structured logs.
+- The `/setbusinessaccountgiftsettings` command changes connected business account incoming gift privacy settings, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and logs only the connection id, gift button flag and enabled-type count.
 - The `/managedbottoken` command returns a live managed-bot token, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps the token itself out of structured logs.
 - The `/managedbotaccess` command returns managed-bot access allowlist metadata, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps returned user objects out of structured logs.
 - The `/replacemanagedbottoken` command rotates and returns a live managed-bot token, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, explicit `confirm`, is unavailable when that list is empty, and keeps token values out of structured logs.
