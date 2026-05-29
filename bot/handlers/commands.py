@@ -493,6 +493,11 @@ from bot.services.get_star_transactions import (
     format_star_transactions,
     perform_get_star_transactions,
 )
+from bot.services.refund_star_payment import (
+    RefundStarPaymentError,
+    format_refund_star_payment_result,
+    perform_refund_star_payment,
+)
 from bot.services.get_business_account_gifts import (
     GET_BUSINESS_ACCOUNT_GIFTS_MAX_LIMIT,
     GET_BUSINESS_ACCOUNT_GIFTS_MIN_LIMIT,
@@ -1309,6 +1314,32 @@ GET_STAR_TRANSACTIONS_USAGE = (
     "unavailable unless <code>TELEGRAM_ADMIN_CHAT_IDS</code> contains the "
     "current chat."
 )
+
+REFUND_STAR_PAYMENT_CONFIRM_KEYWORD = "confirm"
+
+REFUND_STAR_PAYMENT_USAGE = (
+    "<b>refundstars usage</b>\n"
+    "Refunds one Telegram Stars payment via "
+    "<code>refundStarPayment</code>. This is a destructive admin-only billing "
+    "operation for charges previously found in payment updates or "
+    "<code>/startransactions</code>.\n"
+    "Usage: <code>/refundstars &lt;user_id&gt; "
+    "&lt;telegram_payment_charge_id&gt; confirm</code>\n"
+    "The user id and charge id must come from trusted billing records. The "
+    "command is idempotent inside the running bot process and will not call "
+    "Telegram twice for the same pair."
+)
+
+REFUND_STAR_PAYMENT_WARNING = (
+    "<b>refundstars confirmation required</b>\n"
+    "This will ask Telegram to refund a Stars payment to the specified user. "
+    "Review the user id, charge id and local billing audit log before "
+    "confirming.\n"
+    "Run <code>/refundstars &lt;user_id&gt; "
+    "&lt;telegram_payment_charge_id&gt; confirm</code> to proceed."
+)
+
+_REFUNDED_STAR_PAYMENT_KEYS: set[tuple[int, str]] = set()
 
 GET_BUSINESS_ACCOUNT_GIFTS_USAGE = (
     "<b>businessgifts usage</b>\n"
@@ -2981,6 +3012,7 @@ async def cmd_help(message: Message):
         "/createinvoicelink - Create a Telegram Stars invoice link (admin only)\n"
         "/mystarbalance - Fetch this bot's Telegram Stars balance (admin only)\n"
         "/startransactions - Fetch this bot's Telegram Stars transaction history (admin only)\n"
+        "/refundstars - Refund a Telegram Stars payment by charge id (admin only)\n"
         "/answerwebappquery - Answer a Web App query with an inline result (admin only)\n"
         "/savepreparedinline - Save a prepared inline message for a user (admin only)\n"
         "/savepreparedkeyboard - Save a prepared keyboard button for a Mini App user (admin only)\n"
@@ -4797,6 +4829,54 @@ async def cmd_star_transactions(message: Message):
 
     await message.answer(
         format_star_transactions(transactions, **parsed),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("refundstars"))
+async def cmd_refund_stars(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_refund_star_payment_args(message.text or "")
+    if parsed is None:
+        await message.answer(REFUND_STAR_PAYMENT_USAGE, parse_mode="HTML")
+        return
+
+    user_id, telegram_payment_charge_id, confirmed = parsed
+    if not confirmed:
+        await message.answer(REFUND_STAR_PAYMENT_WARNING, parse_mode="HTML")
+        return
+
+    idempotency_key = (user_id, telegram_payment_charge_id)
+    if idempotency_key in _REFUNDED_STAR_PAYMENT_KEYS:
+        await message.answer(
+            format_refund_star_payment_result(
+                user_id=user_id,
+                telegram_payment_charge_id=telegram_payment_charge_id,
+                duplicate=True,
+            ),
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        await perform_refund_star_payment(
+            message.bot,
+            user_id=user_id,
+            telegram_payment_charge_id=telegram_payment_charge_id,
+        )
+    except RefundStarPaymentError as exc:
+        await message.answer(f"Could not refund the Stars payment: {exc}")
+        return
+
+    _REFUNDED_STAR_PAYMENT_KEYS.add(idempotency_key)
+    await message.answer(
+        format_refund_star_payment_result(
+            user_id=user_id,
+            telegram_payment_charge_id=telegram_payment_charge_id,
+        ),
         parse_mode="HTML",
     )
 
@@ -9807,6 +9887,32 @@ def _parse_convert_gift_to_stars_args(text: str) -> tuple[str, str, bool] | None
         confirmed = True
 
     return business_connection_id, owned_gift_id, confirmed
+
+
+def _parse_refund_star_payment_args(text: str) -> tuple[int, str, bool] | None:
+    """Parse refund args into user id, Telegram charge id and confirmation."""
+    parts = (text or "").split()
+    if len(parts) not in {3, 4}:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+    if user_id <= 0:
+        return None
+
+    telegram_payment_charge_id = parts[2].strip()
+    if not telegram_payment_charge_id:
+        return None
+
+    confirmed = False
+    if len(parts) == 4:
+        if parts[3].lower() != REFUND_STAR_PAYMENT_CONFIRM_KEYWORD:
+            return None
+        confirmed = True
+
+    return user_id, telegram_payment_charge_id, confirmed
 
 
 def _parse_upgrade_gift_args(
