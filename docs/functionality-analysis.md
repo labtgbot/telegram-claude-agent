@@ -151,6 +151,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendDice` | `bot/services/send_dice.py`, `/dice` в `bot/handlers/commands.py` | Admin-flow отправки анимированной кости (dice) — анимированного эмодзи со случайным значением, которое выбирает Telegram — в текущий чат, через typed aiogram API; опциональный emoji ограничен набором 🎲/🎯/🏀/⚽/🎳/🎰 и валидируется до обращения к Telegram, без аргумента отправляется 🎲. |
 | `sendGame` | `bot/services/send_game.py`, `/game` в `bot/handlers/commands.py` | Admin-flow отправки Telegram game, заранее созданной для бота в BotFather, в текущий чат по `game_short_name`, через typed aiogram API; short name обязателен и валидируется до обращения к Telegram, команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, не требует специальных update types или chat administrator rights, а rollback выполняется удалением game message или отключением game в BotFather. |
 | `setGameScore` | `bot/services/set_game_score.py`, `/setgamescore` в `bot/handlers/commands.py` | Admin-flow установки очков Telegram game после внешней проверки результата: принимает `user_id`, неотрицательный `score` и ровно один target (`chat_id`+`message_id` или `inline_message_id`), использует typed aiogram API, закрыт строгим `TELEGRAM_ADMIN_CHAT_IDS`, логирует только структурные ids/flags, а rollback выполняется явной установкой предыдущего score при допустимом `force=true` или отключением команды через allowlist. |
+| `getGameHighScores` | `bot/services/get_game_high_scores.py`, `/gamehighscores` в `bot/handlers/commands.py` | Admin-flow чтения Telegram game high scores вокруг пользователя: принимает `user_id` и ровно один target (`chat_id`+`message_id` или `inline_message_id`), использует typed aiogram API, закрыт строгим `TELEGRAM_ADMIN_CHAT_IDS`, не требует специальных update types или chat administrator rights, не вызывает `free-claude-code`, логирует только структурные ids/score count без полного inline id, а rollback операционный: убрать команду из allowlist или отключить game в BotFather. |
 | `sendChecklist` | `bot/services/send_checklist.py`, `/checklist` в `bot/handlers/commands.py` | Admin-flow отправки чеклиста (checklist) — озаглавленного списка из 1-30 задач — в текущий чат от имени подключенного business account, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 9.1; требует `business_connection_id`, длины title (до 255) и задач (до 100) и их количество валидируются до обращения к Telegram, а title и тексты задач не пишутся в structured logs. |
 | `postStory` | `bot/services/post_story.py`, `/poststory` в `bot/handlers/commands.py` | Admin-flow публикации photo story от имени managed business account по `business_connection_id`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, требует Telegram business right `can_manage_stories`, принимает `active_period` только 21600/43200/86400/172800, caption до 2048 символов и использует изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, rollback выполняется удалением или архивированием story в Telegram. |
 | `repostStory` | `bot/services/repost_story.py`, `/repoststory` в `bot/handlers/commands.py` | Admin-flow репоста story между managed business accounts по destination `business_connection_id`, source `from_chat_id`, `from_story_id` и `active_period`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, требует Telegram business right `can_manage_stories` для обоих business accounts, принимает `active_period` только 21600/43200/86400/172800 и использует изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; source story должна быть ранее опубликована или репостнута этим ботом, rollback выполняется удалением или архивированием reposted story в Telegram. |
@@ -2069,6 +2070,45 @@ flags `force` и `disable_edit_message`; inline id целиком не логи�
 Rollback: явно вернуть предыдущий score, если Telegram принимает такую операцию
 для этой игры (обычно с `force=true`), убрать команду из allowlist или отключить
 game в BotFather.
+
+### getGameHighScores
+
+Команда `/gamehighscores` вызывает typed aiogram API
+`Bot.get_game_high_scores()` для метода Telegram `getGameHighScores`. По
+официальной документации метод требует `user_id` и target существующего game
+message: либо пару `chat_id` и `message_id`, либо `inline_message_id`. Метод
+возвращает массив `GameHighScore` с позициями, пользователями и очками вокруг
+указанного пользователя. В pinned `aiogram==3.3.0` typed wrapper доступен,
+поэтому raw Bot API helper не нужен.
+
+Выбран изолированный admin-сценарий game platform: оператор проверяет scoreboard
+для пользователя после отправки game и/или установки score внешней игровой
+логикой. Синтаксис:
+`/gamehighscores <user_id> chat_id=<chat_id> message_id=<message_id>`
+или
+`/gamehighscores <user_id> inline_message_id=<inline_message_id>`.
+Команда валидирует обязательный `user_id` и ровно один target до обращения к
+Telegram.
+
+`/gamehighscores` закрыта строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- специальных update types не требуется, потому что сценарий запускается
+  обычным message command update; для inline game target оператор должен знать
+  `inline_message_id` из связанного game flow;
+- chat administrator rights не требуются сами по себе, но бот должен иметь
+  доступ к целевому game message, а сама game должна быть создана для этого
+  бота в BotFather;
+- ошибки Telegram (`message is not a game`, недоступный target, запрет доступа,
+  rate limit) возвращаются оператору без retry.
+
+Команда не взаимодействует с `free-claude-code`. Structured logs содержат
+только user id, chat/message ids или факт наличия inline id, а также количество
+полученных score rows; inline id целиком не логируется. Rollback операционный:
+убрать команду из allowlist, игнорировать read-only результат или отключить game
+в BotFather.
 
 ### sendChecklist
 
