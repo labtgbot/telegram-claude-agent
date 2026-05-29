@@ -498,6 +498,11 @@ from bot.services.refund_star_payment import (
     format_refund_star_payment_result,
     perform_refund_star_payment,
 )
+from bot.services.edit_user_star_subscription import (
+    EditUserStarSubscriptionError,
+    format_edit_user_star_subscription_result,
+    perform_edit_user_star_subscription,
+)
 from bot.services.get_business_account_gifts import (
     GET_BUSINESS_ACCOUNT_GIFTS_MAX_LIMIT,
     GET_BUSINESS_ACCOUNT_GIFTS_MIN_LIMIT,
@@ -1340,6 +1345,33 @@ REFUND_STAR_PAYMENT_WARNING = (
 )
 
 _REFUNDED_STAR_PAYMENT_KEYS: set[tuple[int, str]] = set()
+
+EDIT_USER_STAR_SUBSCRIPTION_CONFIRM_KEYWORD = "confirm"
+
+EDIT_USER_STAR_SUBSCRIPTION_USAGE = (
+    "<b>edituserstarsubscription usage</b>\n"
+    "Changes one Telegram Stars subscription via "
+    "<code>editUserStarSubscription</code>. This is a destructive admin-only "
+    "billing operation for subscriptions previously found in trusted billing "
+    "records or payment updates.\n"
+    "Usage: <code>/edituserstarsubscription &lt;user_id&gt; "
+    "&lt;telegram_payment_charge_id&gt; active|canceled confirm</code>\n"
+    "Use <code>canceled</code> to cancel future renewal, or "
+    "<code>active</code> to reactivate it. The command is idempotent inside "
+    "the running bot process and will not call Telegram twice for the same "
+    "user, charge id and target state."
+)
+
+EDIT_USER_STAR_SUBSCRIPTION_WARNING = (
+    "<b>edituserstarsubscription confirmation required</b>\n"
+    "This will ask Telegram to change the renewal state of a Stars "
+    "subscription for the specified user. Review the user id, charge id and "
+    "local billing audit log before confirming.\n"
+    "Run <code>/edituserstarsubscription &lt;user_id&gt; "
+    "&lt;telegram_payment_charge_id&gt; active|canceled confirm</code> to proceed."
+)
+
+_EDITED_USER_STAR_SUBSCRIPTION_KEYS: set[tuple[int, str, bool]] = set()
 
 GET_BUSINESS_ACCOUNT_GIFTS_USAGE = (
     "<b>businessgifts usage</b>\n"
@@ -3131,6 +3163,7 @@ async def cmd_help(message: Message):
         "/editchatinvitelink - Edit a non-primary chat invite link (admin only)\n"
         "/revokechatinvitelink - Revoke a chat invite link (admin only)\n"
         "/editchatsubscriptioninvitelink - Edit a subscription invite link (admin only)\n"
+        "/edituserstarsubscription - Edit a user Stars subscription (admin only)\n"
         "/setchatadministratortitle - Set a chat administrator custom title (admin only)\n"
         "/setchatmembertag - Set or clear a chat member tag (admin only)\n"
         "/react - Set or remove a reaction on a message in this chat (admin only)\n"
@@ -4876,6 +4909,60 @@ async def cmd_refund_stars(message: Message):
         format_refund_star_payment_result(
             user_id=user_id,
             telegram_payment_charge_id=telegram_payment_charge_id,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("edituserstarsubscription"))
+async def cmd_edit_user_star_subscription(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_edit_user_star_subscription_args(message.text or "")
+    if parsed is None:
+        await message.answer(EDIT_USER_STAR_SUBSCRIPTION_USAGE, parse_mode="HTML")
+        return
+
+    user_id, telegram_payment_charge_id, is_canceled, confirmed = parsed
+    if not confirmed:
+        await message.answer(
+            EDIT_USER_STAR_SUBSCRIPTION_WARNING,
+            parse_mode="HTML",
+        )
+        return
+
+    idempotency_key = (user_id, telegram_payment_charge_id, is_canceled)
+    if idempotency_key in _EDITED_USER_STAR_SUBSCRIPTION_KEYS:
+        await message.answer(
+            format_edit_user_star_subscription_result(
+                user_id=user_id,
+                telegram_payment_charge_id=telegram_payment_charge_id,
+                is_canceled=is_canceled,
+                duplicate=True,
+            ),
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        await perform_edit_user_star_subscription(
+            message.bot,
+            user_id=user_id,
+            telegram_payment_charge_id=telegram_payment_charge_id,
+            is_canceled=is_canceled,
+        )
+    except EditUserStarSubscriptionError as exc:
+        await message.answer(f"Could not edit the Stars subscription: {exc}")
+        return
+
+    _EDITED_USER_STAR_SUBSCRIPTION_KEYS.add(idempotency_key)
+    await message.answer(
+        format_edit_user_star_subscription_result(
+            user_id=user_id,
+            telegram_payment_charge_id=telegram_payment_charge_id,
+            is_canceled=is_canceled,
         ),
         parse_mode="HTML",
     )
@@ -9913,6 +10000,42 @@ def _parse_refund_star_payment_args(text: str) -> tuple[int, str, bool] | None:
         confirmed = True
 
     return user_id, telegram_payment_charge_id, confirmed
+
+
+def _parse_edit_user_star_subscription_args(
+    text: str,
+) -> tuple[int, str, bool, bool] | None:
+    """Parse subscription edit args into user id, charge id, target state and confirmation."""
+    parts = (text or "").split()
+    if len(parts) not in {4, 5}:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+    if user_id <= 0:
+        return None
+
+    telegram_payment_charge_id = parts[2].strip()
+    if not telegram_payment_charge_id:
+        return None
+
+    state = parts[3].lower()
+    if state == "canceled":
+        is_canceled = True
+    elif state == "active":
+        is_canceled = False
+    else:
+        return None
+
+    confirmed = False
+    if len(parts) == 5:
+        if parts[4].lower() != EDIT_USER_STAR_SUBSCRIPTION_CONFIRM_KEYWORD:
+            return None
+        confirmed = True
+
+    return user_id, telegram_payment_charge_id, is_canceled, confirmed
 
 
 def _parse_upgrade_gift_args(

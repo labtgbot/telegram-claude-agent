@@ -2708,6 +2708,12 @@ Area label: `area:payments-stars`. Priority baseline: `priority:P3`
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:payments-stars`, `priority:P3`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Добавить поддержку `editUserStarSubscription` в область: Telegram Payments, invoice links, shipping/pre-checkout callbacks, Stars balance, refunds и subscriptions. Определить конкретный сценарий: billing module с идемпотентностью, audit log и отдельными security tests.
+- Status: implemented in PR #340 as the admin-only
+  `/edituserstarsubscription <user_id> <telegram_payment_charge_id>
+  active|canceled confirm` flow. Pinned `aiogram==3.3.0` has no typed wrapper
+  for this Bot API 10.0 method, so the implementation uses an isolated raw Bot
+  API helper with local validation, structured audit logs, explicit
+  `TELEGRAM_ADMIN_CHAT_IDS` allowlist, confirmation and in-process idempotency.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API
