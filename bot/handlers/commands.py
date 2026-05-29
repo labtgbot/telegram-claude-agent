@@ -85,6 +85,10 @@ from bot.services.set_my_default_administrator_rights import (
     format_set_my_default_administrator_rights_result,
     perform_set_my_default_administrator_rights,
 )
+from bot.services.get_my_default_administrator_rights import (
+    format_get_my_default_administrator_rights_result,
+    perform_get_my_default_administrator_rights,
+)
 from bot.services.get_my_name import (
     format_get_my_name_result,
     perform_get_my_name,
@@ -372,6 +376,7 @@ from bot.utils.storage import storage
 from bot.services.claude_proxy import ClaudeProxyClient
 
 router = Router()
+INVALID_COMMAND_ARGS = object()
 
 LOGOUT_CONFIRM_KEYWORD = "confirm"
 CALLBACK_SETTINGS_REFRESH = "settings:refresh"
@@ -1166,6 +1171,18 @@ SET_MY_DEFAULT_ADMINISTRATOR_RIGHTS_USAGE = (
     "Use <code>clear</code> to reset Telegram defaults."
 )
 
+GET_MY_DEFAULT_ADMINISTRATOR_RIGHTS_USAGE = (
+    "<b>getmydefaultrights usage</b>\n"
+    "Fetches the default administrator rights requested when this bot is added "
+    "as an administrator via <code>getMyDefaultAdministratorRights</code>. Use "
+    "this after startup sync, <code>/setmydefaultrights</code> or BotFather "
+    "changes to verify the actual Telegram state. The method is read-only and "
+    "does not require chat administrator rights or update subscriptions, but "
+    "this command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/getmydefaultrights [for_channels=true|false]</code>"
+)
+
 GET_MY_NAME_USAGE = (
     "<b>getmyname usage</b>\n"
     "Fetches the bot display name shown in Telegram clients via "
@@ -1739,6 +1756,7 @@ async def cmd_help(message: Message):
         "/getmydescription - Fetch the bot description (admin only)\n"
         "/setmyshortdescription - Set or clear the bot short description (admin only)\n"
         "/setmydefaultrights - Set default administrator rights requested by the bot (admin only)\n"
+        "/getmydefaultrights - Fetch default administrator rights requested by the bot (admin only)\n"
         "/getmyshortdescription - Fetch the bot short description (admin only)\n"
         "/setmycommands - Set the bot command list shown in Telegram clients (admin only)\n"
         "/getmycommands - Fetch and diagnose the bot command list (admin only)\n"
@@ -3579,6 +3597,35 @@ async def cmd_get_my_name(message: Message):
 
     await message.answer(
         format_get_my_name_result(bot_name, language_code=parsed),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("getmydefaultrights"))
+async def cmd_get_my_default_administrator_rights(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_get_my_default_administrator_rights_args(message.text or "")
+    if parsed is INVALID_COMMAND_ARGS:
+        await message.answer(GET_MY_DEFAULT_ADMINISTRATOR_RIGHTS_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        rights = await perform_get_my_default_administrator_rights(
+            message.bot,
+            for_channels=parsed,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not get default administrator rights: {exc}")
+        return
+
+    await message.answer(
+        format_get_my_default_administrator_rights_result(
+            rights,
+            for_channels=parsed,
+        ),
         parse_mode="HTML",
     )
 
@@ -6809,6 +6856,24 @@ def _parse_set_my_default_administrator_rights_args(text: str):
             return None
 
     return preset, rights, for_channels
+
+
+def _parse_get_my_default_administrator_rights_args(text: str):
+    """Parse ``/getmydefaultrights`` args into optional target flag."""
+    parts = (text or "").split()
+    if len(parts) == 1:
+        return None
+    if len(parts) != 2:
+        return INVALID_COMMAND_ARGS
+
+    key, separator, value = parts[1].partition("=")
+    if key != "for_channels" or separator != "=":
+        return INVALID_COMMAND_ARGS
+
+    parsed = _parse_bool_value(value)
+    if parsed is None:
+        return INVALID_COMMAND_ARGS
+    return parsed
 
 
 def _parse_get_my_name_args(text: str):

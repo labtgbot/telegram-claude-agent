@@ -209,8 +209,9 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
    `getMyDescription`, `setMyShortDescription`, `getMyShortDescription`,
    `setMyProfilePhoto`, `removeMyProfilePhoto` (уже интегрированы),
    `setChatMenuButton`,
-   `getChatMenuButton` (уже интегрирован), `setMyDefaultAdministratorRights`,
-   `getMyDefaultAdministratorRights`.
+   `getChatMenuButton` (уже интегрирован),
+   `setMyDefaultAdministratorRights` и `getMyDefaultAdministratorRights`
+   (уже интегрированы).
 3. Более богатые ответы пользователю: `sendChatAction`,
    `sendChecklist`,
    `sendMessageDraft`, `setMessageReaction` (все четыре уже интегрированы).

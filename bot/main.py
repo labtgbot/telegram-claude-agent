@@ -18,6 +18,9 @@ from bot.services.get_my_description import audit_configured_bot_description
 from bot.services.get_my_short_description import (
     audit_configured_bot_short_description,
 )
+from bot.services.get_my_default_administrator_rights import (
+    audit_configured_my_default_administrator_rights,
+)
 from bot.services.set_my_description import sync_configured_bot_description
 from bot.services.set_my_name import sync_configured_bot_name
 from bot.services.set_my_short_description import sync_configured_bot_short_description
@@ -92,6 +95,10 @@ async def on_startup():
         configured=parse_default_administrator_rights_configured(
             settings.telegram_bot_default_administrator_rights
         ),
+    )
+    await audit_configured_my_default_administrator_rights(
+        bot,
+        for_channels=settings.telegram_bot_default_administrator_rights_for_channels,
     )
     if settings.telegram_webhook_url:
         await bot.set_webhook(

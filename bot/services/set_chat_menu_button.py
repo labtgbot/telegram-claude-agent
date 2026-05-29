@@ -45,10 +45,12 @@ def format_set_chat_menu_button_result(
     menu_button: MenuButton,
 ) -> str:
     """Format a successful ``setChatMenuButton`` result for HTML responses."""
+    button_type = getattr(menu_button, "type", "unknown")
+    button_type_value = getattr(button_type, "value", button_type)
     lines = [
         "<b>setChatMenuButton</b>",
         f"Chat ID: {escape(str(chat_id)) if chat_id is not None else 'default'}",
-        f"Type: {escape(str(getattr(menu_button, 'type', 'unknown')))}",
+        f"Type: {escape(str(button_type_value))}",
         "Status: chat menu button updated.",
     ]
 
