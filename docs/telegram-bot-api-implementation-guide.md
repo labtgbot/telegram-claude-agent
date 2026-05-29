@@ -1831,6 +1831,9 @@ Area label: `area:business-account`. Priority baseline: `priority:P3`
 #### BOTAPI-110: `setBusinessAccountBio`
 
 - Title: `telegram-api: реализовать setBusinessAccountBio`
+- Status: implemented in PR #285 as restricted admin `/setbusinessaccountbio`
+  profile-management command via an isolated raw Bot API helper
+  (`aiogram==3.3.0` ships no typed wrapper for this Bot API 10.0 method).
 - Official docs: https://core.telegram.org/bots/api#setbusinessaccountbio
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:business-account`, `priority:P3`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
