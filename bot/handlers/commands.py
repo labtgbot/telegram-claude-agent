@@ -200,6 +200,11 @@ from bot.services.verify_user import (
     VerifyUserError,
     perform_verify_user,
 )
+from bot.services.verify_chat import (
+    VERIFY_CHAT_DESCRIPTION_LIMIT,
+    VerifyChatError,
+    perform_verify_chat,
+)
 from bot.services.send_gift import SendGiftError, perform_send_gift
 from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
 from bot.services.send_photo import perform_send_photo
@@ -937,6 +942,31 @@ VERIFY_USER_WARNING = (
     "be undone later.\n"
     "Run <code>/verifyuser &lt;user_id&gt; confirm [custom_description]</code> "
     "to proceed."
+)
+
+VERIFY_CHAT_CONFIRM_KEYWORD = "confirm"
+
+VERIFY_CHAT_USAGE = (
+    "<b>verifychat usage</b>\n"
+    "Calls Telegram <code>verifyChat</code> for a chat. This changes a "
+    "visible Telegram verification state, so the command is admin-only, "
+    "requires product-rule review and requires an explicit confirmation "
+    "keyword in the same command.\n"
+    "Usage: <code>/verifychat &lt;chat_id|@username&gt; confirm "
+    "[custom_description]</code>\n"
+    f"The optional <code>custom_description</code> is capped at "
+    f"{VERIFY_CHAT_DESCRIPTION_LIMIT} characters. Telegram requires the bot to "
+    "be able to verify chats and validates the target chat."
+)
+
+VERIFY_CHAT_WARNING = (
+    "<b>verifychat confirmation required</b>\n"
+    "This will verify a Telegram chat with the bot's verification authority. "
+    "Review the chat identity, product rules, audit trail and rollback plan "
+    "before confirming. Run a separate remove verification action if a mistake "
+    "must be undone later.\n"
+    "Run <code>/verifychat &lt;chat_id|@username&gt; confirm "
+    "[custom_description]</code> to proceed."
 )
 
 USER_PROFILE_PHOTOS_USAGE = (
@@ -1837,6 +1867,7 @@ async def cmd_help(message: Message):
         "/sendgift - Send a Telegram gift with explicit confirmation (admin only)\n"
         "/giftpremium - Gift Telegram Premium with explicit Stars confirmation (admin only)\n"
         "/verifyuser - Verify a Telegram user with explicit confirmation (admin only)\n"
+        "/verifychat - Verify a Telegram chat with explicit confirmation (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
@@ -3103,6 +3134,45 @@ async def cmd_verify_user(message: Message):
         return
 
     await message.answer(f"Verified user {user_id}.")
+
+
+@router.message(Command("verifychat"))
+async def cmd_verify_chat(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_verify_chat_args(message.text or "")
+    if parsed is None:
+        await message.answer(VERIFY_CHAT_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, confirmed, custom_description = parsed
+    if not confirmed:
+        await message.answer(VERIFY_CHAT_WARNING, parse_mode="HTML")
+        return
+
+    if (
+        custom_description is not None
+        and len(custom_description) > VERIFY_CHAT_DESCRIPTION_LIMIT
+    ):
+        await message.answer(
+            f"Verification description is too long: {len(custom_description)} "
+            f"characters (max {VERIFY_CHAT_DESCRIPTION_LIMIT})."
+        )
+        return
+
+    try:
+        await perform_verify_chat(
+            message.bot,
+            chat_id=chat_id,
+            custom_description=custom_description,
+        )
+    except VerifyChatError as exc:
+        await message.answer(f"Could not verify chat: {exc}")
+        return
+
+    await message.answer(f"Verified chat {chat_id}.")
 
 
 @router.message(Command("userprofilephotos"))
@@ -5959,6 +6029,37 @@ def _parse_verify_user_args(text: str) -> tuple[int, bool, str | None] | None:
 
     custom_description = parts[3].strip() if len(parts) == 4 else None
     return user_id, True, custom_description or None
+
+
+def _parse_verify_chat_args(text: str) -> tuple[int | str, bool, str | None] | None:
+    """Parse ``/verifychat`` args into chat id and confirmation state."""
+    parts = (text or "").split(maxsplit=3)
+    if len(parts) not in (2, 3, 4):
+        return None
+
+    raw_chat_id = parts[1].strip()
+    if not raw_chat_id:
+        return None
+
+    chat_id: int | str
+    try:
+        chat_id = int(raw_chat_id)
+    except ValueError:
+        if not raw_chat_id.startswith("@") or len(raw_chat_id) == 1:
+            return None
+        chat_id = raw_chat_id
+
+    if chat_id == 0:
+        return None
+
+    if len(parts) == 2:
+        return chat_id, False, None
+
+    if parts[2].strip().lower() != VERIFY_CHAT_CONFIRM_KEYWORD:
+        return None
+
+    custom_description = parts[3].strip() if len(parts) == 4 else None
+    return chat_id, True, custom_description or None
 
 
 def _parse_user_profile_photos_args(text: str):
