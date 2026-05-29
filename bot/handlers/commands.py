@@ -341,6 +341,13 @@ from bot.services.get_business_account_gifts import (
     format_business_account_gifts,
     perform_get_business_account_gifts,
 )
+from bot.services.get_user_gifts import (
+    GET_USER_GIFTS_MAX_LIMIT,
+    GET_USER_GIFTS_MIN_LIMIT,
+    GetUserGiftsError,
+    format_user_gifts,
+    perform_get_user_gifts,
+)
 from bot.services.read_business_message import (
     ReadBusinessMessageError,
     perform_read_business_message,
@@ -857,6 +864,20 @@ GET_BUSINESS_ACCOUNT_GIFTS_USAGE = (
     "The id must come from a live business connection update or another "
     "trusted operator source. Telegram requires connection ownership and the "
     "current business right to view gifts and Stars."
+)
+
+GET_USER_GIFTS_USAGE = (
+    "<b>usergifts usage</b>\n"
+    "Fetches Telegram <code>getUserGifts</code> for a user. This is an "
+    "admin-only diagnostic because it exposes the user's owned gifts and "
+    "pagination cursor.\n"
+    "Usage: <code>/usergifts &lt;user_id&gt; "
+    "[exclude_unsaved=true|false] [exclude_saved=true|false] "
+    "[exclude_unlimited=true|false] [exclude_limited=true|false] "
+    "[exclude_unique=true|false] [sort_by_price=true|false] "
+    "[offset=&lt;offset&gt;] [limit=1..100]</code>\n"
+    "The user id must identify a Telegram user whose gifts can be viewed by "
+    "this bot account."
 )
 
 TRANSFER_BUSINESS_ACCOUNT_STARS_CONFIRM_KEYWORD = "confirm"
@@ -2162,6 +2183,7 @@ async def cmd_help(message: Message):
         "/setmanagedbotaccess - Update managed bot access settings by user id (admin only)\n"
         "/replacemanagedbottoken - Rotate a managed bot token by user id (admin only)\n"
         "/availablegifts - Fetch the current Telegram gift catalog (admin only)\n"
+        "/usergifts - Fetch Telegram gifts owned by a user (admin only)\n"
         "/sendgift - Send a Telegram gift with explicit confirmation (admin only)\n"
         "/giftpremium - Gift Telegram Premium with explicit Stars confirmation (admin only)\n"
         "/verifyuser - Verify a Telegram user with explicit confirmation (admin only)\n"
@@ -3221,6 +3243,34 @@ async def cmd_business_gifts(message: Message):
             gifts,
             business_connection_id=business_connection_id,
         ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("usergifts"))
+async def cmd_user_gifts(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_get_user_gifts_args(message.text or "")
+    if parsed is None:
+        await message.answer(GET_USER_GIFTS_USAGE, parse_mode="HTML")
+        return
+
+    user_id, options = parsed
+    try:
+        gifts = await perform_get_user_gifts(
+            message.bot,
+            user_id=user_id,
+            **options,
+        )
+    except GetUserGiftsError as exc:
+        await message.answer(f"Could not fetch the user gifts: {exc}")
+        return
+
+    await message.answer(
+        format_user_gifts(gifts, user_id=user_id),
         parse_mode="HTML",
     )
 
@@ -6601,6 +6651,59 @@ def _parse_get_business_account_gifts_args(
             return None
 
     return business_connection_id, options
+
+
+def _parse_get_user_gifts_args(
+    text: str,
+) -> tuple[int, dict[str, bool | str | int]] | None:
+    """Parse ``/usergifts`` args into user id and optional filters."""
+    parts = (text or "").split()
+    if len(parts) < 2:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+    if user_id <= 0:
+        return None
+
+    bool_keys = {
+        "exclude_unsaved",
+        "exclude_saved",
+        "exclude_unlimited",
+        "exclude_limited",
+        "exclude_unique",
+        "sort_by_price",
+    }
+    options: dict[str, bool | str | int] = {}
+    for option in parts[2:]:
+        if "=" not in option:
+            return None
+        key, value = option.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key in bool_keys:
+            parsed_value = _parse_bool_option(value)
+            if parsed_value is None:
+                return None
+            options[key] = parsed_value
+        elif key == "offset":
+            if not value:
+                return None
+            options[key] = value
+        elif key == "limit":
+            try:
+                limit = int(value)
+            except ValueError:
+                return None
+            if not (GET_USER_GIFTS_MIN_LIMIT <= limit <= GET_USER_GIFTS_MAX_LIMIT):
+                return None
+            options[key] = limit
+        else:
+            return None
+
+    return user_id, options
 
 
 def _parse_transfer_business_account_stars_args(
