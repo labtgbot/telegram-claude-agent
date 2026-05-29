@@ -319,6 +319,10 @@ from bot.services.verify_chat import (
     perform_verify_chat,
 )
 from bot.services.send_gift import SendGiftError, perform_send_gift
+from bot.services.create_invoice_link import (
+    CreateInvoiceLinkError,
+    perform_create_invoice_link,
+)
 from bot.services.send_invoice import SendInvoiceError, perform_send_invoice
 from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
 from bot.services.answer_web_app_query import (
@@ -909,6 +913,19 @@ SEND_INVOICE_USAGE = (
     "full billing flow.\n"
     "Usage: <code>/sendinvoice &lt;star_count&gt; &lt;payload&gt; &lt;title&gt; | "
     "&lt;description&gt;</code>\n"
+    "The payload must be unique per invoice and signed by the operator's "
+    "billing process before production use. Telegram payment updates "
+    "<code>pre_checkout_query</code> and <code>successful_payment</code> are "
+    "required to complete real purchases."
+)
+
+CREATE_INVOICE_LINK_USAGE = (
+    "<b>createinvoicelink usage</b>\n"
+    "Creates a Telegram Stars invoice link through "
+    "<code>createInvoiceLink</code>. This is an admin-only payments probe, not "
+    "a full billing flow.\n"
+    "Usage: <code>/createinvoicelink &lt;star_count&gt; &lt;payload&gt; "
+    "&lt;title&gt; | &lt;description&gt;</code>\n"
     "The payload must be unique per invoice and signed by the operator's "
     "billing process before production use. Telegram payment updates "
     "<code>pre_checkout_query</code> and <code>successful_payment</code> are "
@@ -2928,6 +2945,7 @@ async def cmd_help(message: Message):
         "/voice - Send a voice message into this chat as a playable audio clip (admin only)\n"
         "/paidmedia - Send a paid photo into this chat priced in Telegram Stars (admin only)\n"
         "/sendinvoice - Send a Telegram Stars test invoice (admin only)\n"
+        "/createinvoicelink - Create a Telegram Stars invoice link (admin only)\n"
         "/answerwebappquery - Answer a Web App query with an inline result (admin only)\n"
         "/savepreparedinline - Save a prepared inline message for a user (admin only)\n"
         "/savepreparedkeyboard - Save a prepared keyboard button for a Mini App user (admin only)\n"
@@ -3739,6 +3757,45 @@ async def cmd_send_invoice(message: Message):
         return
 
     await message.answer("Sent Telegram Stars invoice.")
+
+
+@router.message(Command("createinvoicelink"))
+async def cmd_create_invoice_link(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_create_invoice_link_args(message.text or "")
+    if parsed is None:
+        await message.answer(CREATE_INVOICE_LINK_USAGE, parse_mode="HTML")
+        return
+
+    star_count, payload, title, description = parsed
+    validation_error = _validate_create_invoice_link_args(
+        star_count=star_count,
+        payload=payload,
+        title=title,
+        description=description,
+    )
+    if validation_error is not None:
+        await message.answer(validation_error)
+        return
+
+    try:
+        invoice_link = await perform_create_invoice_link(
+            message.bot,
+            title=title,
+            description=description,
+            payload=payload,
+            provider_token="",
+            currency="XTR",
+            prices=[{"label": title, "amount": star_count}],
+        )
+    except CreateInvoiceLinkError as exc:
+        await message.answer(f"Could not create the invoice link: {exc}")
+        return
+
+    await message.answer(f"Created Telegram Stars invoice link:\n{invoice_link}")
 
 
 @router.message(Command("answerwebappquery"))
@@ -8607,6 +8664,11 @@ def _parse_send_invoice_args(text: str):
     return star_count, payload, title, description
 
 
+def _parse_create_invoice_link_args(text: str):
+    """Parse ``/createinvoicelink`` args."""
+    return _parse_send_invoice_args(text)
+
+
 def _validate_send_invoice_args(
     *, star_count: int, payload: str, title: str, description: str
 ) -> str | None:
@@ -8625,6 +8687,17 @@ def _validate_send_invoice_args(
             f"(max {INVOICE_DESCRIPTION_LIMIT})."
         )
     return None
+
+
+def _validate_create_invoice_link_args(
+    *, star_count: int, payload: str, title: str, description: str
+) -> str | None:
+    return _validate_send_invoice_args(
+        star_count=star_count,
+        payload=payload,
+        title=title,
+        description=description,
+    )
 
 
 def _parse_answer_web_app_query_args(text: str):
