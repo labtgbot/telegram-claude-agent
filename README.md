@@ -185,6 +185,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
 - `/businessconnection` – Fetch metadata for a connected Telegram business account by `business_connection_id` (admin only).
 - `/readbusinessmessage` – Mark one connected business-account message as read by `business_connection_id` and `message_id` (admin only).
+- `/deletebusinessmessages` – Delete connected business-account messages by `business_connection_id` and `message_ids` (admin only, requires confirmation).
 - `/managedbottoken` – Fetch the live token of a managed bot by its Telegram user id (admin only).
 - `/managedbotaccess` – Fetch access settings for a managed bot by its Telegram user id (admin only).
 - `/setmanagedbotaccess` – Update access settings for a managed bot by its Telegram user id (admin only, requires confirmation).
@@ -1369,6 +1370,32 @@ Usage: `/readbusinessmessage <business_connection_id> <message_id>`
 
 The command does not call `free-claude-code`. Rollback is operational: remove
 the admin chat from `TELEGRAM_ADMIN_CHAT_IDS` or remove the command handler.
+
+### Delete business messages
+
+The restricted `/deletebusinessmessages` command calls Telegram Bot API
+`deleteBusinessMessages` to delete 1-100 messages from a connected business
+account. Because the pinned `aiogram==3.3.0` does not expose a typed wrapper for
+this Bot API 10.0 method, the command uses an isolated raw Bot API helper
+(`bot/services/delete_business_messages.py`) over `httpx`.
+
+Usage: `/deletebusinessmessages <business_connection_id> <message_id> [message_id ...] confirm`
+
+- `business_connection_id` must come from a live business connection update or
+  another trusted operator source;
+- message ids may be separated by spaces or commas, must be positive integers,
+  and the command accepts at most 100 ids per call;
+- the command requires the explicit `confirm` keyword because Telegram deletes
+  the messages and this bot cannot restore them;
+- Telegram enforces connection ownership, current business rights and expired or
+  unknown connection handling; those errors are reported back without retry;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- structured logs contain only the connection id, message count and error shape.
+
+The command does not call `free-claude-code`. Rollback is operational only:
+remove the admin chat from `TELEGRAM_ADMIN_CHAT_IDS` or remove the command
+handler before further deletes.
 
 ### Get a managed bot token
 
