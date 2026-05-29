@@ -258,6 +258,7 @@ from bot.services.send_checklist import SendChecklistError, perform_send_checkli
 from bot.services.send_contact import perform_send_contact
 from bot.services.send_dice import perform_send_dice
 from bot.services.send_document import perform_send_document
+from bot.services.send_game import SendGameValidationError, perform_send_game
 from bot.services.send_live_photo import SendLivePhotoError, perform_send_live_photo
 from bot.services.send_location import perform_send_location
 from bot.services.send_media_group import perform_send_media_group
@@ -1112,6 +1113,15 @@ DICE_USAGE = (
     "Without an emoji a 🎲 die is sent. The optional emoji must be one of: "
     + " ".join(DICE_EMOJI)
     + "."
+)
+
+GAME_USAGE = (
+    "<b>game usage</b>\n"
+    "Sends a Telegram game into this chat via <code>sendGame</code>. The game "
+    "must already be created for this bot in BotFather, and Telegram identifies "
+    "it by its short name.\n"
+    "Usage: <code>/game &lt;game_short_name&gt;</code>\n"
+    "The short name is required and must be a single non-empty token."
 )
 
 CHAT_ACTION_USAGE = (
@@ -3071,6 +3081,7 @@ async def cmd_help(message: Message):
         "/declinesuggestedpost - Decline a direct messages suggested post (admin only)\n"
         "/contact - Send a phone contact (name and phone number) into this chat (admin only)\n"
         "/dice - Send an animated dice (random value) into this chat (admin only)\n"
+        "/game - Send a Telegram game by BotFather short name into this chat (admin only)\n"
         "/chataction - Show a chat action (e.g. typing…) in this chat (admin only)\n"
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/editcaption - Edit or clear a media message caption (admin only)\n"
@@ -4301,6 +4312,32 @@ async def cmd_dice(message: Message):
         return
 
     await message.answer("Sent dice.")
+
+
+@router.message(Command("game"))
+async def cmd_game(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_game_args(message.text or "")
+    if parsed is None:
+        await message.answer(GAME_USAGE, parse_mode="HTML")
+        return
+
+    (game_short_name,) = parsed
+    try:
+        await perform_send_game(
+            message.bot,
+            chat_id=message.chat.id,
+            game_short_name=game_short_name,
+        )
+    except (SendGameValidationError, TelegramAPIError) as exc:
+        await message.answer(f"Could not send the game: {exc}")
+        return
+
+    await message.answer("Sent game.")
+
 
 @router.message(Command("chataction"))
 async def cmd_chat_action(message: Message):
@@ -9267,6 +9304,19 @@ def _parse_dice_args(text: str):
         return None
 
     return (emoji,)
+
+
+def _parse_game_args(text: str):
+    """Parse ``/game`` args into a single-element ``(game_short_name,)`` tuple."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    game_short_name = parts[1].strip()
+    if not game_short_name:
+        return None
+
+    return (game_short_name,)
 
 
 def _parse_chat_action_args(text: str):

@@ -205,6 +205,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/declinesuggestedpost` – Decline a direct messages suggested post by chat/message id, with an optional creator comment (admin only).
 - `/contact` – Send a phone contact (a name with a phone number that can be saved to the address book) into this chat (admin only).
 - `/dice` – Send an animated dice (an emoji that shows a random value) into this chat (admin only).
+- `/game` – Send a Telegram game by its BotFather short name into this chat (admin only).
 - `/chataction` – Show a chat action (a transient status such as `typing…`) in this chat (admin only).
 - `/messagedraft` – Stream an ephemeral message draft (a ~30-second preview shown above the input field) into this private chat (admin only).
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
@@ -1786,6 +1787,29 @@ admin commands:
   **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
+
+### Send a game
+
+The restricted `/game` command calls Telegram Bot API `sendGame` through
+aiogram's typed `Bot.send_game()` wrapper. It lets an operator post an
+interactive Telegram game into the current chat by the BotFather
+`game_short_name`. The game must already be configured for this bot in
+BotFather; Telegram rejects unknown games or chats where the bot cannot post.
+
+Usage: `/game <game_short_name>`
+
+- the game is always sent into the chat where the command was issued;
+- `game_short_name` is required and must be a single non-empty token;
+- invalid input shows usage and does not contact Telegram;
+- Telegram permission, rate-limit, or game lookup errors are reported back to
+  the operator;
+- the command logs only the chat id, game short name, and sent message id.
+
+The command is an admin-only outbound action, so it requires a non-empty
+`TELEGRAM_ADMIN_CHAT_IDS` entry for the chat and never falls back to
+`TELEGRAM_ALLOWED_CHAT_IDS`. It does not call `free-claude-code`; rollback is
+deleting the game message in Telegram or disabling/removing the game in
+BotFather.
 
 ### Show a chat action
 
@@ -4056,6 +4080,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/poll` command makes the bot post an arbitrary native poll into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the question and the answer options are kept out of the structured logs.
 - The `/contact` command makes the bot post an arbitrary phone contact into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the phone number and the contact's name are kept out of the structured logs.
 - The `/dice` command makes the bot post an animated dice into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
+- The `/game` command makes the bot post a BotFather-configured Telegram game into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/chataction` command makes the bot show a chat action in the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the automatic `typing…` indicator shown while processing a request is independent of this command and is controlled by `TELEGRAM_CHAT_ACTION_ENABLED`.
 - The `/messagedraft` command makes the bot post an ephemeral message draft into the (private) chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the draft text is kept out of the structured logs. The automatic draft-based streaming preview is independent of this command and is controlled by `TELEGRAM_MESSAGE_DRAFT_ENABLED`.
 - The `/checklist` command makes the bot post an arbitrary checklist into the chat on behalf of a connected business account, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the title and task texts are kept out of the structured logs.
