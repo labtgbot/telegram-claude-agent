@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     telegram_bot_short_description_language_code: Optional[str] = None
     telegram_bot_description: Optional[str] = None
     telegram_bot_description_language_code: Optional[str] = None
+    telegram_bot_default_administrator_rights: Optional[str] = None
+    telegram_bot_default_administrator_rights_for_channels: Optional[bool] = None
 
     api_secret_token: Optional[str] = None
     rate_limit_requests_per_minute: int = 60

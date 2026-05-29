@@ -81,6 +81,10 @@ from bot.services.set_my_short_description import (
     format_set_my_short_description_result,
     perform_set_my_short_description,
 )
+from bot.services.set_my_default_administrator_rights import (
+    format_set_my_default_administrator_rights_result,
+    perform_set_my_default_administrator_rights,
+)
 from bot.services.get_my_name import (
     format_get_my_name_result,
     perform_get_my_name,
@@ -1148,6 +1152,20 @@ SET_MY_SHORT_DESCRIPTION_USAGE = (
     "characters."
 )
 
+SET_MY_DEFAULT_ADMINISTRATOR_RIGHTS_USAGE = (
+    "<b>setmydefaultrights usage</b>\n"
+    "Sets the default administrator rights requested when this bot is added as "
+    "an administrator via <code>setMyDefaultAdministratorRights</code>. Use "
+    "configuration <code>TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS</code> and "
+    "optional <code>TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS_FOR_CHANNELS</code> "
+    "for startup sync. This command changes the bot's public add-to-chat "
+    "defaults, is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setmydefaultrights &lt;moderator|manager|channel|clear&gt; "
+    "[for_channels=true|false]</code>\n"
+    "Use <code>clear</code> to reset Telegram defaults."
+)
+
 GET_MY_NAME_USAGE = (
     "<b>getmyname usage</b>\n"
     "Fetches the bot display name shown in Telegram clients via "
@@ -1720,6 +1738,7 @@ async def cmd_help(message: Message):
         "/setmydescription - Set or clear the bot description (admin only)\n"
         "/getmydescription - Fetch the bot description (admin only)\n"
         "/setmyshortdescription - Set or clear the bot short description (admin only)\n"
+        "/setmydefaultrights - Set default administrator rights requested by the bot (admin only)\n"
         "/getmyshortdescription - Fetch the bot short description (admin only)\n"
         "/setmycommands - Set the bot command list shown in Telegram clients (admin only)\n"
         "/getmycommands - Fetch and diagnose the bot command list (admin only)\n"
@@ -3498,6 +3517,41 @@ async def cmd_set_my_short_description(message: Message):
         format_set_my_short_description_result(
             short_description=short_description,
             language_code=language_code,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setmydefaultrights"))
+async def cmd_set_my_default_administrator_rights(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_my_default_administrator_rights_args(message.text or "")
+    if parsed is None:
+        await message.answer(
+            SET_MY_DEFAULT_ADMINISTRATOR_RIGHTS_USAGE,
+            parse_mode="HTML",
+        )
+        return
+
+    preset, rights, for_channels = parsed
+    try:
+        await perform_set_my_default_administrator_rights(
+            message.bot,
+            rights=rights,
+            for_channels=for_channels,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not set default administrator rights: {exc}")
+        return
+
+    await message.answer(
+        format_set_my_default_administrator_rights_result(
+            preset=preset,
+            rights=rights,
+            for_channels=for_channels,
         ),
         parse_mode="HTML",
     )
@@ -6675,6 +6729,86 @@ def _parse_set_my_short_description_args(text: str):
         return None
 
     return raw, language_code
+
+
+def _default_administrator_rights_for_preset(preset: str):
+    from aiogram.types import ChatAdministratorRights
+
+    normalized = (preset or "").strip().lower()
+    if normalized == "clear":
+        return None
+    if normalized == "moderator":
+        return ChatAdministratorRights(
+            is_anonymous=False,
+            can_manage_chat=True,
+            can_delete_messages=True,
+            can_manage_video_chats=True,
+            can_restrict_members=True,
+            can_promote_members=False,
+            can_change_info=False,
+            can_invite_users=True,
+            can_post_stories=False,
+            can_edit_stories=False,
+            can_delete_stories=False,
+            can_pin_messages=True,
+            can_manage_topics=True,
+        )
+    if normalized == "manager":
+        return ChatAdministratorRights(
+            is_anonymous=False,
+            can_manage_chat=True,
+            can_delete_messages=True,
+            can_manage_video_chats=True,
+            can_restrict_members=True,
+            can_promote_members=True,
+            can_change_info=True,
+            can_invite_users=True,
+            can_post_stories=False,
+            can_edit_stories=False,
+            can_delete_stories=False,
+            can_pin_messages=True,
+            can_manage_topics=True,
+        )
+    if normalized == "channel":
+        return ChatAdministratorRights(
+            is_anonymous=False,
+            can_manage_chat=True,
+            can_manage_video_chats=False,
+            can_restrict_members=False,
+            can_promote_members=False,
+            can_change_info=True,
+            can_invite_users=True,
+            can_post_messages=True,
+            can_edit_messages=True,
+            can_delete_messages=True,
+            can_post_stories=True,
+            can_edit_stories=True,
+            can_delete_stories=True,
+        )
+    return False
+
+
+def _parse_set_my_default_administrator_rights_args(text: str):
+    """Parse ``/setmydefaultrights`` args into preset, rights and target flag."""
+    parts = (text or "").split()
+    if len(parts) < 2 or len(parts) > 3:
+        return None
+
+    preset = parts[1].strip().lower()
+    rights = _default_administrator_rights_for_preset(preset)
+    if rights is False:
+        return None
+
+    for_channels = None
+    if len(parts) == 3:
+        key, separator, value = parts[2].partition("=")
+        if key != "for_channels" or separator != "=":
+            return None
+        for_channels = _parse_bool_value(value)
+        if for_channels is None:
+            return None
+
+    return preset, rights, for_channels
 
 
 def _parse_get_my_name_args(text: str):
