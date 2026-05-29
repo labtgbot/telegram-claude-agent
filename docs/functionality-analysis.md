@@ -1955,6 +1955,42 @@ Telegram. Интеграционные проверки opt-in, потому ч�
 `/businessgifts` также проходит через общий rate-limit pipeline команд.
 `/transferbusinessstars` также проходит через общий rate-limit pipeline команд.
 
+Команда `/transfergift <business_connection_id> <owned_gift_id>
+<new_owner_chat_id> [star_count=<stars>] confirm` передает уникальный gift,
+которым владеет подключенный business account, другому user/channel chat
+методом `transferGift` (Bot API 10.0). Метод принимает live
+`business_connection_id`, `owned_gift_id`, обязательный integer
+`new_owner_chat_id` и опциональный `star_count` для оплаты transfer fee
+Telegram Stars. Required update types для самого вызова не нужны, но
+`business_connection_id` и `owned_gift_id` должны прийти из business connection
+update, `/businessgifts` или другого доверенного operator source. Telegram на
+своей стороне проверяет, что подключение активно, принадлежит боту, gift
+является transferable unique gift, новый владелец допустим, а текущие business
+rights включают возможность transfer/upgrade gifts; если fee не prepaid,
+также нужны Stars на business balance и право использовать их.
+
+Pinned `aiogram==3.3.0` не имеет typed wrapper для `transferGift`, поэтому
+реализация идет через изолированный raw Bot API helper
+`bot/services/transfer_gift.py`. Helper POST'ит JSON payload на endpoint
+`transferGift` через `httpx`, берет URL через `bot.session.api.api_url(...)`
+для поддержки local Bot API server и поднимает validation errors,
+транспортные ошибки, невалидный JSON, Telegram `ok: false` и неожиданный
+result как `TransferGiftError`. Успешным считается только Telegram result
+`true`.
+
+Сценарий намеренно отделен от read-only `/businessgifts` и от
+`/convertgiftstars`/`/upgradegift`: оператор сначала проверяет ownership и fee,
+затем запускает отдельную команду с обязательным `confirm`. Security/privacy
+impact: команда меняет владельца ценного актива и может тратить Telegram
+Stars, поэтому доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; при пустом admin allowlist команда
+отключена. Structured logs содержат `business_connection_id`, `owned_gift_id`,
+target chat id, `star_count` и форму ошибки, но не полный gift payload.
+Rollback операционный: перевод не может быть отменен ботом; нужно договориться
+с новым владельцем о встречном transfer или отключить поверхность, убрав admin
+chat из `TELEGRAM_ADMIN_CHAT_IDS`/удалив handler.
+`/transfergift` также проходит через общий rate-limit pipeline команд.
+
 Команда `/chatgifts <chat_id|@channelusername>
 [exclude_unsaved=true|false] [exclude_saved=true|false]
 [exclude_unlimited=true|false] [exclude_limited_upgradable=true|false]

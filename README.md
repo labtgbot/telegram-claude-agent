@@ -190,6 +190,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/transferbusinessstars` – Transfer Telegram Stars from a connected business account to the bot balance (admin only, requires confirmation).
 - `/convertgiftstars` – Convert an owned gift of a connected business account to Telegram Stars (admin only, requires confirmation).
 - `/upgradegift` – Upgrade an owned gift of a connected business account with Telegram Stars (admin only, requires confirmation).
+- `/transfergift` – Transfer a unique owned gift of a connected business account to another chat (admin only, requires confirmation).
 - `/readbusinessmessage` – Mark one connected business-account message as read by `business_connection_id` and `message_id` (admin only).
 - `/setbusinessaccountname` – Set the first and optional last name of a connected business account by `business_connection_id` (admin only).
 - `/setbusinessaccountbio` – Set or clear the bio of a connected business account by `business_connection_id` (admin only).

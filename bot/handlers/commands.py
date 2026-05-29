@@ -405,6 +405,11 @@ from bot.services.upgrade_gift import (
     format_upgrade_gift_result,
     perform_upgrade_gift,
 )
+from bot.services.transfer_gift import (
+    TransferGiftError,
+    format_transfer_gift_result,
+    perform_transfer_gift,
+)
 from bot.services.set_business_account_username import (
     MAX_BUSINESS_ACCOUNT_USERNAME_LENGTH,
     MIN_BUSINESS_ACCOUNT_USERNAME_LENGTH,
@@ -988,6 +993,34 @@ UPGRADE_GIFT_WARNING = (
     "Run <code>/upgradegift &lt;business_connection_id&gt; "
     "&lt;owned_gift_id&gt; [keep_original_details=true|false] confirm</code> "
     "to proceed."
+)
+
+TRANSFER_GIFT_CONFIRM_KEYWORD = "confirm"
+
+TRANSFER_GIFT_USAGE = (
+    "<b>transfergift usage</b>\n"
+    "Transfers one unique owned gift from a connected business account to a "
+    "user or channel chat via <code>transferGift</code>. This is a destructive "
+    "admin-only business-mode operation because gift ownership changes and "
+    "Telegram Stars can be spent for the transfer fee.\n"
+    "Usage: <code>/transfergift &lt;business_connection_id&gt; "
+    "&lt;owned_gift_id&gt; &lt;new_owner_chat_id&gt; "
+    "[star_count=&lt;stars&gt;] confirm</code>\n"
+    "The business connection id and owned gift id must come from "
+    "<code>/businessgifts</code> or another trusted operator source. Telegram "
+    "requires connection ownership and the current business right to transfer "
+    "and upgrade gifts; if a transfer fee is required, the business account "
+    "must also have enough Stars and the bot must be allowed to use them."
+)
+
+TRANSFER_GIFT_WARNING = (
+    "<b>transfergift confirmation required</b>\n"
+    "This will transfer the selected unique gift to another chat and cannot be "
+    "rolled back by this bot. Review connection ownership, the gift id, target "
+    "chat and optional Star fee before confirming.\n"
+    "Run <code>/transfergift &lt;business_connection_id&gt; "
+    "&lt;owned_gift_id&gt; &lt;new_owner_chat_id&gt; "
+    "[star_count=&lt;stars&gt;] confirm</code> to proceed."
 )
 
 READ_BUSINESS_MESSAGE_USAGE = (
@@ -2257,6 +2290,7 @@ async def cmd_help(message: Message):
         "/transferbusinessstars - Transfer connected business account Stars to the bot balance (admin only)\n"
         "/convertgiftstars - Convert a connected business account owned gift to Telegram Stars (admin only)\n"
         "/upgradegift - Upgrade a connected business account owned gift with Telegram Stars (admin only)\n"
+        "/transfergift - Transfer a connected business account unique gift to another chat (admin only)\n"
         "/readbusinessmessage - Mark a business message as read by business connection id and message id (admin only)\n"
         "/setbusinessaccountname - Set a connected business account name by business connection id (admin only)\n"
         "/setbusinessaccountusername - Set a connected business account username by business connection id (admin only)\n"
@@ -3504,6 +3538,47 @@ async def cmd_upgrade_gift(message: Message):
             business_connection_id=business_connection_id,
             owned_gift_id=owned_gift_id,
             keep_original_details=keep_original_details,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("transfergift"))
+async def cmd_transfer_gift(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_transfer_gift_args(message.text or "")
+    if parsed is None:
+        await message.answer(TRANSFER_GIFT_USAGE, parse_mode="HTML")
+        return
+
+    business_connection_id, owned_gift_id, new_owner_chat_id, star_count, confirmed = (
+        parsed
+    )
+    if not confirmed:
+        await message.answer(TRANSFER_GIFT_WARNING, parse_mode="HTML")
+        return
+
+    try:
+        await perform_transfer_gift(
+            message.bot,
+            business_connection_id=business_connection_id,
+            owned_gift_id=owned_gift_id,
+            new_owner_chat_id=new_owner_chat_id,
+            star_count=star_count,
+        )
+    except TransferGiftError as exc:
+        await message.answer(f"Could not transfer the gift: {exc}")
+        return
+
+    await message.answer(
+        format_transfer_gift_result(
+            business_connection_id=business_connection_id,
+            owned_gift_id=owned_gift_id,
+            new_owner_chat_id=new_owner_chat_id,
+            star_count=star_count,
         ),
         parse_mode="HTML",
     )
@@ -7040,6 +7115,59 @@ def _parse_upgrade_gift_args(
         keep_original_details = parsed_value
 
     return business_connection_id, owned_gift_id, keep_original_details, confirmed
+
+
+def _parse_transfer_gift_args(
+    text: str,
+) -> tuple[str, str, int, int | None, bool] | None:
+    """Parse transfer gift args into connection id, gift id, target and options."""
+    parts = (text or "").split()
+    if len(parts) not in {4, 5, 6}:
+        return None
+
+    business_connection_id = parts[1].strip()
+    owned_gift_id = parts[2].strip()
+    if not business_connection_id or not owned_gift_id:
+        return None
+
+    try:
+        new_owner_chat_id = int(parts[3])
+    except ValueError:
+        return None
+    if new_owner_chat_id == 0:
+        return None
+
+    star_count: int | None = None
+    confirmed = False
+    for option in parts[4:]:
+        if option.lower() == TRANSFER_GIFT_CONFIRM_KEYWORD:
+            if confirmed:
+                return None
+            confirmed = True
+            continue
+
+        if "=" not in option:
+            return None
+        key, value = option.split("=", 1)
+        if key.strip() != "star_count":
+            return None
+        if star_count is not None:
+            return None
+        try:
+            parsed_star_count = int(value.strip())
+        except ValueError:
+            return None
+        if parsed_star_count < 0:
+            return None
+        star_count = parsed_star_count
+
+    return (
+        business_connection_id,
+        owned_gift_id,
+        new_owner_chat_id,
+        star_count,
+        confirmed,
+    )
 
 
 def _parse_read_business_message_args(text: str) -> tuple[str, int] | None:
