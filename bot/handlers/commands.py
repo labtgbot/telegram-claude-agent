@@ -215,6 +215,12 @@ from bot.services.verify_chat import (
 )
 from bot.services.send_gift import SendGiftError, perform_send_gift
 from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
+from bot.services.post_story import (
+    POST_STORY_ACTIVE_PERIODS,
+    POST_STORY_CAPTION_LIMIT,
+    PostStoryError,
+    perform_post_story,
+)
 from bot.services.send_photo import perform_send_photo
 from bot.services.send_poll import perform_send_poll
 from bot.services.send_venue import perform_send_venue
@@ -849,6 +855,20 @@ CHECKLIST_USAGE = (
     "Provide 1-30 tasks. The title is limited to 255 characters and each task "
     "to 100 characters; the title and every task may contain spaces and must be "
     "non-empty."
+)
+
+POST_STORY_USAGE = (
+    "<b>poststory usage</b>\n"
+    "Posts a photo story on behalf of a connected Telegram business account. "
+    "This is an admin-only publishing flow, separate from Claude chat replies. "
+    "The bot must have the <code>can_manage_stories</code> business right for "
+    "the live business connection id.\n"
+    "Usage: <code>/poststory &lt;business_connection_id&gt; &lt;active_period&gt; "
+    "&lt;photo_file_id&gt; [caption]</code>\n"
+    "The active period must be one of 21600, 43200, 86400 or 172800 seconds. "
+    f"The caption is optional and limited to {POST_STORY_CAPTION_LIMIT} "
+    "characters. This command accepts a Telegram photo file_id; direct upload "
+    "and URL story publishing are intentionally not exposed here."
 )
 
 BUSINESS_CONNECTION_USAGE = (
@@ -2285,6 +2305,7 @@ async def cmd_help(message: Message):
         "/chataction - Show a chat action (e.g. typing…) in this chat (admin only)\n"
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
+        "/poststory - Post a photo story via a business connection (admin only)\n"
         "/businessstarbalance - Fetch a connected business account Telegram Stars balance by business connection id (admin only)\n"
         "/businessgifts - Fetch connected business account gifts by business connection id (admin only)\n"
         "/transferbusinessstars - Transfer connected business account Stars to the bot balance (admin only)\n"
@@ -3276,6 +3297,49 @@ async def cmd_checklist(message: Message):
         return
 
     await message.answer(f"Sent checklist with {len(tasks)} tasks.")
+
+
+@router.message(Command("poststory"))
+async def cmd_post_story(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_post_story_args(message.text or "")
+    if parsed is None:
+        await message.answer(POST_STORY_USAGE, parse_mode="HTML")
+        return
+
+    business_connection_id, active_period, photo, caption = parsed
+    if active_period not in POST_STORY_ACTIVE_PERIODS:
+        allowed = ", ".join(str(value) for value in POST_STORY_ACTIVE_PERIODS)
+        await message.answer(f"Active period must be one of: {allowed}.")
+        return
+
+    if caption is not None and len(caption) > POST_STORY_CAPTION_LIMIT:
+        await message.answer(
+            f"Caption is too long: {len(caption)} characters "
+            f"(max {POST_STORY_CAPTION_LIMIT})."
+        )
+        return
+
+    try:
+        story = await perform_post_story(
+            message.bot,
+            business_connection_id=business_connection_id,
+            content={"type": "photo", "photo": photo},
+            active_period=active_period,
+            caption=caption,
+        )
+    except PostStoryError as exc:
+        await message.answer(f"Could not post the story: {exc}")
+        return
+
+    story_id = story.get("id")
+    await message.answer(
+        f"Posted story {story_id}." if story_id is not None else "Posted story."
+    )
+
 
 @router.message(Command("businessconnection"))
 async def cmd_business_connection(message: Message):
@@ -6843,6 +6907,30 @@ def _parse_checklist_args(text: str):
         return None
 
     return business_connection_id, title, tasks
+
+
+def _parse_post_story_args(text: str):
+    """Parse ``/poststory`` args into business id, active period, photo, caption."""
+    parts = (text or "").split(maxsplit=4)
+    if len(parts) < 4:
+        return None
+
+    business_connection_id = parts[1].strip()
+    active_period_raw = parts[2].strip()
+    photo = parts[3].strip()
+    if not business_connection_id or not active_period_raw or not photo:
+        return None
+
+    try:
+        active_period = int(active_period_raw)
+    except ValueError:
+        return None
+
+    caption = parts[4].strip() if len(parts) >= 5 else None
+    if caption == "":
+        caption = None
+
+    return business_connection_id, active_period, photo, caption
 
 
 def _parse_business_connection_args(text: str) -> str | None:

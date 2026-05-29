@@ -183,6 +183,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/chataction` – Show a chat action (a transient status such as `typing…`) in this chat (admin only).
 - `/messagedraft` – Stream an ephemeral message draft (a ~30-second preview shown above the input field) into this private chat (admin only).
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
+- `/poststory` – Post a photo story on behalf of a connected business account by `business_connection_id` (admin only).
 - `/businessconnection` – Fetch metadata for a connected Telegram business account by `business_connection_id` (admin only).
 - `/businessstarbalance` – Fetch the Telegram Stars balance of a connected business account by `business_connection_id` (admin only).
 - `/businessgifts` – Fetch owned gifts of a connected business account by `business_connection_id` (admin only).
@@ -1333,6 +1334,35 @@ account, it is guarded like the other admin commands:
   **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
+
+### Post a business story
+
+The restricted `/poststory` command calls Telegram Bot API `postStory`
+(introduced in Bot API 10.0). Because the pinned `aiogram==3.3.0` predates this
+method and ships no typed wrapper, the command goes through an **isolated raw
+Bot API helper** (`bot/services/post_story.py`) that POSTs the request over
+`httpx`. This is a dedicated admin publishing flow for stories and is not mixed
+with Claude chat replies.
+
+`postStory` posts on behalf of a managed business account, so the bot must have
+the `can_manage_stories` business bot right for the supplied live
+`business_connection_id`. The command currently exposes the safest minimal
+content path: a photo story from a Telegram `photo_file_id`.
+
+Usage: `/poststory <business_connection_id> <active_period> <photo_file_id> [caption]`
+
+- `active_period` must be one of `21600`, `43200`, `86400` or `172800` seconds;
+- the optional caption is limited to 2048 characters after Telegram entity
+  parsing;
+- the story content is sent as `{"type": "photo", "photo": "<photo_file_id>"}`;
+- operator-provided caption text is kept out of structured logs; logs include
+  only business connection id, active period, option flags and returned story id;
+- a missing or expired `business_connection_id`, missing `can_manage_stories`
+  right, invalid media or rate limit response is reported back to the operator.
+
+Rollback is operational: delete or archive the posted story from the managed
+business account in Telegram. The separate Bot API `deleteStory` method is
+tracked independently and is not invoked by `/poststory`.
 
 ### Get a business connection
 
