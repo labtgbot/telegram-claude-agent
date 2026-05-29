@@ -550,6 +550,11 @@ from bot.services.delete_message import (
     format_delete_message_result,
     perform_delete_message,
 )
+from bot.services.delete_messages import (
+    DeleteMessagesError,
+    format_delete_messages_result,
+    perform_delete_messages,
+)
 from bot.services.unpin_all_chat_messages import (
     format_unpin_all_chat_messages_result,
     perform_unpin_all_chat_messages,
@@ -1839,6 +1844,33 @@ DELETE_MESSAGE_WARNING = (
     "bot. Review the target chat id and message id before confirming.\n"
     "Run <code>/deletemessage &lt;chat_id&gt; &lt;message_id&gt; confirm</code> "
     "to proceed."
+)
+
+DELETE_MESSAGES_CONFIRM_KEYWORD = "confirm"
+
+DELETE_MESSAGES_USAGE = (
+    "<b>deletemessages usage</b>\n"
+    "Deletes messages from the specified chat via <code>deleteMessages</code>. "
+    "Telegram accepts up to 100 ids per Bot API request; this command chunks "
+    "larger cleanups and reports partial chunk errors. This is a destructive "
+    "moderation operation: the bot must be allowed to delete the target "
+    "messages, and Telegram may reject old messages, recent private-chat dice "
+    "messages, or messages outside the bot's rights. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/deletemessages &lt;chat_id&gt; &lt;message_id&gt; "
+    "[message_id ...] confirm</code>\n"
+    "Message ids may be separated by spaces or commas. Rollback is not "
+    "available through Telegram Bot API; restore the content manually if "
+    "needed."
+)
+
+DELETE_MESSAGES_WARNING = (
+    "<b>deletemessages confirmation required</b>\n"
+    "This will delete Telegram messages and cannot be rolled back by this bot. "
+    "Review the target chat id and message ids before confirming.\n"
+    "Run <code>/deletemessages &lt;chat_id&gt; &lt;message_id&gt; "
+    "[message_id ...] confirm</code> to proceed."
 )
 
 UNPIN_ALL_CHAT_MESSAGES_USAGE = (
@@ -5419,6 +5451,38 @@ async def cmd_delete_message(message: Message):
 
     await message.answer(
         format_delete_message_result(chat_id=chat_id, message_id=message_id),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("deletemessages"))
+async def cmd_delete_messages(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_delete_messages_args(message.text or "")
+    if parsed is None:
+        await message.answer(DELETE_MESSAGES_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, message_ids, confirmed = parsed
+    if not confirmed:
+        await message.answer(DELETE_MESSAGES_WARNING, parse_mode="HTML")
+        return
+
+    try:
+        result = await perform_delete_messages(
+            message.bot,
+            chat_id=chat_id,
+            message_ids=message_ids,
+        )
+    except DeleteMessagesError as exc:
+        await message.answer(f"Could not delete the messages: {exc}")
+        return
+
+    await message.answer(
+        format_delete_messages_result(result),
         parse_mode="HTML",
     )
 
@@ -10072,6 +10136,38 @@ def _parse_delete_message_args(text: str):
         return None
 
     return chat_id, message_id, confirmed
+
+
+def _parse_delete_messages_args(text: str) -> tuple[int, list[int], bool] | None:
+    """Parse ``/deletemessages`` args into chat id, message ids and confirm flag."""
+    parts = (text or "").split()
+    if len(parts) < 3:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+    except ValueError:
+        return None
+
+    confirmed = parts[-1].lower() == DELETE_MESSAGES_CONFIRM_KEYWORD
+    id_parts = parts[2:-1] if confirmed else parts[2:]
+    raw_ids = [
+        raw_id
+        for part in id_parts
+        for raw_id in part.split(",")
+        if raw_id.strip()
+    ]
+    if not raw_ids:
+        return None
+
+    try:
+        message_ids = [int(raw_id) for raw_id in raw_ids]
+    except ValueError:
+        return None
+    if any(message_id <= 0 for message_id in message_ids):
+        return None
+
+    return chat_id, message_ids, confirmed
 
 
 def _parse_unpin_all_chat_messages_args(text: str):
