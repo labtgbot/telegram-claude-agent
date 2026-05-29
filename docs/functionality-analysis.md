@@ -241,7 +241,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 4. Управление сообщениями: `editMessageCaption`, `editMessageMedia`,
    `editMessageLiveLocation` и `stopMessageLiveLocation` (уже интегрированы),
    `editMessageChecklist` (уже интегрирован), `editMessageReplyMarkup`, `stopPoll`,
-   `approveSuggestedPost`, `declineSuggestedPost`, `deleteMessage`,
+   `approveSuggestedPost` (уже интегрирован), `declineSuggestedPost`, `deleteMessage`,
    `deleteMessages`, `deleteMessageReaction`, `deleteAllMessageReactions`.
 5. Интерактивность: полноценные `answerInlineQuery` ответы через Claude,
    handler для `chosen_inline_result`, `answerCallbackQuery` и inline keyboards
@@ -1499,6 +1499,44 @@ target chat/message id, итоговый poll id и количество options
 
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/stoppoll` так же, как к другим командам.
+
+### approveSuggestedPost
+
+Команда `/approvesuggestedpost` вызывает raw Bot API helper для метода Telegram
+`approveSuggestedPost`, потому что pinned `aiogram==3.3.0` не содержит typed
+wrapper для Bot API 10.0. По официальной документации метод требует `chat_id`
+direct messages chat и `message_id` suggested post, опционально принимает
+`send_date` как Unix timestamp и возвращает `True` при успехе.
+
+Выбран отдельный admin message-management сценарий: оператор одобряет suggested
+post по chat/message id из trusted update или другого operator-controlled
+источника. Синтаксис: `/approvesuggestedpost <chat_id> <message_id> [send_date]`.
+`chat_id` принимает numeric id или username вида `@channel`, `message_id` должен
+быть положительным числом, `send_date` при наличии должен быть положительным Unix
+time. Если `send_date` не передан, Telegram использует дату публикации из самой
+suggestion.
+
+Telegram сам проверяет ключевые ограничения: целевое сообщение должно быть
+approvable suggested post, бот должен иметь необходимые права в direct messages
+chat, а указанный `send_date` должен соответствовать правилам Telegram. При
+ошибках Telegram команда возвращает текст ошибки в admin chat и пишет warning
+log с target chat/message id без пользовательского содержимого suggested post.
+Success log содержит только target chat/message id и факт наличия `send_date`.
+
+`/approvesuggestedpost` закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при невалидном вводе команда показывает usage или validation error и не
+  обращается к Telegram;
+- rollback для уже одобренного suggested post отсутствует в этом helper:
+  отмена/изменение публикации должна выполняться отдельным поддерживаемым
+  Telegram flow, если он применим к конкретному состоянию сообщения.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/approvesuggestedpost` так же, как к другим
+командам.
 
 ### sendContact
 

@@ -271,6 +271,11 @@ from bot.services.stop_poll import (
     format_stop_poll_result,
     perform_stop_poll,
 )
+from bot.services.approve_suggested_post import (
+    ApproveSuggestedPostError,
+    format_approve_suggested_post_result,
+    perform_approve_suggested_post,
+)
 from bot.services.send_venue import perform_send_venue
 from bot.services.send_video import perform_send_video
 from bot.services.send_video_note import perform_send_video_note
@@ -870,6 +875,18 @@ STOP_POLL_USAGE = (
     "returning the final poll state. Pass the chat id and the poll message id.\n"
     "Usage: <code>/stoppoll &lt;chat_id&gt; &lt;message_id&gt;</code>\n"
     "The bot must have sent the poll, and the poll must still be open."
+)
+
+APPROVE_SUGGESTED_POST_USAGE = (
+    "<b>approvesuggestedpost usage</b>\n"
+    "Approves a suggested post in a direct messages chat via "
+    "<code>approveSuggestedPost</code>. Pass the direct messages chat id, the "
+    "suggested post message id, and optionally a future Unix send date.\n"
+    "Usage: <code>/approvesuggestedpost &lt;chat_id&gt; &lt;message_id&gt; "
+    "[send_date]</code>\n"
+    "The bot must have the required Telegram rights for the direct messages "
+    "chat. Without <code>send_date</code>, Telegram publishes the approved post "
+    "at the date chosen in the suggestion."
 )
 
 CONTACT_NAME_SEPARATOR = "|"
@@ -2509,6 +2526,7 @@ async def cmd_help(message: Message):
         "/location - Send a point on the map into this chat as a location (admin only)\n"
         "/venue - Send a venue (named place with title and address) into this chat (admin only)\n"
         "/poll - Send a native poll (question with answer options) into this chat (admin only)\n"
+        "/approvesuggestedpost - Approve a direct messages suggested post (admin only)\n"
         "/contact - Send a phone contact (name and phone number) into this chat (admin only)\n"
         "/dice - Send an animated dice (random value) into this chat (admin only)\n"
         "/chataction - Show a chat action (e.g. typing…) in this chat (admin only)\n"
@@ -3469,6 +3487,38 @@ async def cmd_stop_poll(message: Message):
 
     await message.answer(
         format_stop_poll_result(poll, chat_id=chat_id, message_id=message_id),
+        parse_mode="HTML",
+    )
+
+@router.message(Command("approvesuggestedpost"))
+async def cmd_approve_suggested_post(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_approve_suggested_post_args(message.text or "")
+    if parsed is None:
+        await message.answer(APPROVE_SUGGESTED_POST_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, message_id, send_date = parsed
+    try:
+        await perform_approve_suggested_post(
+            message.bot,
+            chat_id=chat_id,
+            message_id=message_id,
+            send_date=send_date,
+        )
+    except ApproveSuggestedPostError as exc:
+        await message.answer(f"Could not approve the suggested post: {exc}")
+        return
+
+    await message.answer(
+        format_approve_suggested_post_result(
+            chat_id=chat_id,
+            message_id=message_id,
+            send_date=send_date,
+        ),
         parse_mode="HTML",
     )
 
@@ -8044,6 +8094,43 @@ def _parse_message_management_target_args(text: str):
     if message_id <= 0:
         return None
     return {"chat_id": chat_id, "message_id": message_id}
+
+
+def _parse_approve_suggested_post_args(
+    text: str,
+) -> tuple[int | str, int, int | None] | None:
+    """Parse ``/approvesuggestedpost`` args into chat id, message id and date."""
+    parts = (text or "").split()
+    if len(parts) not in (3, 4):
+        return None
+
+    raw_chat_id = parts[1].strip()
+    if not raw_chat_id:
+        return None
+    try:
+        chat_id: int | str = int(raw_chat_id)
+    except ValueError:
+        if not raw_chat_id.startswith("@"):
+            return None
+        chat_id = raw_chat_id
+
+    try:
+        message_id = int(parts[2])
+    except ValueError:
+        return None
+    if message_id <= 0:
+        return None
+
+    send_date = None
+    if len(parts) == 4:
+        try:
+            send_date = int(parts[3])
+        except ValueError:
+            return None
+        if send_date <= 0:
+            return None
+
+    return chat_id, message_id, send_date
 
 
 def _parse_delete_story_args(text: str):
