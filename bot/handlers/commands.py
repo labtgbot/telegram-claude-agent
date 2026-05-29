@@ -221,6 +221,7 @@ from bot.services.post_story import (
     PostStoryError,
     perform_post_story,
 )
+from bot.services.repost_story import RepostStoryError, perform_repost_story
 from bot.services.send_photo import perform_send_photo
 from bot.services.send_poll import perform_send_poll
 from bot.services.send_venue import perform_send_venue
@@ -869,6 +870,18 @@ POST_STORY_USAGE = (
     f"The caption is optional and limited to {POST_STORY_CAPTION_LIMIT} "
     "characters. This command accepts a Telegram photo file_id; direct upload "
     "and URL story publishing are intentionally not exposed here."
+)
+
+REPOST_STORY_USAGE = (
+    "<b>repoststory usage</b>\n"
+    "Reposts a story on behalf of a connected Telegram business account from "
+    "another business account managed by this bot. This is an admin-only "
+    "publishing flow, separate from Claude chat replies. The bot must have the "
+    "<code>can_manage_stories</code> business right for both business accounts, "
+    "and the source story must have been posted or reposted by this bot.\n"
+    "Usage: <code>/repoststory &lt;business_connection_id&gt; "
+    "&lt;from_chat_id&gt; &lt;from_story_id&gt; &lt;active_period&gt;</code>\n"
+    "The active period must be one of 21600, 43200, 86400 or 172800 seconds."
 )
 
 BUSINESS_CONNECTION_USAGE = (
@@ -2306,6 +2319,7 @@ async def cmd_help(message: Message):
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/poststory - Post a photo story via a business connection (admin only)\n"
+        "/repoststory - Repost a story between managed business accounts (admin only)\n"
         "/businessstarbalance - Fetch a connected business account Telegram Stars balance by business connection id (admin only)\n"
         "/businessgifts - Fetch connected business account gifts by business connection id (admin only)\n"
         "/transferbusinessstars - Transfer connected business account Stars to the bot balance (admin only)\n"
@@ -3338,6 +3352,43 @@ async def cmd_post_story(message: Message):
     story_id = story.get("id")
     await message.answer(
         f"Posted story {story_id}." if story_id is not None else "Posted story."
+    )
+
+
+@router.message(Command("repoststory"))
+async def cmd_repost_story(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_repost_story_args(message.text or "")
+    if parsed is None:
+        await message.answer(REPOST_STORY_USAGE, parse_mode="HTML")
+        return
+
+    business_connection_id, from_chat_id, from_story_id, active_period = parsed
+    if active_period not in POST_STORY_ACTIVE_PERIODS:
+        allowed = ", ".join(str(value) for value in POST_STORY_ACTIVE_PERIODS)
+        await message.answer(f"Active period must be one of: {allowed}.")
+        return
+
+    try:
+        story = await perform_repost_story(
+            message.bot,
+            business_connection_id=business_connection_id,
+            from_chat_id=from_chat_id,
+            from_story_id=from_story_id,
+            active_period=active_period,
+        )
+    except RepostStoryError as exc:
+        await message.answer(f"Could not repost the story: {exc}")
+        return
+
+    story_id = story.get("id")
+    await message.answer(
+        f"Reposted story {story_id}."
+        if story_id is not None
+        else "Reposted story."
     )
 
 
@@ -6931,6 +6982,29 @@ def _parse_post_story_args(text: str):
         caption = None
 
     return business_connection_id, active_period, photo, caption
+
+
+def _parse_repost_story_args(text: str):
+    """Parse ``/repoststory`` args into business id, source story and period."""
+    parts = (text or "").split(maxsplit=4)
+    if len(parts) != 5:
+        return None
+
+    business_connection_id = parts[1].strip()
+    if not business_connection_id:
+        return None
+
+    try:
+        from_chat_id = int(parts[2].strip())
+        from_story_id = int(parts[3].strip())
+        active_period = int(parts[4].strip())
+    except ValueError:
+        return None
+
+    if from_chat_id == 0 or from_story_id <= 0:
+        return None
+
+    return business_connection_id, from_chat_id, from_story_id, active_period
 
 
 def _parse_business_connection_args(text: str) -> str | None:
