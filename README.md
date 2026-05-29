@@ -180,6 +180,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/replacestickerinset <user_id> <name> <old_sticker_file_id> <sticker_format> <new_sticker_file_id> <emoji[,emoji...]>` – Replace a sticker in an existing sticker set (admin only).
 - `/setstickerposition <sticker_file_id> <position>` – Move a sticker inside its sticker set by zero-based position (admin only).
 - `/setstickeremojis <sticker_file_id> <emoji[,emoji...]>` – Replace the emoji list for a sticker in its sticker set (admin only).
+- `/setstickermaskposition <sticker_file_id> <point> <x_shift> <y_shift> <scale>` – Change a mask sticker position in its sticker set (admin only). Pass `/setstickermaskposition <sticker_file_id> -` to clear it.
 - `/setstickerkeywords <sticker_file_id> <keyword[,keyword...]|->` – Replace or clear sticker search keywords in its sticker set (admin only).
 - `/deletestickerfromset <sticker_file_id>` – Delete a sticker from its sticker set (admin only).
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
@@ -276,6 +277,7 @@ typed method when available and an isolated raw Bot API helper on pinned
   its sticker set by zero-based position (admin only).
 - `/setstickeremojis <sticker_file_id> <emoji[,emoji...]>` – Replace the
   emoji list for a sticker in its sticker set (admin only).
+- `/setstickermaskposition <sticker_file_id> <point> <x_shift> <y_shift> <scale>` – Change a mask sticker position in its sticker set (admin only). Pass `/setstickermaskposition <sticker_file_id> -` to clear it.
 - `/setstickerkeywords <sticker_file_id> <keyword[,keyword...]|->` – Replace
   or clear sticker search keywords in its sticker set (admin only).
 - `/deletestickerfromset <sticker_file_id>` – Delete a sticker from its
@@ -1166,6 +1168,29 @@ Usage: `/setstickeremojis <sticker_file_id> <emoji[,emoji...]>`
 - Telegram validation and rate-limit errors are reported back to the operator;
 - rollback is manual: call `/setstickeremojis` again with the previous emoji
   list captured from `/getstickerset`.
+
+### Set sticker mask position
+
+The restricted `/setstickermaskposition` command calls Telegram Bot API
+`setStickerMaskPosition` through an isolated raw helper because the project
+pins `aiogram==3.3.0`. It changes or clears the `MaskPosition` metadata for an
+existing mask sticker in a bot-created sticker set and extends the optional
+creative/media module without affecting the main Claude chat flow.
+
+Usage: `/setstickermaskposition <sticker_file_id> <point> <x_shift> <y_shift> <scale>`
+Clear: `/setstickermaskposition <sticker_file_id> -`
+
+- use `/getstickerset` first to inspect current sticker file ids and mask
+  metadata;
+- `point` must be `forehead`, `eyes`, `mouth` or `chin`;
+- `x_shift` and `y_shift` are floats measured in mask widths/heights relative
+  to the selected face point, and `scale` must be greater than zero;
+- Telegram only allows updating mask stickers in sets created by the bot;
+- no special update types are required because the scenario starts from a
+  normal admin command message;
+- Telegram validation and rate-limit errors are reported back to the operator;
+- rollback is manual: call `/setstickermaskposition` again with the previous
+  mask position from `/getstickerset`, or pass `-` to remove the mask position.
 
 ### Set sticker keywords
 
@@ -3697,6 +3722,7 @@ telegram-claude-agent/
 │   │   ├── send_sticker.py     # Telegram sendSticker outbound helper
 │   │   ├── get_sticker_set.py  # Telegram getStickerSet raw Bot API helper
 │   │   ├── create_new_sticker_set.py # Telegram createNewStickerSet raw helper
+│   │   ├── set_sticker_mask_position.py # Telegram setStickerMaskPosition raw helper
 │   │   ├── set_sticker_keywords.py # Telegram setStickerKeywords raw helper
 │   │   ├── send_voice.py       # Telegram sendVoice outbound helper
 │   │   ├── send_paid_media.py  # Telegram sendPaidMedia raw Bot API helper

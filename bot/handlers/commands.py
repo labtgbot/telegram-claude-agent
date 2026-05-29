@@ -173,6 +173,11 @@ from bot.services.set_sticker_emoji_list import (
     format_set_sticker_emoji_list_result,
     perform_set_sticker_emoji_list,
 )
+from bot.services.set_sticker_mask_position import (
+    SetStickerMaskPositionError,
+    format_set_sticker_mask_position_result,
+    perform_set_sticker_mask_position,
+)
 from bot.services.set_sticker_keywords import (
     SetStickerKeywordsError,
     format_set_sticker_keywords_result,
@@ -2464,6 +2469,22 @@ SET_STICKER_EMOJI_LIST_USAGE = (
     "&lt;emoji[,emoji...]&gt;</code>"
 )
 
+SET_STICKER_MASK_POSITION_USAGE = (
+    "<b>setstickermaskposition usage</b>\n"
+    "Changes or clears the mask position for one mask sticker through "
+    "<code>setStickerMaskPosition</code>. Use <code>/getstickerset</code> "
+    "first when you need to inspect current file ids and mask metadata. The "
+    "bot can only update mask stickers in sets created by the bot. Pass "
+    "<code>-</code> instead of mask coordinates to clear the current mask "
+    "position. Supported <code>point</code> values are <code>forehead</code>, "
+    "<code>eyes</code>, <code>mouth</code> and <code>chin</code>. This command "
+    "is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setstickermaskposition &lt;sticker_file_id&gt; "
+    "&lt;point&gt; &lt;x_shift&gt; &lt;y_shift&gt; &lt;scale&gt;</code>\n"
+    "Clear: <code>/setstickermaskposition &lt;sticker_file_id&gt; -</code>"
+)
+
 SET_STICKER_KEYWORDS_USAGE = (
     "<b>setstickerkeywords usage</b>\n"
     "Replaces search keywords for one sticker in its current sticker set "
@@ -2887,6 +2908,7 @@ async def cmd_help(message: Message):
         "/replacestickerinset - Replace one sticker file id in a sticker set (admin only)\n"
         "/setstickerposition - Move a sticker inside its sticker set (admin only)\n"
         "/setstickeremojis - Replace a sticker emoji list (admin only)\n"
+        "/setstickermaskposition - Change or clear a mask sticker position (admin only)\n"
         "/deletestickerfromset - Delete a sticker from its sticker set (admin only)\n"
         "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
@@ -6851,6 +6873,37 @@ async def cmd_set_sticker_emoji_list(message: Message):
         format_set_sticker_emoji_list_result(
             sticker=sticker,
             emoji_list=emoji_list,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setstickermaskposition"))
+async def cmd_set_sticker_mask_position(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_sticker_mask_position_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_STICKER_MASK_POSITION_USAGE, parse_mode="HTML")
+        return
+
+    sticker, mask_position = parsed
+    try:
+        await perform_set_sticker_mask_position(
+            message.bot,
+            sticker=sticker,
+            mask_position=mask_position,
+        )
+    except SetStickerMaskPositionError as exc:
+        await message.answer(f"Could not set the sticker mask position: {exc}")
+        return
+
+    await message.answer(
+        format_set_sticker_mask_position_result(
+            sticker=sticker,
+            mask_position=mask_position,
         ),
         parse_mode="HTML",
     )
@@ -11564,6 +11617,37 @@ def _parse_set_sticker_emoji_list_args(text: str):
     if not sticker or not emoji_list:
         return None
     return sticker, emoji_list
+
+
+def _parse_set_sticker_mask_position_args(text: str):
+    """Parse ``/setstickermaskposition`` args into sticker and MaskPosition."""
+    parts = (text or "").split()
+    if len(parts) == 3 and parts[2].strip() == "-":
+        sticker = parts[1].strip()
+        if not sticker:
+            return None
+        return sticker, None
+
+    if len(parts) != 6:
+        return None
+
+    sticker = parts[1].strip()
+    point = parts[2].strip()
+    try:
+        x_shift = float(parts[3])
+        y_shift = float(parts[4])
+        scale = float(parts[5])
+    except ValueError:
+        return None
+
+    if not sticker or scale <= 0:
+        return None
+    return sticker, {
+        "point": point,
+        "x_shift": x_shift,
+        "y_shift": y_shift,
+        "scale": scale,
+    }
 
 
 def _parse_set_sticker_keywords_args(text: str):
