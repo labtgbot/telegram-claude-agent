@@ -58,7 +58,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `copyMessage`, `forwardMessages`, `sendPhoto`, `copyMessages`, `sendAudio`,
 `sendLivePhoto`, `sendDocument`, `sendVideo`, `sendVideoNote`, `sendAnimation`,
 `sendVoice`, `sendPaidMedia`, `sendLocation`, `sendMediaGroup`, `sendVenue`,
-`sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `sendChatAction`,
+`sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `postStory`,
+`sendChatAction`,
 `sendMessageDraft`, `getUserProfilePhotos`, `setMessageReaction`,
 `setUserEmojiStatus`, `getUserProfileAudios`, `banChatMember`,
 `unbanChatMember`, `restrictChatMember`, `promoteChatMember`,
@@ -71,7 +72,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `unpinAllForumTopicMessages`, `unpinAllGeneralForumTopicMessages`,
 `unhideGeneralForumTopic`, `setMyName`, `getMyName`, `setMyDescription`,
 `getChatMenuButton`;
-остается 111 пока не
+остается 110 пока не
 интегрированных метода.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
@@ -118,6 +119,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendContact` | `bot/services/send_contact.py`, `/contact` в `bot/handlers/commands.py` | Admin-flow отправки телефонного контакта (contact) — имени с номером телефона, который получатель может сохранить в адресную книгу — в текущий чат, через typed aiogram API; phone_number и first_name обязательны, last_name опционален, а номер телефона и имя контакта не пишутся в structured logs. |
 | `sendDice` | `bot/services/send_dice.py`, `/dice` в `bot/handlers/commands.py` | Admin-flow отправки анимированной кости (dice) — анимированного эмодзи со случайным значением, которое выбирает Telegram — в текущий чат, через typed aiogram API; опциональный emoji ограничен набором 🎲/🎯/🏀/⚽/🎳/🎰 и валидируется до обращения к Telegram, без аргумента отправляется 🎲. |
 | `sendChecklist` | `bot/services/send_checklist.py`, `/checklist` в `bot/handlers/commands.py` | Admin-flow отправки чеклиста (checklist) — озаглавленного списка из 1-30 задач — в текущий чат от имени подключенного business account, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 9.1; требует `business_connection_id`, длины title (до 255) и задач (до 100) и их количество валидируются до обращения к Telegram, а title и тексты задач не пишутся в structured logs. |
+| `postStory` | `bot/services/post_story.py`, `/poststory` в `bot/handlers/commands.py` | Admin-flow публикации photo story от имени managed business account по `business_connection_id`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, требует Telegram business right `can_manage_stories`, принимает `active_period` только 21600/43200/86400/172800, caption до 2048 символов и использует изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, rollback выполняется удалением или архивированием story в Telegram. |
 | `getBusinessConnection` | `bot/services/get_business_connection.py`, `/businessconnection` в `bot/handlers/commands.py` | Admin-flow получения `BusinessConnection` по live `business_connection_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, показывает owner/user chat/lifecycle/can_reply/enabled metadata и не пишет owner-поля или полный объект в structured logs. |
 | `getBusinessAccountStarBalance` | `bot/services/get_business_account_star_balance.py`, `/businessstarbalance` в `bot/handlers/commands.py` | Read-only admin-flow получения `StarAmount` для подключенного business account по live `business_connection_id`; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует Telegram business right `can_view_gifts_and_stars`, а ownership/permission errors возвращаются оператору без retry; structured logs содержат connection id и форму результата, но не сумму Stars. |
 | `transferBusinessAccountStars` | `bot/services/transfer_business_account_stars.py`, `/transferbusinessstars` в `bot/handlers/commands.py` | Destructive admin-flow перевода Telegram Stars с подключенного business account на баланс бота по live `business_connection_id` и положительному `star_count`; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует явный `confirm`, Telegram business right `can_transfer_stars` и Telegram ownership/balance checks; structured logs содержат connection id, amount и форму ошибки. |
@@ -1508,6 +1510,44 @@ Telegram-чеклист от имени подключенного business acco
 
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/checklist` так же, как к другим командам.
+
+### postStory
+
+Команда `/poststory` публикует photo story от имени managed business account
+методом Telegram `postStory` (Bot API 10.0). По официальной документации метод
+требует `business_connection_id`, `content` (`InputStoryContent`) и
+`active_period`; `active_period` может быть только 21600, 43200, 86400 или
+172800 секунд. Дополнительно поддерживаются caption до 2048 символов,
+`parse_mode`, `caption_entities`, clickable `areas`, `post_to_chat_page` и
+`protect_content`. Для вызова у business-подключения должно быть право
+`can_manage_stories`; специальных update types для самой команды не требуется,
+так как оператор запускает ее обычным сообщением из admin-чата.
+
+Pinned `aiogram==3.3.0` не имеет typed wrapper для Bot API 10.0 `postStory`,
+поэтому реализация использует изолированный raw Bot API helper
+`bot/services/post_story.py`. Helper собирает JSON payload, сериализует
+`content` в JSON-строку, POST'ит endpoint `postStory` через `httpx` и возвращает
+объект `Story` как dict. URL берется из `bot.session.api.api_url(...)` с fallback
+на cloud endpoint, чтобы сохранить совместимость с local Bot API server.
+Transport errors и ответы Telegram `ok: false` приводятся к `PostStoryError`.
+
+Выбран отдельный admin publishing flow, не смешанный с Claude chat replies:
+`/poststory <business_connection_id> <active_period> <photo_file_id> [caption]`.
+Команда сейчас сознательно exposes только photo story из Telegram `file_id`;
+upload, URL-публикация, story areas и `post_to_chat_page` оставлены для
+отдельных расширений, чтобы не размывать минимальный проверяемый сценарий.
+Handler валидирует обязательные аргументы, допустимый active period и caption
+length до обращения к Telegram.
+
+Privacy/security модель такая же, как у других business admin actions:
+`/poststory` доступен только chat id из `TELEGRAM_ADMIN_CHAT_IDS`, не делает
+fallback на `TELEGRAM_ALLOWED_CHAT_IDS` и не вызывает `free-claude-code`.
+Structured logs не содержат caption text или полного content object; пишутся
+business connection id, active period, option flags и returned story id. Ошибки
+Telegram по устаревшему `business_connection_id`, отсутствующему
+`can_manage_stories`, некорректному media или rate limit возвращаются оператору.
+Rollback операционный: удалить или архивировать story в Telegram; отдельный
+Bot API `deleteStory` покрывается своей backlog-задачей.
 
 ### getBusinessConnection
 
