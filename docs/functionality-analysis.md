@@ -120,6 +120,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `getBusinessConnection` | `bot/services/get_business_connection.py`, `/businessconnection` в `bot/handlers/commands.py` | Admin-flow получения `BusinessConnection` по live `business_connection_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, показывает owner/user chat/lifecycle/can_reply/enabled metadata и не пишет owner-поля или полный объект в structured logs. |
 | `readBusinessMessage` | `bot/services/read_business_message.py`, `/readbusinessmessage` в `bot/handlers/commands.py` | Admin-flow отметки одного сообщения подключенного business account как прочитанного по live `business_connection_id` и положительному `message_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, а Telegram ownership/rights errors возвращаются оператору без retry. |
 | `deleteBusinessMessages` | `bot/services/delete_business_messages.py`, `/deletebusinessmessages` в `bot/handlers/commands.py` | Destructive admin-flow удаления 1-100 сообщений подключенного business account по live `business_connection_id` и положительным `message_ids`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует явный `confirm`, а Telegram ownership/rights errors возвращаются оператору без retry; structured logs содержат connection id, count и error shape, но не содержимое сообщений. |
+| `setBusinessAccountProfilePhoto` | `bot/services/set_business_account_profile_photo.py`, `/setbusinessaccountprofilephoto` в `bot/handlers/commands.py` | Admin-flow установки static JPG profile photo подключенного business account по live `business_connection_id`, локальному `photo_path` и опциональному `public=true`; используется изолированный raw multipart Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0, а Telegram требует fresh upload через `InputProfilePhotoStatic`; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, а Telegram ownership/`can_edit_profile_photo` errors возвращаются оператору без retry; structured logs содержат connection id, path, visibility flag и error shape, но не содержимое файла. |
 | `getManagedBotToken` | `bot/services/get_managed_bot_token.py`, `/managedbottoken` в `bot/handlers/commands.py` | Admin-flow получения live token управляемого бота по положительному `user_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для managed-bot методов Bot API 9.6; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует trusted source для id из `managed_bot`/`managed_bot_created`, показывает токен только в ответе admin-чата и не пишет токен в structured logs. |
 | `getManagedBotAccessSettings` | `bot/services/get_managed_bot_access_settings.py`, `/managedbotaccess` в `bot/handlers/commands.py` | Admin-flow чтения `BotAccessSettings` управляемого бота по положительному `user_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для managed-bot access settings Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует trusted source для id из `managed_bot`/`managed_bot_created`, показывает restricted flag и allowlist summary в admin-чате и не пишет returned user objects в structured logs. |
 | `setManagedBotAccessSettings` | `bot/services/set_managed_bot_access_settings.py`, `/setmanagedbotaccess` в `bot/handlers/commands.py` | Admin-flow изменения `BotAccessSettings` управляемого бота по положительному `user_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для managed-bot access settings Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует trusted source для id из `managed_bot`/`managed_bot_created`, требует явный `confirm`, принимает режим `restricted`/`open` и optional allowlist user ids, а structured logs содержат только `user_id`, restricted flag и count. |
@@ -1673,6 +1674,43 @@ account, поэтому доступна только chat id из `TELEGRAM_ADM
 операционный: вернуть прежний bio через Telegram, выполнить `clear` или
 отключить поверхность, убрав admin chat из `TELEGRAM_ADMIN_CHAT_IDS`/удалив
 handler.
+
+### setBusinessAccountProfilePhoto
+
+Команда `/setbusinessaccountprofilephoto <business_connection_id> <photo_path> [public=true|false]`
+меняет static JPG profile photo подключенного business account методом
+`setBusinessAccountProfilePhoto` (Bot API 10.0). Метод принимает live
+`business_connection_id`, объект `InputProfilePhoto` и опциональный
+`is_public`; Telegram на своей стороне проверяет, что подключение активно,
+принадлежит боту и текущие business rights включают `can_edit_profile_photo`.
+Флаг `public=true` задает публичную fallback-фотографию, видимую даже когда
+основная фотография скрыта privacy settings.
+
+Pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода, поэтому
+реализация идет через изолированный raw multipart Bot API helper
+`bot/services/set_business_account_profile_photo.py`. Helper POST'ит multipart
+payload на endpoint `setBusinessAccountProfilePhoto` через `httpx`, берет URL
+через `bot.session.api.api_url(...)` для поддержки local Bot API server и
+отправляет `photo={"type":"static","photo":"attach://photo"}` вместе с новым
+локальным JPG upload. Транспортные ошибки, невалидный JSON, Telegram
+`ok: false` и неожиданный result поднимаются как
+`SetBusinessAccountProfilePhotoError`.
+
+Сценарий намеренно ограничен admin CLI-формой: `photo_path` должен быть
+локальным файлом, доступным процессу бота; Telegram profile photos нельзя
+переиспользовать по URL или `file_id`, нужен fresh upload. При ошибке ввода
+показывается usage и Telegram не вызывается. Значение `business_connection_id`
+должно приходить из live business connection update или другого доверенного
+operator source.
+
+Security/privacy impact: команда меняет публичные profile metadata business
+account, поэтому доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не
+делает fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; при пустом admin allowlist
+команда отключена. Structured logs содержат `business_connection_id`,
+локальный path, `is_public` и форму ошибки; содержимое файла не логируется.
+Rollback операционный: повторно установить прежнюю фотографию через эту команду,
+изменить профиль через Telegram или отключить поверхность, убрав admin chat из
+`TELEGRAM_ADMIN_CHAT_IDS`/удалив handler.
 
 Глобальный `RateLimitMiddleware` применяется к `/setbusinessaccountname`,
 `/setbusinessaccountusername` и `/setbusinessaccountbio` так же, как к другим
