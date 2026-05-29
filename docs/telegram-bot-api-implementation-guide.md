@@ -2626,6 +2626,13 @@ Area label: `area:payments-stars`. Priority baseline: `priority:P3`
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:payments-stars`, `priority:P3`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Добавить shipping handler, если появятся физические goods; иначе явно оставить как blocked-by-product.
+- Status: blocked-by-product in PR #335. `telegram-claude-agent` exposes
+  Telegram Stars test invoices, invoice links and paid media, but does not sell
+  physical goods, request shipping addresses or keep a shipping-options catalog.
+  Therefore no `shipping_query` handler is registered and Telegram
+  `answerShippingQuery` is not called. The decision is captured in
+  `bot/services/answer_shipping_query.py`, with unit tests for positive and
+  negative answer paths.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API

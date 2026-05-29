@@ -1376,6 +1376,21 @@ other admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Shipping queries
+
+Telegram `answerShippingQuery` is intentionally blocked by product scope. The
+bot exposes Telegram Stars test invoices, invoice links and paid media, but it
+does not sell physical goods, request shipping addresses or keep a
+shipping-options catalog. Accepting a `shipping_query` without that domain would
+create a false checkout path, so no `shipping_query` handler is registered and
+`bot/services/answer_shipping_query.py` always raises a dedicated
+blocked-by-product error before any Telegram request can be made.
+
+To enable this method later, add a physical-goods checkout design first:
+signed/idempotent invoice payloads, allowed `shipping_query` updates, validated
+shipping options, fulfillment and rollback policy, audit logs and security
+tests. This flow is separate from `free-claude-code`.
+
 ### Web App prepared messages
 
 The restricted `/answerwebappquery`, `/savepreparedinline` and
