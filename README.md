@@ -1376,6 +1376,20 @@ other admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Pre-checkout queries
+
+`bot/services/answer_pre_checkout_query.py` exposes a raw
+`answerPreCheckoutQuery` helper for the Telegram payment update that must be
+answered before Telegram completes an invoice checkout. It accepts the
+`pre_checkout_query_id`, approves the checkout with `ok=True`, or rejects it
+with `ok=False` and a user-facing `error_message`.
+
+The helper is intentionally isolated from a full billing workflow: callers must
+validate signed/idempotent invoice payloads before approving the query and keep
+their own fulfillment/audit logic around the later `successful_payment` update.
+Transport errors and Telegram `ok: false` responses are raised as
+`AnswerPreCheckoutQueryError`.
+
 ### Shipping queries
 
 Telegram `answerShippingQuery` is intentionally blocked by product scope. The
