@@ -69,6 +69,8 @@ TELEGRAM_CHAT_ACTION_ENABLED=true  # show "typing…" while a request is handled
 TELEGRAM_MESSAGE_DRAFT_ENABLED=false  # stream replies via ephemeral drafts (private chats only)
 TELEGRAM_BOT_NAME=  # optional startup sync for the bot display name
 TELEGRAM_BOT_NAME_LANGUAGE_CODE=  # optional IETF language code for localized bot name
+TELEGRAM_BOT_SHORT_DESCRIPTION=  # optional startup sync for the bot profile short description
+TELEGRAM_BOT_SHORT_DESCRIPTION_LANGUAGE_CODE=  # optional IETF language code for localized bot short description
 TELEGRAM_BOT_DESCRIPTION=  # optional startup sync for the bot profile description
 TELEGRAM_BOT_DESCRIPTION_LANGUAGE_CODE=  # optional IETF language code for localized bot description
 
@@ -93,6 +95,8 @@ LOG_LEVEL=INFO
 - `TELEGRAM_MESSAGE_DRAFT_ENABLED` – whether to stream replies through ephemeral `sendMessageDraft` previews instead of repeatedly editing a message while Claude generates the answer (`true`/`false`, default `false`). Telegram limits the method to private chats, so other chats keep edit-based streaming.
 - `TELEGRAM_BOT_NAME` – optional bot display name to apply with Telegram `setMyName` on startup. Leave unset to skip profile sync; an empty string clears the selected name.
 - `TELEGRAM_BOT_NAME_LANGUAGE_CODE` – optional language code for a localized `setMyName` update. Leave empty to update the default bot name.
+- `TELEGRAM_BOT_SHORT_DESCRIPTION` – optional bot profile short description to apply with Telegram `setMyShortDescription` on startup. Leave unset to skip profile sync; an empty string clears the selected short description.
+- `TELEGRAM_BOT_SHORT_DESCRIPTION_LANGUAGE_CODE` – optional language code for a localized `setMyShortDescription` update. Leave empty to update the default bot short description.
 - `TELEGRAM_BOT_DESCRIPTION` – optional bot profile description to apply with Telegram `setMyDescription` on startup. Leave unset to skip profile sync; an empty string clears the selected description.
 - `TELEGRAM_BOT_DESCRIPTION_LANGUAGE_CODE` – optional language code for a localized `setMyDescription` update. Leave empty to update the default bot description.
 - `API_SECRET_TOKEN` – secret token for verifying webhook requests (highly recommended for webhook mode).
@@ -420,6 +424,37 @@ Examples:
   like the other admin commands.
 - Rollback is to run `/setmyname` again with the previous name, clear the
   configured env values and restart, or restore the name through BotFather.
+
+It is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+**not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+is empty, the command is disabled. The global rate-limit middleware still
+applies.
+
+### Set bot short description
+
+The restricted `/setmyshortdescription` command calls Telegram Bot API
+`setMyShortDescription` through aiogram's typed
+`Bot.set_my_short_description()` wrapper. It updates the public bot profile
+short description shown in Telegram clients. The same sync can run
+automatically at startup by setting `TELEGRAM_BOT_SHORT_DESCRIPTION` and
+optional `TELEGRAM_BOT_SHORT_DESCRIPTION_LANGUAGE_CODE`.
+
+Usage: `/setmyshortdescription <short_description> [language=<code>]` or `/setmyshortdescription --clear [language=<code>]`
+
+Examples:
+
+- `/setmyshortdescription Claude agent`
+- `/setmyshortdescription Claude agent language=ru`
+- `/setmyshortdescription --clear language=ru` to clear the localized Russian short description
+
+- Telegram limits `short_description` to 0-120 characters; empty short
+  description clears the selected default or localized short description.
+- The method does not require chat administrator rights and does not need
+  special update types, but it changes the bot's public profile and is guarded
+  like the other admin commands.
+- Rollback is to run `/setmyshortdescription` again with the previous short
+  description, clear the configured env values and restart, or restore it
+  through BotFather.
 
 It is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
 **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`

@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     telegram_message_draft_enabled: bool = False
     telegram_bot_name: Optional[str] = None
     telegram_bot_name_language_code: Optional[str] = None
+    telegram_bot_short_description: Optional[str] = None
+    telegram_bot_short_description_language_code: Optional[str] = None
     telegram_bot_description: Optional[str] = None
     telegram_bot_description_language_code: Optional[str] = None
 
