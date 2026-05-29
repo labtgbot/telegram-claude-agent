@@ -358,6 +358,12 @@ from bot.services.remove_business_account_profile_photo import (
     format_remove_business_account_profile_photo_result,
     perform_remove_business_account_profile_photo,
 )
+from bot.services.set_business_account_gift_settings import (
+    ACCEPTED_GIFT_TYPE_KEYS,
+    SetBusinessAccountGiftSettingsError,
+    format_set_business_account_gift_settings_result,
+    perform_set_business_account_gift_settings,
+)
 from bot.services.set_business_account_username import (
     MAX_BUSINESS_ACCOUNT_USERNAME_LENGTH,
     MIN_BUSINESS_ACCOUNT_USERNAME_LENGTH,
@@ -895,6 +901,20 @@ REMOVE_BUSINESS_ACCOUNT_PROFILE_PHOTO_USAGE = (
     "The business connection id must come from a live business connection "
     "update or another trusted operator source. Use <code>public=true</code> "
     "to remove the public fallback photo instead of the main profile photo."
+)
+
+SET_BUSINESS_ACCOUNT_GIFT_SETTINGS_USAGE = (
+    "<b>setbusinessaccountgiftsettings usage</b>\n"
+    "Changes incoming gift settings of a connected Telegram business account "
+    "via <code>setBusinessAccountGiftSettings</code>. This is an admin-only "
+    "business-mode operation because it changes gift privacy settings for the "
+    "supplied business connection.\n"
+    "Usage: <code>/setbusinessaccountgiftsettings &lt;business_connection_id&gt; "
+    "show_gift_button=true|false unlimited_gifts=true|false "
+    "limited_gifts=true|false unique_gifts=true|false "
+    "premium_subscription=true|false gifts_from_channels=true|false</code>\n"
+    "The business connection id must come from a live business connection "
+    "update or another trusted operator source."
 )
 
 DELETE_BUSINESS_MESSAGES_CONFIRM_KEYWORD = "confirm"
@@ -2064,6 +2084,7 @@ async def cmd_help(message: Message):
         "/setbusinessaccountbio - Set or clear a connected business account bio by business connection id (admin only)\n"
         "/setbusinessaccountprofilephoto - Set a connected business account profile photo by business connection id (admin only)\n"
         "/removebusinessaccountprofilephoto - Remove a connected business account profile photo by business connection id (admin only)\n"
+        "/setbusinessaccountgiftsettings - Set connected business account gift settings by business connection id (admin only)\n"
         "/deletebusinessmessages - Delete business messages by business connection id and message ids (admin only)\n"
         "/managedbottoken - Fetch a managed bot token by user id (admin only)\n"
         "/managedbotaccess - Fetch managed bot access settings by user id (admin only)\n"
@@ -3237,6 +3258,44 @@ async def cmd_remove_business_account_profile_photo(message: Message):
         format_remove_business_account_profile_photo_result(
             business_connection_id=business_connection_id,
             is_public=is_public,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setbusinessaccountgiftsettings"))
+async def cmd_set_business_account_gift_settings(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_business_account_gift_settings_args(message.text or "")
+    if parsed is None:
+        await message.answer(
+            SET_BUSINESS_ACCOUNT_GIFT_SETTINGS_USAGE,
+            parse_mode="HTML",
+        )
+        return
+
+    business_connection_id, show_gift_button, accepted_gift_types = parsed
+    try:
+        await perform_set_business_account_gift_settings(
+            message.bot,
+            business_connection_id=business_connection_id,
+            show_gift_button=show_gift_button,
+            accepted_gift_types=accepted_gift_types,
+        )
+    except SetBusinessAccountGiftSettingsError as exc:
+        await message.answer(
+            f"Could not set the business account gift settings: {exc}"
+        )
+        return
+
+    await message.answer(
+        format_set_business_account_gift_settings_result(
+            business_connection_id=business_connection_id,
+            show_gift_button=show_gift_button,
+            accepted_gift_types=accepted_gift_types,
         ),
         parse_mode="HTML",
     )
@@ -6434,6 +6493,50 @@ def _parse_remove_business_account_profile_photo_args(
         is_public = value == "true"
 
     return business_connection_id, is_public
+
+
+def _parse_bool_option(value: str) -> bool | None:
+    normalized = value.strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    return None
+
+
+def _parse_set_business_account_gift_settings_args(
+    text: str,
+) -> tuple[str, bool, dict[str, bool]] | None:
+    """Parse gift settings args into connection id, button flag and gift types."""
+    parts = (text or "").split()
+    if len(parts) != 8:
+        return None
+
+    business_connection_id = parts[1].strip()
+    if not business_connection_id:
+        return None
+
+    options: dict[str, bool] = {}
+    for option in parts[2:]:
+        if "=" not in option:
+            return None
+        key, value = option.split("=", 1)
+        key = key.strip()
+        parsed_value = _parse_bool_option(value)
+        if parsed_value is None:
+            return None
+        options[key] = parsed_value
+
+    show_gift_button = options.pop("show_gift_button", None)
+    if show_gift_button is None:
+        return None
+    if set(options) != set(ACCEPTED_GIFT_TYPE_KEYS):
+        return None
+
+    accepted_gift_types = {
+        key: options[key] for key in ACCEPTED_GIFT_TYPE_KEYS
+    }
+    return business_connection_id, show_gift_button, accepted_gift_types
 
 
 def _parse_delete_business_messages_args(text: str) -> tuple[str, list[int], bool] | None:
