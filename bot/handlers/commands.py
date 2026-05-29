@@ -223,6 +223,7 @@ from bot.services.post_story import (
 )
 from bot.services.edit_story import EditStoryError, perform_edit_story
 from bot.services.repost_story import RepostStoryError, perform_repost_story
+from bot.services.delete_story import DeleteStoryError, perform_delete_story
 from bot.services.send_photo import perform_send_photo
 from bot.services.send_poll import perform_send_poll
 from bot.services.send_venue import perform_send_venue
@@ -897,6 +898,17 @@ EDIT_STORY_USAGE = (
     f"The caption is optional and limited to {POST_STORY_CAPTION_LIMIT} "
     "characters. This command accepts a Telegram photo file_id; direct upload "
     "and URL story editing are intentionally not exposed here."
+)
+
+DELETE_STORY_USAGE = (
+    "<b>deletestory usage</b>\n"
+    "Deletes a story previously posted by this bot on behalf of a connected "
+    "Telegram business account. This is an admin-only publishing flow, "
+    "separate from Claude chat replies. The bot must have the "
+    "<code>can_manage_stories</code> business right for the live business "
+    "connection id.\n"
+    "Usage: <code>/deletestory &lt;business_connection_id&gt; "
+    "&lt;story_id&gt;</code>"
 )
 
 BUSINESS_CONNECTION_USAGE = (
@@ -2335,6 +2347,7 @@ async def cmd_help(message: Message):
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/poststory - Post a photo story via a business connection (admin only)\n"
         "/repoststory - Repost a story between managed business accounts (admin only)\n"
+        "/deletestory - Delete a story via a business connection (admin only)\n"
         "/businessstarbalance - Fetch a connected business account Telegram Stars balance by business connection id (admin only)\n"
         "/businessgifts - Fetch connected business account gifts by business connection id (admin only)\n"
         "/transferbusinessstars - Transfer connected business account Stars to the bot balance (admin only)\n"
@@ -3444,6 +3457,32 @@ async def cmd_edit_story(message: Message):
         if result_story_id is not None
         else "Edited story."
     )
+
+
+@router.message(Command("deletestory"))
+async def cmd_delete_story(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_delete_story_args(message.text or "")
+    if parsed is None:
+        await message.answer(DELETE_STORY_USAGE, parse_mode="HTML")
+        return
+
+    business_connection_id, story_id = parsed
+
+    try:
+        await perform_delete_story(
+            message.bot,
+            business_connection_id=business_connection_id,
+            story_id=story_id,
+        )
+    except DeleteStoryError as exc:
+        await message.answer(f"Could not delete the story: {exc}")
+        return
+
+    await message.answer(f"Deleted story {story_id}.")
 
 
 @router.message(Command("businessconnection"))
@@ -7085,6 +7124,27 @@ def _parse_edit_story_args(text: str):
         caption = None
 
     return business_connection_id, story_id, photo, caption
+
+
+def _parse_delete_story_args(text: str):
+    """Parse ``/deletestory`` args into business id and story id."""
+    parts = (text or "").split()
+    if len(parts) != 3:
+        return None
+
+    business_connection_id = parts[1].strip()
+    if not business_connection_id:
+        return None
+
+    try:
+        story_id = int(parts[2].strip())
+    except ValueError:
+        return None
+
+    if story_id <= 0:
+        return None
+
+    return business_connection_id, story_id
 
 
 def _parse_business_connection_args(text: str) -> str | None:
