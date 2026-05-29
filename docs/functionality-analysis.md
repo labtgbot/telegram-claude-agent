@@ -255,6 +255,10 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
    `/availablegifts confirm`; метод не принимает параметры, не требует
    специальных update types или chat admin rights и вызывает raw Bot API helper,
    так как pinned `aiogram==3.3.0` не имеет typed wrapper),
+   `getChatGifts` (уже интегрирован как read-only admin diagnostic
+   `/chatgifts <chat_id|@channelusername> [filters...]`, получает страницу
+   `OwnedGifts` channel chat через raw Bot API helper и не требует специальных
+   update types),
    `sendGift` (уже интегрирован как deny-by-default admin spending action
    `/sendgift <user|chat> <receiver_id> <gift_id> confirm [text]`; требует
    ровно один receiver, явное подтверждение, каталог gift id из доверенного
@@ -1880,6 +1884,39 @@ Telegram. Интеграционные проверки opt-in, потому ч�
 `/setbusinessaccountgiftsettings` так же, как к другим командам.
 `/businessgifts` также проходит через общий rate-limit pipeline команд.
 `/transferbusinessstars` также проходит через общий rate-limit pipeline команд.
+
+Команда `/chatgifts <chat_id|@channelusername>
+[exclude_unsaved=true|false] [exclude_saved=true|false]
+[exclude_unlimited=true|false] [exclude_limited_upgradable=true|false]
+[exclude_limited_non_upgradable=true|false]
+[exclude_from_blockchain=true|false] [exclude_unique=true|false]
+[sort_by_price=true|false] [offset=<offset>] [limit=1..100]` получает страницу
+`OwnedGifts` channel chat методом `getChatGifts`. Метод принимает numeric
+channel id или `@channelusername`, опциональные фильтры сохраненности и типов
+подарков, blockchain filter, `sort_by_price`, pagination `offset` и `limit` от
+1 до 100. Required update types для самого вызова не нужны; Telegram
+ограничивает метод channel chats и может требовать `can_post_messages` admin
+right для полной видимости.
+
+Pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода, поэтому
+реализация идет через изолированный raw Bot API helper
+`bot/services/get_chat_gifts.py`. Helper POST'ит JSON payload на endpoint
+`getChatGifts` через `httpx`, берет URL через `bot.session.api.api_url(...)`
+для поддержки local Bot API server и поднимает validation errors, транспортные
+ошибки, невалидный JSON, Telegram `ok: false` и неожиданный result как
+`GetChatGiftsError`.
+
+Сценарий строго read-only и отделен от convert/upgrade/transfer gift flows:
+команда только отображает до 10 элементов и next offset, а операции с ценностью
+требуют отдельных явных команд. Security/privacy impact: список owned gifts
+раскрывает активы channel chat, поэтому команда доступна только chat id из
+`TELEGRAM_ADMIN_CHAT_IDS` и не делает fallback на `TELEGRAM_ALLOWED_CHAT_IDS`;
+при пустом admin allowlist команда отключена. Structured logs содержат
+`chat_id`, количество элементов, наличие `next_offset` и форму ошибки, но не
+полный gift payload. Rollback операционный: прекратить использовать команду,
+убрать admin chat из `TELEGRAM_ADMIN_CHAT_IDS`, удалить handler или ограничить
+admin rights бота в Telegram. Интеграционные проверки opt-in, потому что нужен
+реальный bot token и channel chat с gifts.
 
 ### getManagedBotToken
 

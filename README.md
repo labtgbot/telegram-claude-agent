@@ -186,6 +186,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/businessconnection` – Fetch metadata for a connected Telegram business account by `business_connection_id` (admin only).
 - `/businessstarbalance` – Fetch the Telegram Stars balance of a connected business account by `business_connection_id` (admin only).
 - `/businessgifts` – Fetch owned gifts of a connected business account by `business_connection_id` (admin only).
+- `/chatgifts` – Fetch owned gifts of a channel chat by `chat_id` or `@channelusername` (admin only).
 - `/transferbusinessstars` – Transfer Telegram Stars from a connected business account to the bot balance (admin only, requires confirmation).
 - `/readbusinessmessage` – Mark one connected business-account message as read by `business_connection_id` and `message_id` (admin only).
 - `/setbusinessaccountname` – Set the first and optional last name of a connected business account by `business_connection_id` (admin only).
@@ -199,6 +200,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/setmanagedbotaccess` – Update access settings for a managed bot by its Telegram user id (admin only, requires confirmation).
 - `/replacemanagedbottoken` – Rotate the live token of a managed bot by its Telegram user id (admin only, requires confirmation).
 - `/availablegifts` – Fetch the current Telegram gift catalog for billing/rewards review (admin only, requires confirmation).
+- `/usergifts` – Fetch owned gifts of a Telegram user by `user_id` (admin only).
 - `/sendgift` – Send a Telegram gift to a user or channel with explicit Stars-spending confirmation (admin only).
 - `/giftpremium` – Gift Telegram Premium to a user with explicit Stars-spending confirmation (admin only).
 - `/removeuserverification <user_id> confirm` – Remove Telegram verification from a user with explicit confirmation (admin only).
@@ -1405,6 +1407,30 @@ operational: stop using the command, remove the admin chat from
 `TELEGRAM_ADMIN_CHAT_IDS`, or adjust the bot's business rights in Telegram.
 Integration testing is opt-in because it needs a real bot token and live
 business connection id.
+
+### Get chat gifts
+
+The restricted `/chatgifts` command calls Telegram Bot API `getChatGifts` to
+fetch an `OwnedGifts` page for a channel chat. Because the pinned
+`aiogram==3.3.0` does not expose a typed wrapper for this Bot API method, the
+command uses an isolated raw Bot API helper (`bot/services/get_chat_gifts.py`)
+over `httpx`.
+
+Usage: `/chatgifts <chat_id|@channelusername> [exclude_unsaved=true|false] [exclude_saved=true|false] [exclude_unlimited=true|false] [exclude_limited_upgradable=true|false] [exclude_limited_non_upgradable=true|false] [exclude_from_blockchain=true|false] [exclude_unique=true|false] [sort_by_price=true|false] [offset=<offset>] [limit=1..100]`
+
+- `chat_id` can be a numeric Telegram channel id or `@channelusername`;
+- boolean filters are optional and are sent only when set to `true`;
+- `offset` is Telegram's pagination cursor from a previous response, and
+  `limit` must be from 1 to 100;
+- Telegram supports this method for channel chats and can require the bot's
+  `can_post_messages` administrator right for full visibility;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- structured logs contain the chat id, item count, next-offset presence and
+  error shape, but not full gift payloads.
+
+The command does not call `free-claude-code` and is read-only. Conversion,
+upgrade or transfer operations require separate explicit commands.
 
 ### Transfer business account Stars
 
