@@ -1133,6 +1133,41 @@ Product rules и audit log:
   description и не unrelated chat data;
 - Telegram permission/transport/rate-limit errors возвращаются в admin chat.
 
+### removeUserVerification
+
+Команда `/removeuserverification` вызывает Telegram `removeUserVerification`
+(Bot API 10.0) для удаления верификации пользователя от имени бота, которому
+Telegram выдал право управлять user verification. По официальной документации
+метод требует только `user_id` и возвращает boolean `True`. Специальные update
+types не нужны, потому что сценарий запускается обычным admin message update;
+доступность пользователя и право бота на removal action проверяет Telegram.
+
+Так как pinned `aiogram==3.3.0` не имеет typed wrapper для
+`removeUserVerification`, реализация использует изолированный raw Bot API
+helper `bot/services/remove_user_verification.py`. Helper POST'ит JSON-payload
+на endpoint `removeUserVerification`, использует URL из
+`bot.session.api.api_url(...)` для поддержки local Bot API server, валидирует
+positive `user_id` до HTTP-вызова и поднимает transport/Telegram `ok: false`/
+unexpected-result ошибки как `RemoveUserVerificationError`.
+
+Выбран отдельный admin verification scenario:
+`/removeuserverification <user_id> confirm`. Оператор должен заранее проверить
+user identity, product rules, право бота на verification removal, audit trail и
+rollback plan. Команда не вызывает `free-claude-code`, не тратит Stars и не
+смешивается с gifts или Premium gifting. Rollback выполняется отдельным
+confirmed `/verifyuser <user_id> confirm [custom_description]` действием.
+
+Product rules и audit log:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если список пустой, команда
+  отключена;
+- команда требует literal `confirm` в том же сообщении, которое запускает
+  verification removal action;
+- parser принимает только positive `user_id`;
+- structured logs включают `user_id`, но не unrelated chat data;
+- Telegram permission/transport/rate-limit errors возвращаются в admin chat.
+
 ### verifyChat
 
 Команда `/verifychat` вызывает Telegram `verifyChat` (Bot API 10.0) для
