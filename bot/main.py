@@ -15,6 +15,9 @@ from bot.middlewares.logging import LoggingMiddleware
 from bot.middlewares.rate_limit import RateLimitMiddleware
 from bot.services.get_my_name import audit_configured_bot_name
 from bot.services.get_my_description import audit_configured_bot_description
+from bot.services.get_my_short_description import (
+    audit_configured_bot_short_description,
+)
 from bot.services.set_my_description import sync_configured_bot_description
 from bot.services.set_my_name import sync_configured_bot_name
 from bot.services.set_my_short_description import sync_configured_bot_short_description
@@ -60,6 +63,10 @@ async def on_startup():
     await sync_configured_bot_short_description(
         bot,
         short_description=settings.telegram_bot_short_description,
+        language_code=settings.telegram_bot_short_description_language_code,
+    )
+    await audit_configured_bot_short_description(
+        bot,
         language_code=settings.telegram_bot_short_description_language_code,
     )
     await sync_configured_bot_description(
