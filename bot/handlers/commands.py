@@ -190,6 +190,11 @@ from bot.services.send_message_draft import (
     SendMessageDraftError,
     perform_send_message_draft,
 )
+from bot.services.edit_message_caption import (
+    EDIT_MESSAGE_CAPTION_LIMIT,
+    EditMessageCaptionError,
+    perform_edit_message_caption,
+)
 from bot.services.gift_premium_subscription import (
     GiftPremiumSubscriptionError,
     MAX_PREMIUM_MONTHS,
@@ -903,6 +908,19 @@ CHECKLIST_USAGE = (
     "Provide 1-30 tasks. The title is limited to 255 characters and each task "
     "to 100 characters; the title and every task may contain spaces and must be "
     "non-empty."
+)
+
+EDIT_MESSAGE_CAPTION_USAGE = (
+    "<b>editcaption usage</b>\n"
+    "Edits the caption of a media message previously sent by this bot. This is "
+    "an admin-only message-management command. Target a regular message with "
+    "<code>chat_id</code> and <code>message_id</code>, or target inline mode "
+    "with <code>inline=&lt;inline_message_id&gt;</code>.\n"
+    "Usage: <code>/editcaption &lt;chat_id&gt; &lt;message_id&gt; [caption]</code>\n"
+    "Usage: <code>/editcaption inline=&lt;inline_message_id&gt; [caption]</code>\n"
+    f"The caption is optional and limited to {EDIT_MESSAGE_CAPTION_LIMIT} "
+    "characters. An omitted caption clears the current caption. Optional "
+    "trailing flags: <code>parse_mode=HTML</code>, <code>above=true</code>."
 )
 
 POST_STORY_USAGE = (
@@ -2392,6 +2410,7 @@ async def cmd_help(message: Message):
         "/dice - Send an animated dice (random value) into this chat (admin only)\n"
         "/chataction - Show a chat action (e.g. typing…) in this chat (admin only)\n"
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
+        "/editcaption - Edit or clear a media message caption (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/poststory - Post a photo story via a business connection (admin only)\n"
         "/repoststory - Repost a story between managed business accounts (admin only)\n"
@@ -3476,6 +3495,48 @@ async def cmd_checklist(message: Message):
         return
 
     await message.answer(f"Sent checklist with {len(tasks)} tasks.")
+
+
+@router.message(Command("editcaption"))
+async def cmd_edit_message_caption(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_edit_message_caption_args(message.text or "")
+    if parsed is None:
+        await message.answer(EDIT_MESSAGE_CAPTION_USAGE, parse_mode="HTML")
+        return
+
+    target, caption, options = parsed
+    if caption is not None and len(caption) > EDIT_MESSAGE_CAPTION_LIMIT:
+        await message.answer(
+            f"Caption is too long: {len(caption)} characters "
+            f"(max {EDIT_MESSAGE_CAPTION_LIMIT})."
+        )
+        return
+
+    try:
+        result = await perform_edit_message_caption(
+            message.bot,
+            caption=caption,
+            **target,
+            **options,
+        )
+    except EditMessageCaptionError as exc:
+        await message.answer(f"Could not edit the message caption: {exc}")
+        return
+
+    if isinstance(result, dict):
+        result_message_id = result.get("message_id")
+        await message.answer(
+            f"Edited caption for message {result_message_id}."
+            if result_message_id is not None
+            else "Edited message caption."
+        )
+        return
+
+    await message.answer("Edited inline message caption.")
 
 
 @router.message(Command("poststory"))
@@ -7347,6 +7408,55 @@ def _parse_edit_story_args(text: str):
         caption = None
 
     return business_connection_id, story_id, photo, caption
+
+
+def _parse_edit_message_caption_args(text: str):
+    """Parse ``/editcaption`` args into target, caption and raw API options."""
+    parts = (text or "").split(maxsplit=3)
+    if len(parts) < 2:
+        return None
+
+    target: dict[str, object]
+    caption_index: int
+    if parts[1].startswith("inline="):
+        inline_message_id = parts[1].split("=", maxsplit=1)[1].strip()
+        if not inline_message_id:
+            return None
+        target = {"inline_message_id": inline_message_id}
+        caption_index = 2
+    else:
+        if len(parts) < 3:
+            return None
+        try:
+            chat_id = int(parts[1])
+            message_id = int(parts[2])
+        except ValueError:
+            return None
+        if message_id <= 0:
+            return None
+        target = {"chat_id": chat_id, "message_id": message_id}
+        caption_index = 3
+
+    raw_caption = parts[caption_index].strip() if len(parts) > caption_index else ""
+    caption_tokens = raw_caption.split()
+    options: dict[str, object] = {}
+    kept_tokens: list[str] = []
+    for token in caption_tokens:
+        lower = token.lower()
+        if lower.startswith("parse_mode="):
+            parse_mode = token.split("=", maxsplit=1)[1].strip()
+            if not parse_mode:
+                return None
+            options["parse_mode"] = parse_mode
+        elif lower in {"above=true", "show_caption_above_media=true"}:
+            options["show_caption_above_media"] = True
+        elif lower in {"above=false", "show_caption_above_media=false"}:
+            options["show_caption_above_media"] = False
+        else:
+            kept_tokens.append(token)
+
+    caption = " ".join(kept_tokens).strip() or None
+    return target, caption, options
 
 
 def _parse_delete_story_args(text: str):
