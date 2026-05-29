@@ -1566,6 +1566,38 @@ The command is guarded like the other spending/admin surfaces:
 - Telegram transport, permission, balance and rate-limit errors are reported
   back to the admin chat.
 
+### Verify user
+
+The restricted `/verifyuser` command calls Telegram Bot API `verifyUser` to
+verify a user with the bot's verification authority. The method requires
+`user_id`, accepts an optional `custom_description`, and returns `True` on
+success. Because the pinned `aiogram==3.3.0` does not expose this Bot API 10.0
+method, the implementation uses an isolated raw Bot API helper
+(`bot/services/verify_user.py`) over `httpx`.
+
+Usage: `/verifyuser <user_id> confirm [custom_description]`
+
+Operators must review the user identity, product rules, verification authority
+and rollback plan before running the command. `user_id` must be positive and
+optional `custom_description` is capped at 70 characters before sending.
+Verification is not connected to `free-claude-code`, gifts or Premium gifting;
+it is a separate admin verification action. Rollback requires a separate
+remove-verification action when available.
+
+The command is guarded like the other verification/admin surfaces:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- it requires the literal `confirm` keyword in the same command that verifies
+  the user;
+- no special update subscription is required because the scenario starts from a
+  normal admin message; Telegram validates the target user and bot authority;
+- structured logs include `user_id` and description presence, not the
+  description text or unrelated chat data;
+- Telegram permission, transport and rate-limit errors are reported back to the
+  admin chat.
+
 ### Send a media group
 
 The restricted `/mediagroup` command calls Telegram Bot API `sendMediaGroup`
