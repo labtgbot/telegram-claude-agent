@@ -204,8 +204,19 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/setmyname <name> [language=<code>]` – Set or clear the bot display name shown in Telegram clients (admin only).
 - `/setmydescription <description> [language=<code>]` – Set or clear the public bot profile description shown in Telegram clients (admin only).
 - `/setmydefaultrights <moderator|manager|channel|clear> [for_channels=true|false]` – Set or clear default administrator rights requested when the bot is added as administrator (admin only).
+- `/getmydefaultrights [for_channels=true|false]` – Fetch default administrator rights requested when the bot is added as administrator (admin only).
 - `/removemyprofilephoto confirm` – Remove the bot profile photo through Bot API 10.0 (admin only, requires confirmation; rollback is `/setmyprofilephoto <photo_path>` with the previous image).
 - `/getmyname [language=<code>]` – Fetch the bot display name shown in Telegram clients (admin only).
+
+`getMyDefaultAdministratorRights` is also audited on startup after optional
+`TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS` sync. The read path accepts only
+`for_channels=true|false`, requires no bot administrator rights and no special
+update types, and is guarded by `TELEGRAM_ADMIN_CHAT_IDS` when exposed as
+`/getmydefaultrights`. It verifies BotFather/startup state without calling
+`free-claude-code`; rollback for wrong defaults is `/setmydefaultrights clear`
+or changing the preset and restarting the service. The service uses aiogram's
+typed method when available and an isolated raw Bot API helper on pinned
+`aiogram==3.3.0` runtimes that do not expose it yet.
 - `/setchatdescription <chat_id> [description]` – Set or clear a group,
   supergroup, or channel description where the bot can change chat information
   (admin only).
