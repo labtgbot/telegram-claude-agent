@@ -191,6 +191,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/availablegifts` – Fetch the current Telegram gift catalog for billing/rewards review (admin only, requires confirmation).
 - `/sendgift` – Send a Telegram gift to a user or channel with explicit Stars-spending confirmation (admin only).
 - `/giftpremium` – Gift Telegram Premium to a user with explicit Stars-spending confirmation (admin only).
+- `/removeuserverification <user_id> confirm` – Remove Telegram verification from a user with explicit confirmation (admin only).
 - `/mediagroup` – Send 2-10 media items into this chat as a single album (media group) via URLs or file_ids (admin only).
 - `/banchatmember <chat_id> <user_id> [until_date_unix] [revoke=true|false]` – Ban a user from a group, supergroup, or channel where the bot has `can_restrict_members` (admin only).
 - `/banchatsenderchat <chat_id> <sender_chat_id>` – Ban a channel chat from sending messages as itself into a supergroup or channel where the bot has `can_restrict_members` (admin only).
@@ -1595,6 +1596,38 @@ The command is guarded like the other verification/admin surfaces:
   normal admin message; Telegram validates the target user and bot authority;
 - structured logs include `user_id` and description presence, not the
   description text or unrelated chat data;
+- Telegram permission, transport and rate-limit errors are reported back to the
+  admin chat.
+
+### Remove user verification
+
+The restricted `/removeuserverification` command calls Telegram Bot API
+`removeUserVerification` to remove verification from a user with the bot's
+verification authority. The method requires `user_id` and returns `True` on
+success. No special update subscription is required because the scenario starts
+from a normal admin message; Telegram validates the target user and the bot's
+verification authority.
+
+Because the pinned `aiogram==3.3.0` does not expose this Bot API 10.0 method,
+the implementation uses an isolated raw Bot API helper
+(`bot/services/remove_user_verification.py`) over `httpx`.
+
+Usage: `/removeuserverification <user_id> confirm`
+
+Operators must review the user identity, product rules, verification authority,
+audit trail and rollback plan before running the command. `user_id` must be
+positive. The command is not connected to `free-claude-code`, gifts or Premium
+gifting; it is a separate admin verification action. Rollback is a separate
+confirmed `/verifyuser <user_id> confirm [custom_description]` action.
+
+The command is guarded like the other verification/admin surfaces:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- it requires the literal `confirm` keyword in the same command that removes
+  the verification;
+- structured logs include `user_id`, not unrelated chat data;
 - Telegram permission, transport and rate-limit errors are reported back to the
   admin chat.
 
