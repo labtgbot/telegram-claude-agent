@@ -353,6 +353,11 @@ from bot.services.set_business_account_profile_photo import (
     format_set_business_account_profile_photo_result,
     perform_set_business_account_profile_photo,
 )
+from bot.services.remove_business_account_profile_photo import (
+    RemoveBusinessAccountProfilePhotoError,
+    format_remove_business_account_profile_photo_result,
+    perform_remove_business_account_profile_photo,
+)
 from bot.services.set_business_account_username import (
     MAX_BUSINESS_ACCOUNT_USERNAME_LENGTH,
     MIN_BUSINESS_ACCOUNT_USERNAME_LENGTH,
@@ -875,6 +880,21 @@ SET_BUSINESS_ACCOUNT_PROFILE_PHOTO_USAGE = (
     "update or another trusted operator source. Use "
     "<code>public=true</code> to set the public fallback photo visible when "
     "the main photo is hidden by privacy settings."
+)
+
+REMOVE_BUSINESS_ACCOUNT_PROFILE_PHOTO_CONFIRM_KEYWORD = "confirm"
+
+REMOVE_BUSINESS_ACCOUNT_PROFILE_PHOTO_USAGE = (
+    "<b>removebusinessaccountprofilephoto usage</b>\n"
+    "Removes a profile photo of a connected Telegram business account via "
+    "<code>removeBusinessAccountProfilePhoto</code>. This is a destructive "
+    "admin-only business-mode operation because it changes account profile "
+    "metadata for the supplied business connection.\n"
+    "Usage: <code>/removebusinessaccountprofilephoto "
+    "&lt;business_connection_id&gt; [public=true|false] confirm</code>\n"
+    "The business connection id must come from a live business connection "
+    "update or another trusted operator source. Use <code>public=true</code> "
+    "to remove the public fallback photo instead of the main profile photo."
 )
 
 DELETE_BUSINESS_MESSAGES_CONFIRM_KEYWORD = "confirm"
@@ -2043,6 +2063,7 @@ async def cmd_help(message: Message):
         "/setbusinessaccountusername - Set a connected business account username by business connection id (admin only)\n"
         "/setbusinessaccountbio - Set or clear a connected business account bio by business connection id (admin only)\n"
         "/setbusinessaccountprofilephoto - Set a connected business account profile photo by business connection id (admin only)\n"
+        "/removebusinessaccountprofilephoto - Remove a connected business account profile photo by business connection id (admin only)\n"
         "/deletebusinessmessages - Delete business messages by business connection id and message ids (admin only)\n"
         "/managedbottoken - Fetch a managed bot token by user id (admin only)\n"
         "/managedbotaccess - Fetch managed bot access settings by user id (admin only)\n"
@@ -3179,6 +3200,42 @@ async def cmd_set_business_account_profile_photo(message: Message):
         format_set_business_account_profile_photo_result(
             business_connection_id=business_connection_id,
             photo_path=photo_path,
+            is_public=is_public,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("removebusinessaccountprofilephoto"))
+async def cmd_remove_business_account_profile_photo(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_remove_business_account_profile_photo_args(message.text or "")
+    if parsed is None:
+        await message.answer(
+            REMOVE_BUSINESS_ACCOUNT_PROFILE_PHOTO_USAGE,
+            parse_mode="HTML",
+        )
+        return
+
+    business_connection_id, is_public = parsed
+    try:
+        await perform_remove_business_account_profile_photo(
+            message.bot,
+            business_connection_id=business_connection_id,
+            is_public=is_public,
+        )
+    except RemoveBusinessAccountProfilePhotoError as exc:
+        await message.answer(
+            f"Could not remove the business account profile photo: {exc}"
+        )
+        return
+
+    await message.answer(
+        format_remove_business_account_profile_photo_result(
+            business_connection_id=business_connection_id,
             is_public=is_public,
         ),
         parse_mode="HTML",
@@ -6348,6 +6405,35 @@ def _parse_set_business_account_profile_photo_args(
         return None
 
     return business_connection_id, photo_path, is_public
+
+
+def _parse_remove_business_account_profile_photo_args(
+    text: str,
+) -> tuple[str, bool] | None:
+    """Parse remove profile photo args into connection id and public flag."""
+    parts = (text or "").split()
+    if len(parts) not in {3, 4}:
+        return None
+
+    business_connection_id = parts[1].strip()
+    if not business_connection_id:
+        return None
+
+    options = parts[2:]
+    if options[-1].lower() != REMOVE_BUSINESS_ACCOUNT_PROFILE_PHOTO_CONFIRM_KEYWORD:
+        return None
+
+    is_public = False
+    for option in options[:-1]:
+        public_prefix = "public="
+        if not option.lower().startswith(public_prefix):
+            return None
+        value = option[len(public_prefix) :].strip().lower()
+        if value not in {"true", "false"}:
+            return None
+        is_public = value == "true"
+
+    return business_connection_id, is_public
 
 
 def _parse_delete_business_messages_args(text: str) -> tuple[str, list[int], bool] | None:

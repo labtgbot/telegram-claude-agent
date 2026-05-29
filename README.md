@@ -188,6 +188,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/setbusinessaccountname` – Set the first and optional last name of a connected business account by `business_connection_id` (admin only).
 - `/setbusinessaccountbio` – Set or clear the bio of a connected business account by `business_connection_id` (admin only).
 - `/setbusinessaccountprofilephoto` – Set the static JPG profile photo of a connected business account by `business_connection_id` and local `photo_path` (admin only).
+- `/removebusinessaccountprofilephoto` – Remove a profile photo of a connected business account by `business_connection_id` (admin only, requires confirmation).
 - `/deletebusinessmessages` – Delete connected business-account messages by `business_connection_id` and `message_ids` (admin only, requires confirmation).
 - `/managedbottoken` – Fetch the live token of a managed bot by its Telegram user id (admin only).
 - `/managedbotaccess` – Fetch access settings for a managed bot by its Telegram user id (admin only).
@@ -1480,6 +1481,35 @@ The command does not call `free-claude-code`. Rollback is operational: run the
 command again with the previous photo, use Telegram's business account profile
 controls, or remove the admin chat from `TELEGRAM_ADMIN_CHAT_IDS` before further
 changes.
+
+### Remove business account profile photo
+
+The restricted `/removebusinessaccountprofilephoto` command calls Telegram Bot
+API `removeBusinessAccountProfilePhoto` to remove the main or public fallback
+profile photo of a connected business account. Because the pinned
+`aiogram==3.3.0` does not expose a typed wrapper for this Bot API 10.0 method,
+the command uses an isolated raw Bot API helper
+(`bot/services/remove_business_account_profile_photo.py`) over `httpx`.
+
+Usage: `/removebusinessaccountprofilephoto <business_connection_id> [public=true|false] confirm`
+
+- `business_connection_id` must come from a live business connection update or
+  another trusted operator source;
+- pass `public=true` to remove the public fallback photo instead of the main
+  profile photo;
+- `confirm` is required because the command changes public business account
+  metadata;
+- Telegram enforces connection ownership, current `can_edit_profile_photo`
+  business right and expired or unknown connection handling; those errors are
+  reported back without retry;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- structured logs contain the connection id, visibility flag and error shape.
+
+The command does not call `free-claude-code`. Rollback is operational: run
+`/setbusinessaccountprofilephoto` with the previous image, use Telegram's
+business account profile controls, or remove the admin chat from
+`TELEGRAM_ADMIN_CHAT_IDS` before further changes.
 
 ### Delete business messages
 
