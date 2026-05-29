@@ -188,6 +188,11 @@ from bot.services.set_sticker_set_title import (
     format_set_sticker_set_title_result,
     perform_set_sticker_set_title,
 )
+from bot.services.set_sticker_set_thumbnail import (
+    SetStickerSetThumbnailError,
+    format_set_sticker_set_thumbnail_result,
+    perform_set_sticker_set_thumbnail,
+)
 from bot.services.delete_sticker_from_set import (
     DeleteStickerFromSetError,
     format_delete_sticker_from_set_result,
@@ -2513,6 +2518,18 @@ SET_STICKER_SET_TITLE_USAGE = (
     "&lt;title&gt;</code>"
 )
 
+SET_STICKER_SET_THUMBNAIL_USAGE = (
+    "<b>setstickersetthumbnail usage</b>\n"
+    "Sets or clears the thumbnail of a sticker set through "
+    "<code>setStickerSetThumbnail</code>. Use <code>/getstickerset</code> "
+    "first when you need to inspect the current name and thumbnail. The bot "
+    "can only update sticker sets created by the bot. Pass <code>-</code> as "
+    "thumbnail to clear the current thumbnail. This command is deny-by-default "
+    "and only works from <code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setstickersetthumbnail &lt;user_id&gt; "
+    "&lt;sticker_set_name&gt; &lt;format&gt; &lt;thumbnail_file_id|-&gt;</code>"
+)
+
 DELETE_STICKER_FROM_SET_USAGE = (
     "<b>deletestickerfromset usage</b>\n"
     "Deletes one sticker from its current sticker set through "
@@ -2926,6 +2943,7 @@ async def cmd_help(message: Message):
         "/setstickeremojis - Replace a sticker emoji list (admin only)\n"
         "/setstickermaskposition - Change or clear a mask sticker position (admin only)\n"
         "/setstickersettitle - Change a sticker set title (admin only)\n"
+        "/setstickersetthumbnail - Set or clear a sticker set thumbnail (admin only)\n"
         "/deletestickerfromset - Delete a sticker from its sticker set (admin only)\n"
         "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
@@ -6983,6 +7001,41 @@ async def cmd_set_sticker_set_title(message: Message):
         format_set_sticker_set_title_result(
             name=name,
             title=title,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setstickersetthumbnail"))
+async def cmd_set_sticker_set_thumbnail(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_sticker_set_thumbnail_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_STICKER_SET_THUMBNAIL_USAGE, parse_mode="HTML")
+        return
+
+    user_id, name, sticker_format, thumbnail = parsed
+    try:
+        await perform_set_sticker_set_thumbnail(
+            message.bot,
+            user_id=user_id,
+            name=name,
+            sticker_format=sticker_format,
+            thumbnail=thumbnail,
+        )
+    except SetStickerSetThumbnailError as exc:
+        await message.answer(f"Could not set the sticker set thumbnail: {exc}")
+        return
+
+    await message.answer(
+        format_set_sticker_set_thumbnail_result(
+            user_id=user_id,
+            name=name,
+            sticker_format=sticker_format,
+            thumbnail=thumbnail,
         ),
         parse_mode="HTML",
     )
@@ -11729,6 +11782,28 @@ def _parse_set_sticker_set_title_args(text: str):
     if not name or any(char.isspace() for char in name) or not title:
         return None
     return name, title
+
+
+def _parse_set_sticker_set_thumbnail_args(text: str):
+    """Parse ``/setstickersetthumbnail`` args into the thumbnail scenario."""
+    parts = (text or "").split()
+    if len(parts) != 5:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+
+    if user_id <= 0:
+        return None
+
+    name = parts[2].strip()
+    sticker_format = parts[3].strip()
+    thumbnail = parts[4].strip()
+    if not all([name, sticker_format, thumbnail]):
+        return None
+    return user_id, name, sticker_format, thumbnail
 
 
 def _parse_delete_sticker_from_set_args(text: str):
