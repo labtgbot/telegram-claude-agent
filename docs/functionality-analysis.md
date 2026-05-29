@@ -247,7 +247,10 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
    `/availablegifts confirm`; метод не принимает параметры, не требует
    специальных update types или chat admin rights и вызывает raw Bot API helper,
    так как pinned `aiogram==3.3.0` не имеет typed wrapper),
-   `sendGift`,
+   `sendGift` (уже интегрирован как deny-by-default admin spending action
+   `/sendgift <user|chat> <receiver_id> <gift_id> confirm [text]`; требует
+   ровно один receiver, явное подтверждение, каталог gift id из доверенного
+   review и raw Bot API helper из-за pinned `aiogram==3.3.0`),
    `giftPremiumSubscription`, `getMyStarBalance`, `getStarTransactions`,
    `refundStarPayment`, `editUserStarSubscription`, `sendInvoice`,
    `createInvoiceLink`, `answerShippingQuery`, `answerPreCheckoutQuery`.
@@ -1008,6 +1011,46 @@ Product rules и audit log:
 - любые будущие методы `sendGift`, `giftPremiumSubscription` или verification
   actions должны быть отдельными командами с собственным подтверждением,
   allowlist checks, rollback notes и audit log.
+
+### sendGift
+
+Команда `/sendgift` вызывает Telegram `sendGift` (Bot API 10.0) для отправки
+обычного подарка пользователю или каналу. По официальной документации метод
+требует `gift_id` и ровно один receiver: `user_id` или `chat_id`. Дополнительно
+поддерживаются `pay_for_upgrade`, `text`, `text_parse_mode` и `text_entities`.
+Метод возвращает boolean `True` и списывает стоимость подарка в Telegram Stars
+с баланса бота. Специальные update types не нужны; права и баланс проверяются
+Telegram на стороне конкретного receiver.
+
+Так как pinned `aiogram==3.3.0` не имеет typed wrapper для `sendGift`,
+реализация использует изолированный raw Bot API helper
+`bot/services/send_gift.py`. Helper POST'ит JSON-payload на endpoint `sendGift`,
+использует URL из `bot.session.api.api_url(...)` для поддержки local Bot API
+server, проверяет ровно один receiver до HTTP-вызова и поднимает
+transport/Telegram `ok: false`/unexpected-result ошибки как `SendGiftError`.
+
+Выбран отдельный admin billing/rewards scenario: оператор сначала получает
+каталог через `/availablegifts confirm`, выбирает `gift_id` из доверенного
+review, проверяет receiver и product rules, затем выполняет
+`/sendgift <user|chat> <receiver_id> <gift_id> confirm [text]`. Команда не
+связана с `free-claude-code` и не смешивается с verification actions. Rollback
+ограничен операционными действиями: сама доставка подарка не отменяется этим
+ботом, поэтому ошибочные расходы нужно разбирать по audit log и балансу Stars.
+
+Product rules и audit log:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если список пустой, команда
+  отключена;
+- команда требует literal `confirm` в том же сообщении, которое запускает
+  расход Stars;
+- parser принимает `user <positive_user_id>` или `chat <chat_id|@username>` и
+  отклоняет команды с двумя receiver или без receiver;
+- optional gift text ограничен 128 символами до отправки;
+- structured logs включают `gift_id`, receiver type, `pay_for_upgrade` и факт
+  наличия текста, но не сам текст и не unrelated user/chat data;
+- Telegram permission/balance/transport/rate-limit errors возвращаются в admin
+  chat.
 
 ### sendLocation
 
