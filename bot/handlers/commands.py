@@ -333,6 +333,11 @@ from bot.services.read_business_message import (
     ReadBusinessMessageError,
     perform_read_business_message,
 )
+from bot.services.delete_business_messages import (
+    DeleteBusinessMessagesError,
+    MAX_DELETE_BUSINESS_MESSAGES,
+    perform_delete_business_messages,
+)
 from bot.services.get_managed_bot_token import (
     GetManagedBotTokenError,
     format_managed_bot_token,
@@ -790,6 +795,30 @@ READ_BUSINESS_MESSAGE_USAGE = (
     "The business connection id must come from a live business connection "
     "update or another trusted operator source; the message id must be a "
     "positive integer."
+)
+
+DELETE_BUSINESS_MESSAGES_CONFIRM_KEYWORD = "confirm"
+
+DELETE_BUSINESS_MESSAGES_USAGE = (
+    "<b>deletebusinessmessages usage</b>\n"
+    "Deletes 1-100 messages from a connected Telegram business account via "
+    "<code>deleteBusinessMessages</code>. This is a destructive admin-only "
+    "business-mode operation because Telegram accepts only messages that "
+    "belong to the supplied business connection.\n"
+    "Usage: <code>/deletebusinessmessages &lt;business_connection_id&gt; "
+    "&lt;message_id&gt; [message_id ...] confirm</code>\n"
+    "Message ids may be separated by spaces or commas. The business connection "
+    "id must come from a live business connection update or another trusted "
+    "operator source."
+)
+
+DELETE_BUSINESS_MESSAGES_WARNING = (
+    "<b>deletebusinessmessages confirmation required</b>\n"
+    "This will delete Telegram business-account messages and cannot be rolled "
+    "back by this bot. Review the business connection ownership and message "
+    "ids before confirming.\n"
+    "Run <code>/deletebusinessmessages &lt;business_connection_id&gt; "
+    "&lt;message_id&gt; [message_id ...] confirm</code> to proceed."
 )
 
 MANAGED_BOT_TOKEN_USAGE = (
@@ -1930,6 +1959,7 @@ async def cmd_help(message: Message):
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/readbusinessmessage - Mark a business message as read by business connection id and message id (admin only)\n"
+        "/deletebusinessmessages - Delete business messages by business connection id and message ids (admin only)\n"
         "/managedbottoken - Fetch a managed bot token by user id (admin only)\n"
         "/managedbotaccess - Fetch managed bot access settings by user id (admin only)\n"
         "/setmanagedbotaccess - Update managed bot access settings by user id (admin only)\n"
@@ -2953,6 +2983,37 @@ async def cmd_read_business_message(message: Message):
 
     await message.answer(
         f"Marked business message {message_id} as read for {business_connection_id}."
+    )
+
+
+@router.message(Command("deletebusinessmessages"))
+async def cmd_delete_business_messages(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_delete_business_messages_args(message.text or "")
+    if parsed is None:
+        await message.answer(DELETE_BUSINESS_MESSAGES_USAGE, parse_mode="HTML")
+        return
+
+    business_connection_id, message_ids, confirmed = parsed
+    if not confirmed:
+        await message.answer(DELETE_BUSINESS_MESSAGES_WARNING, parse_mode="HTML")
+        return
+
+    try:
+        await perform_delete_business_messages(
+            message.bot,
+            business_connection_id=business_connection_id,
+            message_ids=message_ids,
+        )
+    except DeleteBusinessMessagesError as exc:
+        await message.answer(f"Could not delete the business messages: {exc}")
+        return
+
+    await message.answer(
+        f"Deleted {len(message_ids)} business messages for {business_connection_id}."
     )
 
 
@@ -5998,6 +6059,37 @@ def _parse_read_business_message_args(text: str) -> tuple[str, int] | None:
         return None
 
     return business_connection_id, message_id
+
+
+def _parse_delete_business_messages_args(text: str) -> tuple[str, list[int], bool] | None:
+    """Parse ``/deletebusinessmessages`` args into connection id, ids, confirm flag."""
+    parts = (text or "").split()
+    if len(parts) < 3:
+        return None
+
+    business_connection_id = parts[1].strip()
+    if not business_connection_id:
+        return None
+
+    confirmed = parts[-1].lower() == DELETE_BUSINESS_MESSAGES_CONFIRM_KEYWORD
+    id_parts = parts[2:-1] if confirmed else parts[2:]
+    raw_ids = [
+        raw_id
+        for part in id_parts
+        for raw_id in part.split(",")
+        if raw_id.strip()
+    ]
+    if not raw_ids or len(raw_ids) > MAX_DELETE_BUSINESS_MESSAGES:
+        return None
+
+    try:
+        message_ids = [int(raw_id) for raw_id in raw_ids]
+    except ValueError:
+        return None
+    if any(message_id <= 0 for message_id in message_ids):
+        return None
+
+    return business_connection_id, message_ids, confirmed
 
 
 def _parse_managed_bot_token_args(text: str) -> int | None:
