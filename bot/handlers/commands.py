@@ -19,7 +19,11 @@ from aiogram.types import (
     InputMediaVideo,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    MenuButtonCommands,
+    MenuButtonDefault,
+    MenuButtonWebApp,
     Message,
+    WebAppInfo,
 )
 from bot.config import settings
 from bot.services.close import perform_close
@@ -46,6 +50,10 @@ from bot.services.set_chat_title import (
     SET_CHAT_TITLE_LIMIT,
     format_set_chat_title_result,
     perform_set_chat_title,
+)
+from bot.services.set_chat_menu_button import (
+    format_set_chat_menu_button_result,
+    perform_set_chat_menu_button,
 )
 from bot.services.set_my_commands import (
     format_set_my_commands_result,
@@ -1053,6 +1061,18 @@ SET_CHAT_TITLE_USAGE = (
     f"The title is limited to {SET_CHAT_TITLE_LIMIT} characters."
 )
 
+SET_CHAT_MENU_BUTTON_USAGE = (
+    "<b>setchatmenubutton usage</b>\n"
+    "Sets the menu button for a specific chat or the default menu button via "
+    "<code>setChatMenuButton</code>. This command changes the bot's public UI, "
+    "is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setchatmenubutton [chat_id=&lt;id&gt;] "
+    "default|commands|web_app &lt;text&gt; &lt;url&gt;</code>\n"
+    "Examples: <code>/setchatmenubutton commands</code>, "
+    "<code>/setchatmenubutton chat_id=-100123 web_app Support https://example.com</code>"
+)
+
 SET_MY_COMMANDS_USAGE = (
     "<b>setmycommands usage</b>\n"
     "Sets the bot command list shown in Telegram clients via "
@@ -1676,6 +1696,7 @@ async def cmd_help(message: Message):
         "/removemyprofilephoto - Remove the bot profile photo (admin only)\n"
         "/setchatdescription - Set or clear a chat description (admin only)\n"
         "/setchattitle - Set a group, supergroup or channel title (admin only)\n"
+        "/setchatmenubutton - Set the bot menu button for a chat or by default (admin only)\n"
         "/setmyname - Set or clear the bot display name (admin only)\n"
         "/getmyname - Fetch the bot display name (admin only)\n"
         "/setmydescription - Set or clear the bot description (admin only)\n"
@@ -3306,6 +3327,35 @@ async def cmd_set_my_commands(message: Message):
 
     await message.answer(
         format_set_my_commands_result(parsed),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setchatmenubutton"))
+async def cmd_set_chat_menu_button(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_chat_menu_button_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_CHAT_MENU_BUTTON_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, menu_button = parsed
+
+    try:
+        await perform_set_chat_menu_button(
+            message.bot,
+            chat_id=chat_id,
+            menu_button=menu_button,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not set the chat menu button: {exc}")
+        return
+
+    await message.answer(
+        format_set_chat_menu_button_result(chat_id=chat_id, menu_button=menu_button),
         parse_mode="HTML",
     )
 
@@ -6451,6 +6501,44 @@ def _parse_set_my_commands_args(text: str):
         parsed.append(BotCommand(command=command, description=description))
 
     return parsed
+
+
+def _parse_set_chat_menu_button_args(text: str):
+    """Parse ``/setchatmenubutton`` args into ``chat_id`` and menu button."""
+    parts = (text or "").split()
+    if len(parts) < 2:
+        return None
+
+    chat_id = None
+    index = 1
+    if parts[index].startswith("chat_id="):
+        raw_chat_id = parts[index].split("=", maxsplit=1)[1]
+        try:
+            chat_id = int(raw_chat_id)
+        except ValueError:
+            return None
+        index += 1
+
+    if index >= len(parts):
+        return None
+
+    button_type = parts[index].lower()
+    if button_type == "default" and index == len(parts) - 1:
+        return chat_id, MenuButtonDefault()
+    if button_type == "commands" and index == len(parts) - 1:
+        return chat_id, MenuButtonCommands()
+    if button_type != "web_app" or len(parts) != index + 3:
+        return None
+
+    text_value = parts[index + 1].strip()
+    url = parts[index + 2].strip()
+    if not text_value or not url.startswith(("http://", "https://")):
+        return None
+
+    return chat_id, MenuButtonWebApp(
+        text=text_value,
+        web_app=WebAppInfo(url=url),
+    )
 
 
 def _parse_set_my_name_args(text: str):
