@@ -142,7 +142,7 @@
 | BOTAPI-131 | `editMessageLiveLocation` | [#137](https://github.com/labtgbot/telegram-claude-agent/issues/137) | `area:message-management` | `priority:P1` | `stage:S1-spec` |
 | BOTAPI-132 | `stopMessageLiveLocation` | [#138](https://github.com/labtgbot/telegram-claude-agent/issues/138) | `area:message-management` | `priority:P1` | `stage:S1-spec` |
 | BOTAPI-133 | `editMessageChecklist` | [#139](https://github.com/labtgbot/telegram-claude-agent/issues/139) | `area:message-management` | `priority:P1` | `stage:S1-spec` |
-| BOTAPI-134 | `editMessageReplyMarkup` | [#140](https://github.com/labtgbot/telegram-claude-agent/issues/140) | `area:message-management` | `priority:P1` | `stage:S1-spec` |
+| BOTAPI-134 | `editMessageReplyMarkup` | [#140](https://github.com/labtgbot/telegram-claude-agent/issues/140) | `area:message-management` | `priority:P1` | `stage:S5-docs` |
 | BOTAPI-135 | `stopPoll` | [#141](https://github.com/labtgbot/telegram-claude-agent/issues/141) | `area:message-management` | `priority:P1` | `stage:S1-spec` |
 | BOTAPI-136 | `approveSuggestedPost` | [#142](https://github.com/labtgbot/telegram-claude-agent/issues/142) | `area:message-management` | `priority:P1` | `stage:S1-spec` |
 | BOTAPI-137 | `declineSuggestedPost` | [#143](https://github.com/labtgbot/telegram-claude-agent/issues/143) | `area:message-management` | `priority:P1` | `stage:S1-spec` |
