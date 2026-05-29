@@ -180,6 +180,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/replacestickerinset <user_id> <name> <old_sticker_file_id> <sticker_format> <new_sticker_file_id> <emoji[,emoji...]>` – Replace a sticker in an existing sticker set (admin only).
 - `/setstickerposition <sticker_file_id> <position>` – Move a sticker inside its sticker set by zero-based position (admin only).
 - `/setstickeremojis <sticker_file_id> <emoji[,emoji...]>` – Replace the emoji list for a sticker in its sticker set (admin only).
+- `/setstickerkeywords <sticker_file_id> <keyword[,keyword...]|->` – Replace or clear sticker search keywords in its sticker set (admin only).
 - `/deletestickerfromset <sticker_file_id>` – Delete a sticker from its sticker set (admin only).
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
 - `/paidmedia` – Send a paid photo into this chat that users must pay for with Telegram Stars to access, via a URL or file_id (admin only).
@@ -275,6 +276,8 @@ typed method when available and an isolated raw Bot API helper on pinned
   its sticker set by zero-based position (admin only).
 - `/setstickeremojis <sticker_file_id> <emoji[,emoji...]>` – Replace the
   emoji list for a sticker in its sticker set (admin only).
+- `/setstickerkeywords <sticker_file_id> <keyword[,keyword...]|->` – Replace
+  or clear sticker search keywords in its sticker set (admin only).
 - `/deletestickerfromset <sticker_file_id>` – Delete a sticker from its
   sticker set (admin only).
 - `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` – Promote or demote a group, supergroup, or channel member where the bot has `can_promote_members` (admin only).
@@ -1163,6 +1166,26 @@ Usage: `/setstickeremojis <sticker_file_id> <emoji[,emoji...]>`
 - Telegram validation and rate-limit errors are reported back to the operator;
 - rollback is manual: call `/setstickeremojis` again with the previous emoji
   list captured from `/getstickerset`.
+
+### Set sticker keywords
+
+The restricted `/setstickerkeywords` command calls Telegram Bot API
+`setStickerKeywords` through an isolated raw helper because the project pins
+`aiogram==3.3.0`. It replaces the search keywords for an existing sticker in
+its current sticker set and extends the optional creative/media module without
+affecting the main Claude chat flow.
+
+Usage: `/setstickerkeywords <sticker_file_id> <keyword[,keyword...]|->`
+
+- use `/getstickerset` first to inspect current sticker file ids;
+- `keywords` accepts up to 20 comma-separated strings; pass `-` to clear the
+  keyword list;
+- Telegram only allows updating stickers in sets created by the bot;
+- no special update types are required because the scenario starts from a
+  normal admin command message;
+- Telegram validation and rate-limit errors are reported back to the operator;
+- rollback is manual: call `/setstickerkeywords` again with the previous
+  keywords captured from operational notes or Telegram tooling.
 
 ### Delete a sticker from a set
 
@@ -3651,7 +3674,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /sticker, /getstickerset, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /checklist, /setmycommands, /mediagroup, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /sticker, /getstickerset, /setstickerkeywords, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /checklist, /setmycommands, /mediagroup, /clear
 │   │   ├── chat.py             # Text and media message handler (shows typing… while processing)
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -3674,6 +3697,7 @@ telegram-claude-agent/
 │   │   ├── send_sticker.py     # Telegram sendSticker outbound helper
 │   │   ├── get_sticker_set.py  # Telegram getStickerSet raw Bot API helper
 │   │   ├── create_new_sticker_set.py # Telegram createNewStickerSet raw helper
+│   │   ├── set_sticker_keywords.py # Telegram setStickerKeywords raw helper
 │   │   ├── send_voice.py       # Telegram sendVoice outbound helper
 │   │   ├── send_paid_media.py  # Telegram sendPaidMedia raw Bot API helper
 │   │   ├── send_location.py    # Telegram sendLocation outbound helper

@@ -173,6 +173,11 @@ from bot.services.set_sticker_emoji_list import (
     format_set_sticker_emoji_list_result,
     perform_set_sticker_emoji_list,
 )
+from bot.services.set_sticker_keywords import (
+    SetStickerKeywordsError,
+    format_set_sticker_keywords_result,
+    perform_set_sticker_keywords,
+)
 from bot.services.delete_sticker_from_set import (
     DeleteStickerFromSetError,
     format_delete_sticker_from_set_result,
@@ -2457,6 +2462,18 @@ SET_STICKER_EMOJI_LIST_USAGE = (
     "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
     "Usage: <code>/setstickeremojis &lt;sticker_file_id&gt; "
     "&lt;emoji[,emoji...]&gt;</code>"
+)
+
+SET_STICKER_KEYWORDS_USAGE = (
+    "<b>setstickerkeywords usage</b>\n"
+    "Replaces search keywords for one sticker in its current sticker set "
+    "through <code>setStickerKeywords</code>. Use "
+    "<code>/getstickerset</code> first when you need to inspect current "
+    "file ids. The bot can only update stickers in sets created by the bot. "
+    "Pass <code>-</code> to clear keywords. This command is deny-by-default "
+    "and only works from <code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setstickerkeywords &lt;sticker_file_id&gt; "
+    "&lt;keyword[,keyword...]|-&gt;</code>"
 )
 
 DELETE_STICKER_FROM_SET_USAGE = (
@@ -6834,6 +6851,37 @@ async def cmd_set_sticker_emoji_list(message: Message):
         format_set_sticker_emoji_list_result(
             sticker=sticker,
             emoji_list=emoji_list,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setstickerkeywords"))
+async def cmd_set_sticker_keywords(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_sticker_keywords_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_STICKER_KEYWORDS_USAGE, parse_mode="HTML")
+        return
+
+    sticker, keywords = parsed
+    try:
+        await perform_set_sticker_keywords(
+            message.bot,
+            sticker=sticker,
+            keywords=keywords,
+        )
+    except SetStickerKeywordsError as exc:
+        await message.answer(f"Could not set the sticker keywords: {exc}")
+        return
+
+    await message.answer(
+        format_set_sticker_keywords_result(
+            sticker=sticker,
+            keywords=keywords,
         ),
         parse_mode="HTML",
     )
@@ -11516,6 +11564,26 @@ def _parse_set_sticker_emoji_list_args(text: str):
     if not sticker or not emoji_list:
         return None
     return sticker, emoji_list
+
+
+def _parse_set_sticker_keywords_args(text: str):
+    """Parse ``/setstickerkeywords`` args into sticker file id and keywords."""
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) != 3:
+        return None
+
+    sticker = parts[1].strip()
+    raw_keywords = parts[2].strip()
+    if not sticker or not raw_keywords:
+        return None
+
+    if raw_keywords == "-":
+        return sticker, []
+
+    keywords = [item.strip() for item in raw_keywords.split(",") if item.strip()]
+    if not keywords:
+        return None
+    return sticker, keywords
 
 
 def _parse_delete_sticker_from_set_args(text: str):
