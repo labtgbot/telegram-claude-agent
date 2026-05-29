@@ -338,6 +338,11 @@ from bot.services.delete_business_messages import (
     MAX_DELETE_BUSINESS_MESSAGES,
     perform_delete_business_messages,
 )
+from bot.services.set_business_account_name import (
+    MAX_BUSINESS_ACCOUNT_NAME_LENGTH,
+    SetBusinessAccountNameError,
+    perform_set_business_account_name,
+)
 from bot.services.get_managed_bot_token import (
     GetManagedBotTokenError,
     format_managed_bot_token,
@@ -795,6 +800,19 @@ READ_BUSINESS_MESSAGE_USAGE = (
     "The business connection id must come from a live business connection "
     "update or another trusted operator source; the message id must be a "
     "positive integer."
+)
+
+SET_BUSINESS_ACCOUNT_NAME_USAGE = (
+    "<b>setbusinessaccountname usage</b>\n"
+    "Sets the public first and optional last name of a connected Telegram "
+    "business account via <code>setBusinessAccountName</code>. This is an "
+    "admin-only business-mode operation because it changes account profile "
+    "metadata for the supplied business connection.\n"
+    "Usage: <code>/setbusinessaccountname &lt;business_connection_id&gt; "
+    "&lt;first_name&gt; [last_name]</code>\n"
+    "The business connection id must come from a live business connection "
+    "update or another trusted operator source; first_name and last_name are "
+    f"single tokens up to {MAX_BUSINESS_ACCOUNT_NAME_LENGTH} characters each."
 )
 
 DELETE_BUSINESS_MESSAGES_CONFIRM_KEYWORD = "confirm"
@@ -1959,6 +1977,7 @@ async def cmd_help(message: Message):
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/readbusinessmessage - Mark a business message as read by business connection id and message id (admin only)\n"
+        "/setbusinessaccountname - Set a connected business account name by business connection id (admin only)\n"
         "/deletebusinessmessages - Delete business messages by business connection id and message ids (admin only)\n"
         "/managedbottoken - Fetch a managed bot token by user id (admin only)\n"
         "/managedbotaccess - Fetch managed bot access settings by user id (admin only)\n"
@@ -2984,6 +3003,32 @@ async def cmd_read_business_message(message: Message):
     await message.answer(
         f"Marked business message {message_id} as read for {business_connection_id}."
     )
+
+
+@router.message(Command("setbusinessaccountname"))
+async def cmd_set_business_account_name(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_business_account_name_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_BUSINESS_ACCOUNT_NAME_USAGE, parse_mode="HTML")
+        return
+
+    business_connection_id, first_name, last_name = parsed
+    try:
+        await perform_set_business_account_name(
+            message.bot,
+            business_connection_id=business_connection_id,
+            first_name=first_name,
+            last_name=last_name,
+        )
+    except SetBusinessAccountNameError as exc:
+        await message.answer(f"Could not set the business account name: {exc}")
+        return
+
+    await message.answer(f"Set business account name for {business_connection_id}.")
 
 
 @router.message(Command("deletebusinessmessages"))
@@ -6059,6 +6104,27 @@ def _parse_read_business_message_args(text: str) -> tuple[str, int] | None:
         return None
 
     return business_connection_id, message_id
+
+
+def _parse_set_business_account_name_args(
+    text: str,
+) -> tuple[str, str, str | None] | None:
+    """Parse ``/setbusinessaccountname`` args into connection id and name."""
+    parts = (text or "").split()
+    if len(parts) not in (3, 4):
+        return None
+
+    business_connection_id = parts[1].strip()
+    first_name = parts[2].strip()
+    last_name = parts[3].strip() if len(parts) == 4 else None
+    if not business_connection_id or not first_name:
+        return None
+    if len(first_name) > MAX_BUSINESS_ACCOUNT_NAME_LENGTH:
+        return None
+    if last_name is not None and len(last_name) > MAX_BUSINESS_ACCOUNT_NAME_LENGTH:
+        return None
+
+    return business_connection_id, first_name, last_name
 
 
 def _parse_delete_business_messages_args(text: str) -> tuple[str, list[int], bool] | None:
