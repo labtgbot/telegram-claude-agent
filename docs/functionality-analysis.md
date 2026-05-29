@@ -237,7 +237,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 5. Интерактивность: полноценные `answerInlineQuery` ответы через Claude,
    handler для `chosen_inline_result`, `answerCallbackQuery` и inline keyboards
    для настроек/выбора модели, `answerGuestQuery` для официального Guest Mode,
-   `answerWebAppQuery`, `savePreparedInlineMessage`,
+   `answerWebAppQuery`, `savePreparedInlineMessage` (уже интегрирован),
    `savePreparedKeyboardButton`.
 6. Группы, модерация и форумы: `getChat`, `getChatAdministrators`,
    `getChatMemberCount`, `getChatMember`, `banChatMember`,
