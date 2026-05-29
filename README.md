@@ -73,6 +73,8 @@ TELEGRAM_BOT_SHORT_DESCRIPTION=  # optional startup sync for the bot profile sho
 TELEGRAM_BOT_SHORT_DESCRIPTION_LANGUAGE_CODE=  # optional IETF language code for localized bot short description
 TELEGRAM_BOT_DESCRIPTION=  # optional startup sync for the bot profile description
 TELEGRAM_BOT_DESCRIPTION_LANGUAGE_CODE=  # optional IETF language code for localized bot description
+TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS=  # optional startup sync preset: moderator, manager, channel, or clear
+TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS_FOR_CHANNELS=  # optional true for channels, false for groups
 
 API_SECRET_TOKEN=random_secret_for_webhook_verification
 RATE_LIMIT_REQUESTS_PER_MINUTE=60
@@ -99,6 +101,8 @@ LOG_LEVEL=INFO
 - `TELEGRAM_BOT_SHORT_DESCRIPTION_LANGUAGE_CODE` – optional language code for a localized `setMyShortDescription` update. Leave empty to update the default bot short description.
 - `TELEGRAM_BOT_DESCRIPTION` – optional bot profile description to apply with Telegram `setMyDescription` on startup. Leave unset to skip profile sync; an empty string clears the selected description.
 - `TELEGRAM_BOT_DESCRIPTION_LANGUAGE_CODE` – optional language code for a localized `setMyDescription` update. Leave empty to update the default bot description.
+- `TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS` – optional preset to apply with Telegram `setMyDefaultAdministratorRights` on startup. Supported values are `moderator`, `manager`, `channel`, and `clear`; leave unset to skip sync.
+- `TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS_FOR_CHANNELS` – optional target flag for `setMyDefaultAdministratorRights`: `true` for channels, `false` for groups and supergroups, empty for Telegram default targeting.
 - `API_SECRET_TOKEN` – secret token for verifying webhook requests (highly recommended for webhook mode).
 - `RATE_LIMIT_REQUESTS_PER_MINUTE` – maximum requests per user per minute.
 - `LOG_LEVEL` – logging level (default `INFO`).
@@ -199,6 +203,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/getchatmenubutton [chat_id=<id>]` – Fetch the bot menu button for one chat or the default menu button (admin only).
 - `/setmyname <name> [language=<code>]` – Set or clear the bot display name shown in Telegram clients (admin only).
 - `/setmydescription <description> [language=<code>]` – Set or clear the public bot profile description shown in Telegram clients (admin only).
+- `/setmydefaultrights <moderator|manager|channel|clear> [for_channels=true|false]` – Set or clear default administrator rights requested when the bot is added as administrator (admin only).
 - `/removemyprofilephoto confirm` – Remove the bot profile photo through Bot API 10.0 (admin only, requires confirmation; rollback is `/setmyprofilephoto <photo_path>` with the previous image).
 - `/getmyname [language=<code>]` – Fetch the bot display name shown in Telegram clients (admin only).
 - `/setchatdescription <chat_id> [description]` – Set or clear a group,

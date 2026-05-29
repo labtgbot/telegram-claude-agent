@@ -63,3 +63,13 @@ def test_bot_short_description_settings(monkeypatch):
     settings = Settings()
     assert settings.telegram_bot_short_description == "Claude agent"
     assert settings.telegram_bot_short_description_language_code == "ru"
+
+def test_bot_default_administrator_rights_settings(monkeypatch):
+    monkeypatch.setenv("FREE_CLAUDE_BASE_URL", "http://localhost:8082")
+    monkeypatch.setenv("FREE_CLAUDE_AUTH_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:ABC")
+    monkeypatch.setenv("TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS", "moderator")
+    monkeypatch.setenv("TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS_FOR_CHANNELS", "false")
+    settings = Settings()
+    assert settings.telegram_bot_default_administrator_rights == "moderator"
+    assert settings.telegram_bot_default_administrator_rights_for_channels is False
