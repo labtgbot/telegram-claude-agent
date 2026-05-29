@@ -201,6 +201,10 @@ from bot.services.edit_message_media import (
     EditMessageMediaError,
     perform_edit_message_media,
 )
+from bot.services.edit_message_reply_markup import (
+    EditMessageReplyMarkupError,
+    perform_edit_message_reply_markup,
+)
 from bot.services.edit_message_checklist import (
     EditMessageChecklistError,
     perform_edit_message_checklist,
@@ -968,6 +972,20 @@ EDIT_MESSAGE_MEDIA_USAGE = (
     f"The optional caption is limited to {EDIT_MESSAGE_MEDIA_CAPTION_LIMIT} "
     "characters. Optional trailing flags: <code>parse_mode=HTML</code>, "
     "<code>above=true</code>, <code>spoiler=true</code>."
+)
+
+EDIT_MESSAGE_REPLY_MARKUP_USAGE = (
+    "<b>editreplymarkup usage</b>\n"
+    "Edits only the inline keyboard of a message previously sent by this bot. "
+    "This is an admin-only message-management command. Target a regular "
+    "message with <code>chat_id</code> and <code>message_id</code>, or target "
+    "inline mode with <code>inline=&lt;inline_message_id&gt;</code>.\n"
+    "Usage: <code>/editreplymarkup &lt;chat_id&gt; &lt;message_id&gt; "
+    "[clear|empty]</code>\n"
+    "Usage: <code>/editreplymarkup inline=&lt;inline_message_id&gt; "
+    "[clear|empty]</code>\n"
+    "Omit the final argument or pass <code>clear</code> to remove the current "
+    "inline keyboard. Pass <code>empty</code> to send an empty inline keyboard."
 )
 
 EDIT_MESSAGE_LIVE_LOCATION_USAGE = (
@@ -3717,6 +3735,41 @@ async def cmd_edit_message_media(message: Message):
         return
 
     await message.answer("Edited inline message media.")
+
+
+@router.message(Command("editreplymarkup"))
+async def cmd_edit_message_reply_markup(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_edit_message_reply_markup_args(message.text or "")
+    if parsed is None:
+        await message.answer(EDIT_MESSAGE_REPLY_MARKUP_USAGE, parse_mode="HTML")
+        return
+
+    target, reply_markup = parsed
+
+    try:
+        result = await perform_edit_message_reply_markup(
+            message.bot,
+            reply_markup=reply_markup,
+            **target,
+        )
+    except EditMessageReplyMarkupError as exc:
+        await message.answer(f"Could not edit the message reply markup: {exc}")
+        return
+
+    if isinstance(result, dict):
+        result_message_id = result.get("message_id")
+        await message.answer(
+            f"Edited reply markup for message {result_message_id}."
+            if result_message_id is not None
+            else "Edited message reply markup."
+        )
+        return
+
+    await message.answer("Edited inline message reply markup.")
 
 
 @router.message(Command("editlivelocation"))
@@ -7792,6 +7845,40 @@ def _parse_edit_message_media_args(text: str):
 
     caption = " ".join(kept_tokens).strip() or None
     return target, media_type, media, caption, options
+
+
+def _parse_edit_message_reply_markup_args(text: str):
+    """Parse ``/editreplymarkup`` args into target and raw reply markup."""
+    parts = (text or "").split()
+    if len(parts) < 2:
+        return None
+
+    target: dict[str, object]
+    action_index: int
+    if parts[1].startswith("inline="):
+        inline_message_id = parts[1].split("=", maxsplit=1)[1].strip()
+        if not inline_message_id:
+            return None
+        target = {"inline_message_id": inline_message_id}
+        action_index = 2
+    else:
+        if len(parts) < 3:
+            return None
+        try:
+            chat_id = int(parts[1])
+            message_id = int(parts[2])
+        except ValueError:
+            return None
+        if message_id <= 0:
+            return None
+        target = {"chat_id": chat_id, "message_id": message_id}
+        action_index = 3
+
+    if len(parts) <= action_index or parts[action_index].lower() == "clear":
+        return target, None
+    if parts[action_index].lower() == "empty":
+        return target, {"inline_keyboard": []}
+    return None
 
 
 def _parse_edit_message_live_location_args(text: str):
