@@ -348,6 +348,13 @@ from bot.services.get_user_gifts import (
     format_user_gifts,
     perform_get_user_gifts,
 )
+from bot.services.get_chat_gifts import (
+    GET_CHAT_GIFTS_MAX_LIMIT,
+    GET_CHAT_GIFTS_MIN_LIMIT,
+    GetChatGiftsError,
+    format_chat_gifts,
+    perform_get_chat_gifts,
+)
 from bot.services.read_business_message import (
     ReadBusinessMessageError,
     perform_read_business_message,
@@ -878,6 +885,23 @@ GET_USER_GIFTS_USAGE = (
     "[offset=&lt;offset&gt;] [limit=1..100]</code>\n"
     "The user id must identify a Telegram user whose gifts can be viewed by "
     "this bot account."
+)
+
+GET_CHAT_GIFTS_USAGE = (
+    "<b>chatgifts usage</b>\n"
+    "Fetches Telegram <code>getChatGifts</code> for a channel chat. This is "
+    "an admin-only diagnostic because it exposes the channel's owned gifts "
+    "and pagination cursor.\n"
+    "Usage: <code>/chatgifts &lt;chat_id|@channelusername&gt; "
+    "[exclude_unsaved=true|false] [exclude_saved=true|false] "
+    "[exclude_unlimited=true|false] "
+    "[exclude_limited_upgradable=true|false] "
+    "[exclude_limited_non_upgradable=true|false] "
+    "[exclude_from_blockchain=true|false] [exclude_unique=true|false] "
+    "[sort_by_price=true|false] [offset=&lt;offset&gt;] "
+    "[limit=1..100]</code>\n"
+    "Telegram supports this method for channel chats. Full visibility can "
+    "require the bot's <code>can_post_messages</code> administrator right."
 )
 
 TRANSFER_BUSINESS_ACCOUNT_STARS_CONFIRM_KEYWORD = "confirm"
@@ -2184,6 +2208,7 @@ async def cmd_help(message: Message):
         "/replacemanagedbottoken - Rotate a managed bot token by user id (admin only)\n"
         "/availablegifts - Fetch the current Telegram gift catalog (admin only)\n"
         "/usergifts - Fetch Telegram gifts owned by a user (admin only)\n"
+        "/chatgifts - Fetch Telegram gifts owned by a channel chat (admin only)\n"
         "/sendgift - Send a Telegram gift with explicit confirmation (admin only)\n"
         "/giftpremium - Gift Telegram Premium with explicit Stars confirmation (admin only)\n"
         "/verifyuser - Verify a Telegram user with explicit confirmation (admin only)\n"
@@ -3271,6 +3296,34 @@ async def cmd_user_gifts(message: Message):
 
     await message.answer(
         format_user_gifts(gifts, user_id=user_id),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("chatgifts"))
+async def cmd_chat_gifts(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_get_chat_gifts_args(message.text or "")
+    if parsed is None:
+        await message.answer(GET_CHAT_GIFTS_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, options = parsed
+    try:
+        gifts = await perform_get_chat_gifts(
+            message.bot,
+            chat_id=chat_id,
+            **options,
+        )
+    except GetChatGiftsError as exc:
+        await message.answer(f"Could not fetch the chat gifts: {exc}")
+        return
+
+    await message.answer(
+        format_chat_gifts(gifts, chat_id=chat_id),
         parse_mode="HTML",
     )
 
@@ -6704,6 +6757,68 @@ def _parse_get_user_gifts_args(
             return None
 
     return user_id, options
+
+
+def _parse_get_chat_gifts_args(
+    text: str,
+) -> tuple[int | str, dict[str, bool | str | int]] | None:
+    """Parse ``/chatgifts`` args into chat id and optional filters."""
+    parts = (text or "").split()
+    if len(parts) < 2:
+        return None
+
+    chat_id_raw = parts[1].strip()
+    if not chat_id_raw:
+        return None
+
+    if chat_id_raw.startswith("@"):
+        chat_id: int | str = chat_id_raw
+    else:
+        try:
+            chat_id = int(chat_id_raw)
+        except ValueError:
+            return None
+        if chat_id == 0:
+            return None
+
+    bool_keys = {
+        "exclude_unsaved",
+        "exclude_saved",
+        "exclude_unlimited",
+        "exclude_limited_upgradable",
+        "exclude_limited_non_upgradable",
+        "exclude_from_blockchain",
+        "exclude_unique",
+        "sort_by_price",
+    }
+    options: dict[str, bool | str | int] = {}
+    for option in parts[2:]:
+        if "=" not in option:
+            return None
+        key, value = option.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key in bool_keys:
+            parsed_value = _parse_bool_option(value)
+            if parsed_value is None:
+                return None
+            options[key] = parsed_value
+        elif key == "offset":
+            if not value:
+                return None
+            options[key] = value
+        elif key == "limit":
+            try:
+                limit = int(value)
+            except ValueError:
+                return None
+            if not (GET_CHAT_GIFTS_MIN_LIMIT <= limit <= GET_CHAT_GIFTS_MAX_LIMIT):
+                return None
+            options[key] = limit
+        else:
+            return None
+
+    return chat_id, options
 
 
 def _parse_transfer_business_account_stars_args(
