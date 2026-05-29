@@ -189,6 +189,7 @@ from bot.services.send_message_draft import (
     SendMessageDraftError,
     perform_send_message_draft,
 )
+from bot.services.send_gift import SendGiftError, perform_send_gift
 from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
 from bot.services.send_photo import perform_send_photo
 from bot.services.send_poll import perform_send_poll
@@ -848,6 +849,32 @@ GET_AVAILABLE_GIFTS_WARNING = (
     "spending or verification action must stay in a separate confirmed command "
     "with its own audit log.\n"
     "Run <code>/availablegifts confirm</code> to proceed."
+)
+
+SEND_GIFT_CONFIRM_KEYWORD = "confirm"
+SEND_GIFT_TEXT_LIMIT = 128
+
+SEND_GIFT_USAGE = (
+    "<b>sendgift usage</b>\n"
+    "Sends Telegram <code>sendGift</code> to a user or channel chat. The gift "
+    "id must come from <code>/availablegifts confirm</code> or another trusted "
+    "operator-controlled catalog review. This spends Telegram Stars from the "
+    "bot balance, so the command is admin-only and requires an explicit "
+    "confirmation keyword.\n"
+    "Usage: <code>/sendgift &lt;user|chat&gt; &lt;receiver_id&gt; "
+    "&lt;gift_id&gt; confirm [text]</code>\n"
+    "Telegram requires exactly one receiver: <code>user_id</code> or "
+    "<code>chat_id</code>. No special update type is required; channel gifts "
+    "depend on Telegram-side bot permissions and Stars balance."
+)
+
+SEND_GIFT_WARNING = (
+    "<b>sendgift confirmation required</b>\n"
+    "This will send a Telegram gift and spend Stars from the bot balance. "
+    "Review the gift id, receiver id, product rules and rollback plan before "
+    "confirming. Gift delivery itself cannot be rolled back by this bot.\n"
+    "Run <code>/sendgift &lt;user|chat&gt; &lt;receiver_id&gt; &lt;gift_id&gt; "
+    "confirm [text]</code> to proceed."
 )
 
 USER_PROFILE_PHOTOS_USAGE = (
@@ -1745,6 +1772,7 @@ async def cmd_help(message: Message):
         "/setmanagedbotaccess - Update managed bot access settings by user id (admin only)\n"
         "/replacemanagedbottoken - Rotate a managed bot token by user id (admin only)\n"
         "/availablegifts - Fetch the current Telegram gift catalog (admin only)\n"
+        "/sendgift - Send a Telegram gift with explicit confirmation (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
@@ -2891,6 +2919,48 @@ async def cmd_available_gifts(message: Message):
         return
 
     await message.answer(format_available_gifts(gifts), parse_mode="HTML")
+
+
+@router.message(Command("sendgift"))
+async def cmd_send_gift(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_send_gift_args(message.text or "")
+    if parsed is None:
+        await message.answer(SEND_GIFT_USAGE, parse_mode="HTML")
+        return
+
+    receiver_type, receiver_id, gift_id, confirmed, text = parsed
+    if not confirmed:
+        await message.answer(SEND_GIFT_WARNING, parse_mode="HTML")
+        return
+
+    if text is not None and len(text) > SEND_GIFT_TEXT_LIMIT:
+        await message.answer(
+            f"Gift text is too long: {len(text)} characters "
+            f"(max {SEND_GIFT_TEXT_LIMIT})."
+        )
+        return
+
+    kwargs = {
+        "gift_id": gift_id,
+        "text": text,
+        "text_parse_mode": "HTML" if text else None,
+    }
+    if receiver_type == "user":
+        kwargs["user_id"] = receiver_id
+    else:
+        kwargs["chat_id"] = receiver_id
+
+    try:
+        await perform_send_gift(message.bot, **kwargs)
+    except SendGiftError as exc:
+        await message.answer(f"Could not send gift: {exc}")
+        return
+
+    await message.answer("Sent gift.")
 
 
 @router.message(Command("userprofilephotos"))
@@ -5649,6 +5719,48 @@ def _parse_available_gifts_args(text: str) -> bool | None:
             return None
         return True
     return None
+
+
+def _parse_send_gift_args(
+    text: str,
+) -> tuple[str, int | str, str, bool, str | None] | None:
+    """Parse ``/sendgift`` args into receiver, gift id and confirmation state."""
+    parts = (text or "").split(maxsplit=5)
+    if len(parts) not in (4, 5, 6):
+        return None
+
+    receiver_type = parts[1].strip().lower()
+    if receiver_type not in ("user", "chat"):
+        return None
+
+    receiver_raw = parts[2]
+    if receiver_type == "user":
+        try:
+            receiver_id: int | str = int(receiver_raw)
+        except ValueError:
+            return None
+        if receiver_id <= 0:
+            return None
+    else:
+        try:
+            receiver_id = int(receiver_raw)
+        except ValueError:
+            if not receiver_raw.startswith("@") or len(receiver_raw) <= 1:
+                return None
+            receiver_id = receiver_raw
+
+    gift_id = parts[3].strip()
+    if not gift_id:
+        return None
+
+    if len(parts) == 4:
+        return receiver_type, receiver_id, gift_id, False, None
+
+    if parts[4].strip().lower() != SEND_GIFT_CONFIRM_KEYWORD:
+        return None
+
+    gift_text = parts[5].strip() if len(parts) == 6 else None
+    return receiver_type, receiver_id, gift_id, True, gift_text or None
 
 
 def _parse_user_profile_photos_args(text: str):
