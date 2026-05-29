@@ -191,6 +191,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/sendinvoice` – Send a Telegram Stars test invoice into this chat (admin only).
 - `/mystarbalance` – Fetch this bot's Telegram Stars balance (admin only).
 - `/startransactions` – Fetch this bot's Telegram Stars transaction history (admin only).
+- `/refundstars` – Refund a Telegram Stars payment by charge id (admin only, requires confirmation).
 - `/answerwebappquery` – Answer a Telegram Web App query with one inline result (admin only).
 - `/savepreparedinline` – Save one prepared inline message for a user (admin only).
 - `/savepreparedkeyboard` – Save a prepared keyboard button for a Mini App user (admin only).
@@ -2089,6 +2090,35 @@ The command does not call `free-claude-code` and is read-only. It is intended as
 an operator audit/reconciliation view before separate refund or subscription
 flows. Rollback is operational: remove the admin chat from
 `TELEGRAM_ADMIN_CHAT_IDS` or remove the command handler.
+
+### Refund Stars payment
+
+The restricted `/refundstars` command calls Telegram Bot API
+`refundStarPayment` to refund one Telegram Stars payment to a user by
+`telegram_payment_charge_id`. Because the pinned `aiogram==3.3.0` does not
+expose a typed wrapper for this Bot API 10.0 method, the command uses an
+isolated raw Bot API helper (`bot/services/refund_star_payment.py`) over
+`httpx`.
+
+Usage: `/refundstars <user_id> <telegram_payment_charge_id> confirm`
+
+- `user_id` is the Telegram user who paid the Stars invoice and must be a
+  positive integer;
+- `telegram_payment_charge_id` must come from trusted billing records, a
+  `successful_payment` update or `/startransactions` reconciliation;
+- no special update subscription is required for the refund command itself,
+  but production billing must persist `pre_checkout_query` and
+  `successful_payment` audit data before refunds are attempted;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- the handler keeps an in-process idempotency set keyed by
+  `(user_id, telegram_payment_charge_id)` so repeated confirmed commands during
+  the same bot process do not call Telegram twice;
+- structured logs contain the user id, charge id and error shape for audit.
+
+The command does not call `free-claude-code`. Rollback is operational: remove
+the admin chat from `TELEGRAM_ADMIN_CHAT_IDS`, remove the command handler, or
+disable the billing module around this helper.
 
 ### Get business account gifts
 

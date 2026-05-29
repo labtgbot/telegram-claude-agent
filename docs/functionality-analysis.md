@@ -156,6 +156,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `getBusinessAccountStarBalance` | `bot/services/get_business_account_star_balance.py`, `/businessstarbalance` в `bot/handlers/commands.py` | Read-only admin-flow получения `StarAmount` для подключенного business account по live `business_connection_id`; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует Telegram business right `can_view_gifts_and_stars`, а ownership/permission errors возвращаются оператору без retry; structured logs содержат connection id и форму результата, но не сумму Stars. |
 | `getMyStarBalance` | `bot/services/get_my_star_balance.py`, `/mystarbalance` в `bot/handlers/commands.py` | Read-only admin-flow получения `StarAmount` текущего бота без параметров; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, не требует специальных update types или chat administrator rights, а Telegram transport/permission/rate-limit errors возвращаются оператору без retry; structured logs содержат форму результата, но не сумму Stars. |
 | `getStarTransactions` | `bot/services/get_star_transactions.py`, `/startransactions` в `bot/handlers/commands.py` | Read-only admin-flow получения `StarTransactions` текущего бота в chronological order с optional `offset` и `limit` 1-100; используется изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback, не требует специальных update types или chat administrator rights, не вызывает `free-claude-code`, а Telegram transport/permission/rate-limit errors возвращаются оператору; structured logs содержат count и наличие pagination parameters, но не transaction ids или суммы. |
+| `refundStarPayment` | `bot/services/refund_star_payment.py`, `/refundstars` в `bot/handlers/commands.py` | Destructive admin-flow возврата Telegram Stars payment пользователю по `user_id` и `telegram_payment_charge_id`; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого Bot API 10.0 метода; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, требует явный `confirm`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, отделена от invoice/pre-checkout handlers и `free-claude-code`, а in-process идемпотентность не вызывает Telegram повторно для той же пары user/charge в рамках процесса; structured logs содержат user id, charge id и форму ошибки для audit. |
 | `transferBusinessAccountStars` | `bot/services/transfer_business_account_stars.py`, `/transferbusinessstars` в `bot/handlers/commands.py` | Destructive admin-flow перевода Telegram Stars с подключенного business account на баланс бота по live `business_connection_id` и положительному `star_count`; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует явный `confirm`, Telegram business right `can_transfer_stars` и Telegram ownership/balance checks; structured logs содержат connection id, amount и форму ошибки. |
 | `convertGiftToStars` | `bot/services/convert_gift_to_stars.py`, `/convertgiftstars` в `bot/handlers/commands.py` | Destructive admin-flow конвертации одного regular owned gift подключенного business account в Telegram Stars по live `business_connection_id` и `owned_gift_id`; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует явный `confirm`, Telegram business right для конвертации gifts to Stars и Telegram ownership/eligibility checks; structured logs содержат connection id, owned gift id и форму ошибки. |
 | `upgradeGift` | `bot/services/upgrade_gift.py`, `/upgradegift` в `bot/handlers/commands.py` | Destructive admin-flow upgrade одного owned gift подключенного business account по live `business_connection_id`, `owned_gift_id` и optional `keep_original_details`; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует явный `confirm`, Telegram business right для transfer/upgrade gifts и Telegram ownership/balance/eligibility checks; structured logs содержат connection id, owned gift id, optional detail flag и форму ошибки. |
@@ -2282,6 +2283,47 @@ metadata, которые могут использоваться для reconcil
 только количество транзакций и наличие pagination parameters, но не transaction
 ids, суммы или partner payload. Rollback операционный: убрать chat id из
 `TELEGRAM_ADMIN_CHAT_IDS` или удалить handler.
+
+### refundStarPayment
+
+Команда `/refundstars <user_id> <telegram_payment_charge_id> confirm`
+возвращает Telegram Stars payment пользователю методом `refundStarPayment`
+(Bot API 10.0). Метод принимает обязательные `user_id` и
+`telegram_payment_charge_id`; charge id должен приходить из trusted billing
+records, `successful_payment` update или audit/reconciliation через
+`/startransactions`.
+
+Pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода, поэтому
+реализация идет через изолированный raw Bot API helper
+`bot/services/refund_star_payment.py`. Helper валидирует положительный integer
+`user_id` и непустой charge id, POST'ит JSON payload
+`{"user_id": ..., "telegram_payment_charge_id": ...}` на endpoint
+`refundStarPayment` через `httpx`, берет URL через
+`bot.session.api.api_url(...)` для поддержки local Bot API server и поднимает
+validation errors, транспортные ошибки, невалидный JSON, Telegram `ok: false`
+и неожиданный result как `RefundStarPaymentError`.
+
+Сценарий намеренно отделен от `/sendinvoice`, `/createinvoicelink`,
+`/startransactions`, shipping/pre-checkout callbacks и `free-claude-code`:
+оператор сначала сверяет billing audit log и charge id, затем запускает refund
+отдельной командой с явным `confirm`. Для самой admin-команды не нужны
+специальные update types или chat administrator rights; production billing,
+который формирует данные для refund, должен сохранять `pre_checkout_query` и
+`successful_payment` audit data отдельно.
+
+Команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; при пустом admin allowlist команда
+отключена. Handler хранит in-process idempotency set по паре
+`(user_id, telegram_payment_charge_id)`, поэтому повторная подтвержденная
+команда в рамках того же процесса не вызывает Telegram второй раз и возвращает
+audit-сообщение о ранее записанном refund.
+
+Security/privacy impact: команда меняет финансовое состояние Stars payment,
+поэтому она не вызывается автоматически и требует отдельный admin allowlist.
+Structured logs содержат user id, charge id и форму ошибки для audit, но не
+полный payment payload. Rollback ограничен операционно: убрать chat id из
+`TELEGRAM_ADMIN_CHAT_IDS`, удалить handler или отключить billing module вокруг
+helper; уже принятый Telegram refund ботом не откатывается.
 
 ### transferBusinessAccountStars
 
