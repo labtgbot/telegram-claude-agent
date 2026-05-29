@@ -186,6 +186,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/chataction` – Show a chat action (a transient status such as `typing…`) in this chat (admin only).
 - `/messagedraft` – Stream an ephemeral message draft (a ~30-second preview shown above the input field) into this private chat (admin only).
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
+- `/editchecklist` – Edit an existing business checklist message by chat/message id (admin only).
 - `/poststory` – Post a photo story on behalf of a connected business account by `business_connection_id` (admin only).
 - `/repoststory` – Repost a bot-posted story between managed business accounts by `business_connection_id` (admin only).
 - `/editstory` – Edit a bot-posted photo story for a connected business account by `business_connection_id` and `story_id` (admin only).
@@ -1458,6 +1459,35 @@ account, it is guarded like the other admin commands:
   **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
+
+### Edit a checklist
+
+The restricted `/editchecklist` command calls Telegram Bot API
+`editMessageChecklist` (introduced in Bot API 10.0). Because the pinned
+`aiogram==3.3.0` has no typed wrapper for this method, the command uses an
+**isolated raw Bot API helper** (`bot/services/edit_message_checklist.py`) that
+POSTs over `httpx` and JSON-serializes the replacement `InputChecklist`.
+
+`editMessageChecklist` edits a checklist **on behalf of a connected business
+account** and returns the edited `Message`. Telegram requires
+`business_connection_id`, `chat_id`, `message_id` and `checklist`; optional
+inline `reply_markup` is supported by the helper for service-level callers.
+
+Usage: `/editchecklist <business_connection_id> <chat_id> <message_id> <title> | <task> [| <task> ...]`
+
+- `chat_id` and `message_id` identify the existing checklist message to edit;
+- provide between 1 and 30 replacement tasks; the handler assigns sequential
+  task ids starting at 1;
+- the title is limited to 255 characters and each task to 100 characters;
+- malformed input is rejected before Telegram is contacted;
+- title and task text are not written to structured logs; logs include target
+  ids, task count and Telegram error shape.
+
+The command is restricted to `TELEGRAM_ADMIN_CHAT_IDS` with no fallback to
+`TELEGRAM_ALLOWED_CHAT_IDS`, does not call `free-claude-code`, and uses the
+global command rate limit. Rollback is another `/editchecklist` call with the
+previous checklist content, or manual editing from the connected business
+account in Telegram.
 
 ### Post a business story
 

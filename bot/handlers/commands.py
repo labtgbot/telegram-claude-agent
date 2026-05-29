@@ -201,6 +201,10 @@ from bot.services.edit_message_media import (
     EditMessageMediaError,
     perform_edit_message_media,
 )
+from bot.services.edit_message_checklist import (
+    EditMessageChecklistError,
+    perform_edit_message_checklist,
+)
 from bot.services.edit_message_live_location import (
     EditMessageLiveLocationError,
     perform_edit_message_live_location,
@@ -919,6 +923,19 @@ CHECKLIST_USAGE = (
     "vertical bar.\n"
     "Usage: <code>/checklist &lt;business_connection_id&gt; &lt;title&gt; "
     "| &lt;task&gt; [| &lt;task&gt; ...]</code>\n"
+    "Provide 1-30 tasks. The title is limited to 255 characters and each task "
+    "to 100 characters; the title and every task may contain spaces and must be "
+    "non-empty."
+)
+
+EDIT_MESSAGE_CHECKLIST_USAGE = (
+    "<b>editchecklist usage</b>\n"
+    "Edits an existing Telegram checklist message on behalf of a connected "
+    "business account. Pass the business connection id, target chat id, target "
+    "message id, then the replacement checklist title and tasks separated by a "
+    "vertical bar.\n"
+    "Usage: <code>/editchecklist &lt;business_connection_id&gt; &lt;chat_id&gt; "
+    "&lt;message_id&gt; &lt;title&gt; | &lt;task&gt; [| &lt;task&gt; ...]</code>\n"
     "Provide 1-30 tasks. The title is limited to 255 characters and each task "
     "to 100 characters; the title and every task may contain spaces and must be "
     "non-empty."
@@ -2470,6 +2487,7 @@ async def cmd_help(message: Message):
         "/editlivelocation - Move an active live location message (admin only)\n"
         "/stoplivelocation - Stop an active live location message (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
+        "/editchecklist - Edit a business checklist message (admin only)\n"
         "/poststory - Post a photo story via a business connection (admin only)\n"
         "/repoststory - Repost a story between managed business accounts (admin only)\n"
         "/deletestory - Delete a story via a business connection (admin only)\n"
@@ -3553,6 +3571,66 @@ async def cmd_checklist(message: Message):
         return
 
     await message.answer(f"Sent checklist with {len(tasks)} tasks.")
+
+
+@router.message(Command("editchecklist"))
+async def cmd_edit_message_checklist(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_edit_checklist_args(message.text or "")
+    if parsed is None:
+        await message.answer(EDIT_MESSAGE_CHECKLIST_USAGE, parse_mode="HTML")
+        return
+
+    business_connection_id, chat_id, message_id, title, tasks = parsed
+    if len(title) > CHECKLIST_TITLE_MAX_LENGTH:
+        await message.answer(
+            f"Title is too long: {len(title)} characters "
+            f"(max {CHECKLIST_TITLE_MAX_LENGTH})."
+        )
+        return
+
+    if not CHECKLIST_MIN_TASKS <= len(tasks) <= CHECKLIST_MAX_TASKS:
+        await message.answer(
+            f"A checklist needs between {CHECKLIST_MIN_TASKS} and "
+            f"{CHECKLIST_MAX_TASKS} tasks."
+        )
+        return
+
+    too_long = next((task for task in tasks if len(task) > CHECKLIST_TASK_MAX_LENGTH), None)
+    if too_long is not None:
+        await message.answer(
+            f"Task is too long: {len(too_long)} characters "
+            f"(max {CHECKLIST_TASK_MAX_LENGTH})."
+        )
+        return
+
+    checklist = {
+        "title": title,
+        "tasks": [
+            {"id": index, "text": task} for index, task in enumerate(tasks, start=1)
+        ],
+    }
+    try:
+        result = await perform_edit_message_checklist(
+            message.bot,
+            business_connection_id=business_connection_id,
+            chat_id=chat_id,
+            message_id=message_id,
+            checklist=checklist,
+        )
+    except EditMessageChecklistError as exc:
+        await message.answer(f"Could not edit the checklist: {exc}")
+        return
+
+    result_message_id = result.get("message_id")
+    await message.answer(
+        f"Edited checklist message {result_message_id} with {len(tasks)} tasks."
+        if result_message_id is not None
+        else f"Edited checklist with {len(tasks)} tasks."
+    )
 
 
 @router.message(Command("editcaption"))
@@ -7503,6 +7581,33 @@ def _parse_checklist_args(text: str):
         return None
 
     return business_connection_id, title, tasks
+
+
+def _parse_edit_checklist_args(text: str):
+    """Parse ``/editchecklist`` args into business id, target and checklist."""
+    parts = (text or "").split(maxsplit=4)
+    if len(parts) < 5:
+        return None
+
+    business_connection_id = parts[1].strip()
+    try:
+        chat_id = int(parts[2])
+        message_id = int(parts[3])
+    except ValueError:
+        return None
+
+    if not business_connection_id or message_id <= 0:
+        return None
+
+    segments = [segment.strip() for segment in parts[4].split(CHECKLIST_TASK_SEPARATOR)]
+    title = segments[0]
+    tasks = segments[1:]
+    if not title or not tasks:
+        return None
+    if any(not task for task in tasks):
+        return None
+
+    return business_connection_id, chat_id, message_id, title, tasks
 
 
 def _parse_post_story_args(text: str):
