@@ -174,6 +174,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/videonote` – Send a rounded square video message (video note) into this chat via a file_id (admin only).
 - `/animation` – Send an animation (GIF or soundless video) into this chat as a playable looping clip via a URL or file_id (admin only).
 - `/sticker` – Send a sticker or custom emoji into this chat via a URL or file_id (admin only).
+- `/getstickerset <sticker_set_name>` – Fetch sticker set metadata and sticker file_ids by set name (admin only).
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
 - `/paidmedia` – Send a paid photo into this chat that users must pay for with Telegram Stars to access, via a URL or file_id (admin only).
 - `/answerwebappquery` – Answer a Telegram Web App query with one inline result (admin only).
@@ -258,6 +259,8 @@ typed method when available and an isolated raw Bot API helper on pinned
   set where the bot can change chat information (admin only).
 - `/deletechatstickerset <chat_id>` – Delete a supergroup sticker set where
   the bot can change chat information (admin only).
+- `/getstickerset <sticker_set_name>` – Fetch sticker set metadata and sticker
+  file_ids by set name (admin only).
 - `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` – Promote or demote a group, supergroup, or channel member where the bot has `can_promote_members` (admin only).
 - `/approvechatjoinrequest <chat_id> <user_id>` – Approve a pending join request where the bot has `can_invite_users` (admin only).
 - `/declinechatjoinrequest <chat_id> <user_id>` – Decline a pending join request where the bot has `can_invite_users` (admin only).
@@ -2777,6 +2780,33 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Get sticker set
+
+The `/getstickerset <sticker_set_name>` admin command calls Telegram Bot API
+`getStickerSet` through an isolated raw Bot API helper because the project pins
+`aiogram==3.3.0`. It is intended for trusted operations chats when a moderator
+or operator needs to inspect a sticker/custom emoji set before using it in
+creative media flows or sticker set lifecycle work.
+
+The command takes the sticker set `name`, not its display title, URL or sticker
+`file_id`. Telegram returns a `StickerSet` with its title, type and stickers;
+the bot responds with the set metadata and the first sticker `file_id` values
+for operational inspection. No special update subscription is required because
+the scenario starts from a normal command message. Telegram validation,
+transport and rate-limit errors are reported back to the admin chat.
+
+This command does not call `free-claude-code`, does not mutate Telegram state
+and has no Telegram-side rollback step. To disable the operational surface,
+remove the command chat from `TELEGRAM_ADMIN_CHAT_IDS`.
+
+Because the command exposes reusable sticker identifiers, it is guarded like
+the other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
 The `/deletechatphoto <chat_id>` admin command calls Telegram Bot API
 `deleteChatPhoto` through aiogram's typed API. It is intended for trusted
 operators to remove the current group or supergroup photo after an incident,
@@ -3487,7 +3517,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /sticker, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /checklist, /setmycommands, /mediagroup, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /sticker, /getstickerset, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /checklist, /setmycommands, /mediagroup, /clear
 │   │   ├── chat.py             # Text and media message handler (shows typing… while processing)
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -3508,6 +3538,7 @@ telegram-claude-agent/
 │   │   ├── send_video_note.py  # Telegram sendVideoNote outbound helper
 │   │   ├── send_animation.py   # Telegram sendAnimation outbound helper
 │   │   ├── send_sticker.py     # Telegram sendSticker outbound helper
+│   │   ├── get_sticker_set.py  # Telegram getStickerSet raw Bot API helper
 │   │   ├── send_voice.py       # Telegram sendVoice outbound helper
 │   │   ├── send_paid_media.py  # Telegram sendPaidMedia raw Bot API helper
 │   │   ├── send_location.py    # Telegram sendLocation outbound helper

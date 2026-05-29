@@ -132,6 +132,11 @@ from bot.services.delete_chat_sticker_set import (
     format_delete_chat_sticker_set_result,
     perform_delete_chat_sticker_set,
 )
+from bot.services.get_sticker_set import (
+    GetStickerSetError,
+    format_sticker_set,
+    perform_get_sticker_set,
+)
 from bot.services.copy_message import perform_copy_message
 from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
@@ -2293,6 +2298,17 @@ GET_CHAT_ADMINISTRATORS_USAGE = (
     "Usage: <code>/getchatadministrators &lt;chat_id&gt;</code>"
 )
 
+GET_STICKER_SET_USAGE = (
+    "<b>getstickerset usage</b>\n"
+    "Fetches sticker set metadata and sticker file ids through "
+    "<code>getStickerSet</code>. This is an admin triage helper for "
+    "sticker/custom emoji lifecycle work and does not change Telegram state. "
+    "Pass the sticker set name, not a title, URL or sticker file id. This "
+    "command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/getstickerset &lt;sticker_set_name&gt;</code>"
+)
+
 FORUM_TOPIC_ICON_STICKERS_USAGE = (
     "<b>forumtopiciconstickers usage</b>\n"
     "Fetches the custom emoji stickers Telegram allows as forum topic icons "
@@ -2698,6 +2714,7 @@ async def cmd_help(message: Message):
         "/getchatmembercount - Fetch chat member count from Telegram (admin only)\n"
         "/getchatadministrators - Fetch chat administrators from Telegram (admin only)\n"
         "/forumtopiciconstickers - Fetch available forum topic icon stickers (admin only)\n"
+        "/getstickerset - Fetch sticker set metadata by name (admin only)\n"
         "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
         "/editgeneralforumtopic - Edit the General forum topic in a supergroup (admin only)\n"
@@ -6405,6 +6422,26 @@ async def cmd_forum_topic_icon_stickers(message: Message):
         format_forum_topic_icon_stickers(stickers),
         parse_mode="HTML",
     )
+
+
+@router.message(Command("getstickerset"))
+async def cmd_get_sticker_set(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    name = _parse_get_sticker_set_args(message.text or "")
+    if name is None:
+        await message.answer(GET_STICKER_SET_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        sticker_set = await perform_get_sticker_set(message.bot, name=name)
+    except GetStickerSetError as exc:
+        await message.answer(f"Could not get the sticker set: {exc}")
+        return
+
+    await message.answer(format_sticker_set(sticker_set), parse_mode="HTML")
 
 
 @router.message(Command("editforumtopic"))
@@ -10918,6 +10955,18 @@ def _parse_delete_chat_sticker_set_args(text: str):
         return int(parts[1])
     except ValueError:
         return None
+
+
+def _parse_get_sticker_set_args(text: str):
+    """Parse ``/getstickerset`` args into a sticker set name."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    name = parts[1].strip()
+    if not name or any(char.isspace() for char in name):
+        return None
+    return name
 
 
 def _parse_approve_chat_join_request_args(text: str):
