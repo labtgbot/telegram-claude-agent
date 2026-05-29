@@ -266,6 +266,11 @@ from bot.services.repost_story import RepostStoryError, perform_repost_story
 from bot.services.delete_story import DeleteStoryError, perform_delete_story
 from bot.services.send_photo import perform_send_photo
 from bot.services.send_poll import perform_send_poll
+from bot.services.stop_poll import (
+    StopPollValidationError,
+    format_stop_poll_result,
+    perform_stop_poll,
+)
 from bot.services.send_venue import perform_send_venue
 from bot.services.send_video import perform_send_video
 from bot.services.send_video_note import perform_send_video_note
@@ -857,6 +862,14 @@ POLL_USAGE = (
     "Provide 2-10 options. The question is limited to 300 characters and each "
     "option to 100 characters; the question and every option may contain spaces "
     "and must be non-empty."
+)
+
+STOP_POLL_USAGE = (
+    "<b>stoppoll usage</b>\n"
+    "Stops a native Telegram poll that was previously sent by the bot, "
+    "returning the final poll state. Pass the chat id and the poll message id.\n"
+    "Usage: <code>/stoppoll &lt;chat_id&gt; &lt;message_id&gt;</code>\n"
+    "The bot must have sent the poll, and the poll must still be open."
 )
 
 CONTACT_NAME_SEPARATOR = "|"
@@ -3428,6 +3441,36 @@ async def cmd_poll(message: Message):
         return
 
     await message.answer(f"Sent poll with {len(options)} options.")
+
+@router.message(Command("stoppoll"))
+async def cmd_stop_poll(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_stop_poll_args(message.text or "")
+    if parsed is None:
+        await message.answer(STOP_POLL_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, message_id = parsed
+    try:
+        poll = await perform_stop_poll(
+            message.bot,
+            chat_id=chat_id,
+            message_id=message_id,
+        )
+    except StopPollValidationError as exc:
+        await message.answer(str(exc))
+        return
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not stop the poll: {exc}")
+        return
+
+    await message.answer(
+        format_stop_poll_result(poll, chat_id=chat_id, message_id=message_id),
+        parse_mode="HTML",
+    )
 
 @router.message(Command("contact"))
 async def cmd_contact(message: Message):
@@ -7509,6 +7552,31 @@ def _parse_poll_args(text: str):
         return None
 
     return question, options
+
+
+def _parse_stop_poll_args(text: str):
+    parts = (text or "").split()
+    if len(parts) != 3:
+        return None
+
+    raw_chat_id, raw_message_id = parts[1], parts[2]
+    try:
+        message_id = int(raw_message_id)
+    except ValueError:
+        return None
+
+    if message_id <= 0:
+        return None
+
+    if raw_chat_id.startswith("@"):
+        chat_id: int | str = raw_chat_id
+    else:
+        try:
+            chat_id = int(raw_chat_id)
+        except ValueError:
+            return None
+
+    return chat_id, message_id
 
 
 def _parse_contact_args(text: str):

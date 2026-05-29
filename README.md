@@ -181,6 +181,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/location` – Send a point on the map into this chat as a real Telegram location via latitude and longitude (admin only).
 - `/venue` – Send a venue (a named place with a title and an address pinned on the map) into this chat via latitude and longitude (admin only).
 - `/poll` – Send a native poll (an interactive question with 2-10 tappable answer options) into this chat (admin only).
+- `/stoppoll` – Stop a bot-sent native poll by chat/message id and return the final poll state (admin only).
 - `/contact` – Send a phone contact (a name with a phone number that can be saved to the address book) into this chat (admin only).
 - `/dice` – Send an animated dice (an emoji that shows a random value) into this chat (admin only).
 - `/chataction` – Show a chat action (a transient status such as `typing…`) in this chat (admin only).
@@ -1272,6 +1273,30 @@ Usage: `/poll <question> | <option> | <option> [| <option> ...]`
 
 Because the command makes the bot post a poll, it is guarded like the other
 admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
+### Stop a poll
+
+The restricted `/stoppoll` command calls Telegram Bot API `stopPoll` through
+aiogram's typed `Bot.stop_poll()` wrapper. It lets an operator close an active
+native poll that was previously sent by the bot and returns Telegram's final
+`Poll` state.
+
+Usage: `/stoppoll <chat_id> <message_id>`
+
+- `chat_id` may be a numeric chat id or a channel username such as `@channel`;
+- `message_id` must be the positive id of the poll message;
+- Telegram only stops polls sent by the bot, and the poll must still be open;
+- no special update type is required, because the flow starts from a normal
+  admin command message;
+- Telegram permission/state/rate-limit errors are reported back to the admin
+  chat.
+
+The command is guarded like other message-management admin commands:
 
 - it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
   **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`

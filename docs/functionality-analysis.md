@@ -124,6 +124,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendMediaGroup` | `bot/services/send_media_group.py`, `/mediagroup` в `bot/handlers/commands.py` | Admin-flow отправки 2-10 медиа в текущий чат как единого альбома (media group) по URL или `file_id`, через typed aiogram API; все элементы одного типа (photo/video/document/audio), единый caption применяется к первому элементу. |
 | `sendVenue` | `bot/services/send_venue.py`, `/venue` в `bot/handlers/commands.py` | Admin-flow отправки заведения (venue) — именованного места с названием и адресом, закрепленного на карте — в текущий чат по широте, долготе, title и address, через typed aiogram API; координаты валидируются по диапазонам, а сами координаты, title и address не пишутся в structured logs. |
 | `sendPoll` | `bot/services/send_poll.py`, `/poll` в `bot/handlers/commands.py` | Admin-flow отправки нативного опроса (poll) — интерактивного вопроса с 2-10 вариантами ответа — в текущий чат, через typed aiogram API; длины вопроса (до 300) и вариантов (до 100) и их количество валидируются до обращения к Telegram, а сам вопрос и варианты ответа не пишутся в structured logs. |
+| `stopPoll` | `bot/services/stop_poll.py`, `/stoppoll` в `bot/handlers/commands.py` | Admin-flow закрытия активного нативного опроса, ранее отправленного ботом, по `chat_id` и `message_id`, через typed aiogram API; `message_id` валидируется как positive id, команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, а structured logs фиксируют только target message и итоговый poll id/count без текста вопроса и вариантов. |
 | `sendContact` | `bot/services/send_contact.py`, `/contact` в `bot/handlers/commands.py` | Admin-flow отправки телефонного контакта (contact) — имени с номером телефона, который получатель может сохранить в адресную книгу — в текущий чат, через typed aiogram API; phone_number и first_name обязательны, last_name опционален, а номер телефона и имя контакта не пишутся в structured logs. |
 | `sendDice` | `bot/services/send_dice.py`, `/dice` в `bot/handlers/commands.py` | Admin-flow отправки анимированной кости (dice) — анимированного эмодзи со случайным значением, которое выбирает Telegram — в текущий чат, через typed aiogram API; опциональный emoji ограничен набором 🎲/🎯/🏀/⚽/🎳/🎰 и валидируется до обращения к Telegram, без аргумента отправляется 🎲. |
 | `sendChecklist` | `bot/services/send_checklist.py`, `/checklist` в `bot/handlers/commands.py` | Admin-flow отправки чеклиста (checklist) — озаглавленного списка из 1-30 задач — в текущий чат от имени подключенного business account, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 9.1; требует `business_connection_id`, длины title (до 255) и задач (до 100) и их количество валидируются до обращения к Telegram, а title и тексты задач не пишутся в structured logs. |
@@ -1462,6 +1463,42 @@ Telegram (анонимный одиночный regular-опрос). Вопро�
 
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/poll` так же, как к другим командам.
+
+### stopPoll
+
+Команда `/stoppoll` вызывает typed aiogram API `Bot.stop_poll()` для метода
+Telegram `stopPoll`. По официальной документации метод требует `chat_id` и
+`message_id` сообщения с опросом, опционально принимает новый `reply_markup` и
+возвращает финальный объект `Poll`. В pinned `aiogram==3.3.0` этот метод
+доступен как typed wrapper, поэтому raw Bot API helper не нужен.
+
+Выбран отдельный admin message-management сценарий: оператор закрывает активный
+нативный опрос, ранее отправленный этим ботом, по chat/message id. Синтаксис:
+`/stoppoll <chat_id> <message_id>`. `chat_id` принимает numeric id или username
+канала вида `@channel`, `message_id` должен быть положительным числом. Команда
+не требует специальных update types, потому что запускается обычным admin
+message update.
+
+Telegram сам проверяет ключевые ограничения: опрос должен быть отправлен ботом,
+должен оставаться открытым, а бот должен иметь доступ к целевому чату и
+сообщению. При ошибках Telegram, например если poll уже закрыт, сообщение не
+является poll или бот больше не имеет доступа к чату, команда возвращает текст
+ошибки в admin chat и пишет warning log с target chat/message id. Текст вопроса
+и варианты ответа не пишутся в structured logs; success log содержит только
+target chat/message id, итоговый poll id и количество options.
+
+`/stoppoll` закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при невалидном вводе команда показывает usage или validation error и не
+  обращается к Telegram;
+- rollback для уже закрытого poll отсутствует в Bot API: восстановить тот же
+  poll как открытый нельзя, можно только отправить новый `/poll`.
+
+Команда не взаимодействует с `free-claude-code`. Глобальный
+`RateLimitMiddleware` применяется к `/stoppoll` так же, как к другим командам.
 
 ### sendContact
 
