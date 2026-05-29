@@ -137,6 +137,12 @@ from bot.services.get_sticker_set import (
     format_sticker_set,
     perform_get_sticker_set,
 )
+from bot.services.get_custom_emoji_stickers import (
+    GetCustomEmojiStickersError,
+    GetCustomEmojiStickersValidationError,
+    format_custom_emoji_stickers,
+    perform_get_custom_emoji_stickers,
+)
 from bot.services.copy_message import perform_copy_message
 from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
@@ -2321,6 +2327,18 @@ FORUM_TOPIC_ICON_STICKERS_USAGE = (
     "Usage: <code>/forumtopiciconstickers</code>"
 )
 
+CUSTOM_EMOJI_STICKERS_USAGE = (
+    "<b>customemojistickers usage</b>\n"
+    "Fetches full sticker metadata for custom emoji ids through "
+    "<code>getCustomEmojiStickers</code>. This read-only admin triage helper "
+    "accepts 1-200 ids, needs no chat permissions or special update "
+    "subscription, and does not change Telegram state. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/customemojistickers &lt;custom_emoji_id&gt; "
+    "[custom_emoji_id...]</code>"
+)
+
 CREATE_FORUM_TOPIC_USAGE = (
     "<b>createforumtopic usage</b>\n"
     "Creates a forum topic in a supergroup through "
@@ -2714,6 +2732,7 @@ async def cmd_help(message: Message):
         "/getchatmembercount - Fetch chat member count from Telegram (admin only)\n"
         "/getchatadministrators - Fetch chat administrators from Telegram (admin only)\n"
         "/forumtopiciconstickers - Fetch available forum topic icon stickers (admin only)\n"
+        "/customemojistickers - Fetch custom emoji sticker metadata by id (admin only)\n"
         "/getstickerset - Fetch sticker set metadata by name (admin only)\n"
         "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
@@ -6442,6 +6461,32 @@ async def cmd_get_sticker_set(message: Message):
         return
 
     await message.answer(format_sticker_set(sticker_set), parse_mode="HTML")
+
+
+@router.message(Command("customemojistickers"))
+async def cmd_custom_emoji_stickers(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    custom_emoji_ids = _parse_custom_emoji_stickers_args(message.text or "")
+    if custom_emoji_ids is None:
+        await message.answer(CUSTOM_EMOJI_STICKERS_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        stickers = await perform_get_custom_emoji_stickers(
+            message.bot,
+            custom_emoji_ids=custom_emoji_ids,
+        )
+    except GetCustomEmojiStickersValidationError as exc:
+        await message.answer(str(exc))
+        return
+    except GetCustomEmojiStickersError as exc:
+        await message.answer(f"Could not get custom emoji stickers: {exc}")
+        return
+
+    await message.answer(format_custom_emoji_stickers(stickers), parse_mode="HTML")
 
 
 @router.message(Command("editforumtopic"))
@@ -10967,6 +11012,14 @@ def _parse_get_sticker_set_args(text: str):
     if not name or any(char.isspace() for char in name):
         return None
     return name
+
+
+def _parse_custom_emoji_stickers_args(text: str):
+    """Parse ``/customemojistickers`` args into custom emoji ids."""
+    parts = (text or "").split()
+    if len(parts) < 2:
+        return None
+    return [item.strip() for item in parts[1:] if item.strip()]
 
 
 def _parse_approve_chat_join_request_args(text: str):
