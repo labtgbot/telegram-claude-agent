@@ -203,6 +203,11 @@ from bot.services.delete_sticker_from_set import (
     format_delete_sticker_from_set_result,
     perform_delete_sticker_from_set,
 )
+from bot.services.delete_sticker_set import (
+    DeleteStickerSetError,
+    format_delete_sticker_set_result,
+    perform_delete_sticker_set,
+)
 from bot.services.copy_message import perform_copy_message
 from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
@@ -2558,6 +2563,16 @@ DELETE_STICKER_FROM_SET_USAGE = (
     "Usage: <code>/deletestickerfromset &lt;sticker_file_id&gt;</code>"
 )
 
+DELETE_STICKER_SET_USAGE = (
+    "<b>deletestickerset usage</b>\n"
+    "Deletes a sticker set through <code>deleteStickerSet</code>. Use "
+    "<code>/getstickerset</code> first when you need to inspect the target "
+    "set name. Telegram only allows deleting sticker sets created by the bot. "
+    "This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/deletestickerset &lt;sticker_set_name&gt;</code>"
+)
+
 CREATE_FORUM_TOPIC_USAGE = (
     "<b>createforumtopic usage</b>\n"
     "Creates a forum topic in a supergroup through "
@@ -2964,6 +2979,7 @@ async def cmd_help(message: Message):
         "/setstickersetthumbnail - Set or clear a sticker set thumbnail (admin only)\n"
         "/setcustomemojithumbnail - Set or clear a custom emoji sticker set thumbnail (admin only)\n"
         "/deletestickerfromset - Delete a sticker from its sticker set (admin only)\n"
+        "/deletestickerset - Delete a bot-created sticker set (admin only)\n"
         "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
         "/editgeneralforumtopic - Edit the General forum topic in a supergroup (admin only)\n"
@@ -7115,6 +7131,29 @@ async def cmd_delete_sticker_from_set(message: Message):
 
     await message.answer(
         format_delete_sticker_from_set_result(sticker=sticker),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("deletestickerset"))
+async def cmd_delete_sticker_set(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    name = _parse_delete_sticker_set_args(message.text or "")
+    if name is None:
+        await message.answer(DELETE_STICKER_SET_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        await perform_delete_sticker_set(message.bot, name=name)
+    except DeleteStickerSetError as exc:
+        await message.answer(f"Could not delete the sticker set: {exc}")
+        return
+
+    await message.answer(
+        format_delete_sticker_set_result(name=name),
         parse_mode="HTML",
     )
 
@@ -11884,6 +11923,18 @@ def _parse_delete_sticker_from_set_args(text: str):
     if not sticker:
         return None
     return sticker
+
+
+def _parse_delete_sticker_set_args(text: str):
+    """Parse ``/deletestickerset`` args into sticker set name."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    name = parts[1].strip()
+    if not name:
+        return None
+    return name
 
 
 def _parse_approve_chat_join_request_args(text: str):

@@ -72,8 +72,9 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `closeForumTopic`, `closeGeneralForumTopic`, `reopenForumTopic`,
 `unpinAllForumTopicMessages`, `unpinAllGeneralForumTopicMessages`,
 `unhideGeneralForumTopic`, `setMyName`, `getMyName`, `setMyDescription`,
-`getChatMenuButton`, `editMessageChecklist`, `setStickerMaskPosition`;
-остается 105 пока не
+`getChatMenuButton`, `editMessageChecklist`, `setStickerMaskPosition`,
+`deleteStickerSet`;
+остается 104 пока не
 интегрированных метода.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
@@ -125,6 +126,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `setStickerSetThumbnail` | `bot/services/set_sticker_set_thumbnail.py`, `/setstickersetthumbnail` в `bot/handlers/commands.py` | Admin-flow установки или очистки thumbnail bot-created sticker set по `user_id`, `sticker_set_name`, `format` (`static`, `animated`, `video`) и thumbnail `file_id`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, валидирует positive `user_id`, непустой `name`, допустимый `format` и непустой thumbnail до обращения к Telegram, `-` очищает текущий thumbnail, использует изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`, не требует специальных update types, так как сценарий запускается обычной admin-командой, не вызывает `free-claude-code`, работает только со sticker sets, созданными ботом, rollback выполняется повторным вызовом с прежним thumbnail из `/getstickerset` или operational notes, а ошибки транспорта, Telegram API validation или rate limit возвращаются оператору. |
 | `setCustomEmojiStickerSetThumbnail` | `bot/services/set_custom_emoji_sticker_set_thumbnail.py`, `/setcustomemojithumbnail` в `bot/handlers/commands.py` | Admin-flow установки или очистки thumbnail custom emoji sticker set по `sticker_set_name` и `custom_emoji_id`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, валидирует непустой `name` и непустой `custom_emoji_id` до обращения к Telegram, `-` очищает текущий thumbnail, использует изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`, не требует специальных update types, так как сценарий запускается обычной admin-командой, не вызывает `free-claude-code`, работает только с custom emoji sticker sets, созданными ботом, rollback выполняется повторным вызовом с прежним custom emoji id из `/getstickerset` или operational notes, а ошибки транспорта, Telegram API validation или rate limit возвращаются оператору. |
 | `deleteStickerFromSet` | `bot/services/delete_sticker_from_set.py`, `/deletestickerfromset` в `bot/handlers/commands.py` | Admin-flow удаления существующего sticker/custom emoji из его set по `sticker_file_id`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, валидирует непустой `sticker` до обращения к Telegram, использует изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`, не требует специальных update types, так как сценарий запускается обычной admin-командой, работает только со sticker sets, созданными ботом, rollback выполняется повторным добавлением через `addStickerToSet` с исходными emoji metadata, а ошибки транспорта, Telegram API validation или rate limit возвращаются оператору. |
+| `deleteStickerSet` | `bot/services/delete_sticker_set.py`, `/deletestickerset` в `bot/handlers/commands.py` | Destructive admin-flow удаления bot-created sticker set по `sticker_set_name`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, валидирует непустой `name` до обращения к Telegram, использует изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`, не требует специальных update types, так как сценарий запускается обычной admin-командой, не вызывает `free-claude-code`, работает только со sticker sets, созданными ботом, rollback операционный: пересоздать set через `createNewStickerSet` и повторно добавить нужные stickers, а ошибки транспорта, Telegram API validation или rate limit возвращаются оператору. |
 | `sendVoice` | `bot/services/send_voice.py`, `/voice` в `bot/handlers/commands.py` | Admin-flow отправки голосового сообщения в текущий чат как проигрываемого аудиоклипа (в виде waveform) по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendPaidMedia` | `bot/services/send_paid_media.py`, `/paidmedia` в `bot/handlers/commands.py` | Admin-flow отправки платного фото в текущий чат, доступ к которому пользователи оплачивают Telegram Stars, по URL или `file_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 7.6. |
 | `answerWebAppQuery` | `bot/services/answer_web_app_query.py`, `/answerwebappquery` в `bot/handlers/commands.py` | Admin-flow ответа на Telegram Web App query одним `InlineQueryResult` от имени пользователя через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, не вызывает `free-claude-code`, а Telegram проверяет действительность `web_app_query_id`. |
@@ -1211,6 +1213,38 @@ flow и не вызывает `free-claude-code`.
 Rollback ручной: повторить `/setcustomemojithumbnail` с прежним custom emoji id,
 сохраненным из `/getstickerset` или operational notes, либо очистить thumbnail
 через `-`. Structured logs пишут только имя set, факт наличия custom emoji id,
+тип ошибки и Telegram error code.
+
+### deleteStickerSet
+
+Команда `/deletestickerset` вызывает Telegram Bot API `deleteStickerSet` через
+изолированный raw Bot API helper, потому что проект закреплен на
+`aiogram==3.3.0`. Метод принимает обязательный `name` sticker set; локальная
+валидация отклоняет пустое имя до обращения к Telegram.
+
+Метод удаляет Telegram state и применяется только к sticker sets, созданным
+ботом. Специальные update types не требуются: сценарий запускается обычной
+командой из admin-чата. Сценарий выбран как destructive admin operation для
+creative/media module и полного lifecycle sticker sets: оператор сначала
+проверяет целевой set через `/getstickerset`, затем удаляет весь set по имени.
+Команда не участвует в основном Claude chat flow и не вызывает
+`free-claude-code`.
+
+Синтаксис: `/deletestickerset <sticker_set_name>`.
+
+`/deletestickerset` закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующих аргументах команда показывает usage и не обращается к
+  Telegram;
+- ошибки локальной валидации, транспорта, Telegram API validation и rate limit
+  возвращаются оператору.
+
+Rollback операционный: пересоздать set через `/createnewstickerset`, затем
+повторно добавить нужные stickers через `/addstickertoset`, используя заранее
+сохраненные `file_id` и emoji metadata. Structured logs пишут только имя set,
 тип ошибки и Telegram error code.
 
 ### sendVoice
