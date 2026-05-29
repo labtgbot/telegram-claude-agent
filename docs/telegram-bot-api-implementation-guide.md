@@ -1565,9 +1565,10 @@ Area label: `area:bot-profile`. Priority baseline: `priority:P1`
 #### BOTAPI-093: `setMyProfilePhoto`
 
 - Title: `telegram-api: реализовать setMyProfilePhoto`
+- Status: implemented in PR #268 as restricted `/setmyprofilephoto` bot profile command.
 - Official docs: https://core.telegram.org/bots/api#setmyprofilephoto
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:bot-profile`, `priority:P1`, `stage:S1-spec`
-- Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
+- Stages: `S5-docs`
 - Scope: Добавить воспроизводимое обновление profile photo из файла/asset с проверкой формата.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
