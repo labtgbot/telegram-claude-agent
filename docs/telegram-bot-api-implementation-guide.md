@@ -2043,6 +2043,7 @@ Area label: `area:stories`. Priority baseline: `priority:P4`
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:stories`, `priority:P4`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Добавить поддержку `repostStory` в область: публикацию и управление stories через business/бот capabilities. Определить конкретный сценарий: отдельный content publishing flow, не смешанный с ответами Claude в чате.
+- Status: implemented in PR #298 as restricted admin `/repoststory` command via isolated raw Bot API helper `bot/services/repost_story.py` (`aiogram==3.3.0` ships no typed wrapper for this Bot API 10.0 method).
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API

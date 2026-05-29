@@ -184,6 +184,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/messagedraft` – Stream an ephemeral message draft (a ~30-second preview shown above the input field) into this private chat (admin only).
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
 - `/poststory` – Post a photo story on behalf of a connected business account by `business_connection_id` (admin only).
+- `/repoststory` – Repost a bot-posted story between managed business accounts by `business_connection_id` (admin only).
 - `/businessconnection` – Fetch metadata for a connected Telegram business account by `business_connection_id` (admin only).
 - `/businessstarbalance` – Fetch the Telegram Stars balance of a connected business account by `business_connection_id` (admin only).
 - `/businessgifts` – Fetch owned gifts of a connected business account by `business_connection_id` (admin only).
@@ -1363,6 +1364,37 @@ Usage: `/poststory <business_connection_id> <active_period> <photo_file_id> [cap
 Rollback is operational: delete or archive the posted story from the managed
 business account in Telegram. The separate Bot API `deleteStory` method is
 tracked independently and is not invoked by `/poststory`.
+
+### Repost a business story
+
+The restricted `/repoststory` command calls Telegram Bot API `repostStory`
+(introduced in Bot API 10.0). Because the pinned `aiogram==3.3.0` predates this
+method and ships no typed wrapper, the command goes through an **isolated raw
+Bot API helper** (`bot/services/repost_story.py`) that POSTs the request over
+`httpx`. This is a dedicated admin publishing flow for stories and is not mixed
+with Claude chat replies.
+
+`repostStory` reposts a story from another business account managed by the same
+bot. The bot must have the `can_manage_stories` business bot right for both
+business accounts, and the source story must have been posted or reposted by
+the bot.
+
+Usage: `/repoststory <business_connection_id> <from_chat_id> <from_story_id> <active_period>`
+
+- `business_connection_id` identifies the destination business account;
+- `from_chat_id` identifies the source business account chat that posted the
+  story;
+- `from_story_id` identifies the source story;
+- `active_period` must be one of `21600`, `43200`, `86400` or `172800` seconds;
+- operator-provided identifiers are logged, but no returned owner metadata is
+  written to structured logs;
+- a missing or expired `business_connection_id`, missing `can_manage_stories`
+  right, inaccessible source story or rate limit response is reported back to
+  the operator.
+
+Rollback is operational: delete or archive the reposted story from the managed
+business account in Telegram. The separate Bot API `deleteStory` method is
+tracked independently and is not invoked by `/repoststory`.
 
 ### Get a business connection
 
