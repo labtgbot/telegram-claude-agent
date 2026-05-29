@@ -118,6 +118,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendDice` | `bot/services/send_dice.py`, `/dice` в `bot/handlers/commands.py` | Admin-flow отправки анимированной кости (dice) — анимированного эмодзи со случайным значением, которое выбирает Telegram — в текущий чат, через typed aiogram API; опциональный emoji ограничен набором 🎲/🎯/🏀/⚽/🎳/🎰 и валидируется до обращения к Telegram, без аргумента отправляется 🎲. |
 | `sendChecklist` | `bot/services/send_checklist.py`, `/checklist` в `bot/handlers/commands.py` | Admin-flow отправки чеклиста (checklist) — озаглавленного списка из 1-30 задач — в текущий чат от имени подключенного business account, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 9.1; требует `business_connection_id`, длины title (до 255) и задач (до 100) и их количество валидируются до обращения к Telegram, а title и тексты задач не пишутся в structured logs. |
 | `getBusinessConnection` | `bot/services/get_business_connection.py`, `/businessconnection` в `bot/handlers/commands.py` | Admin-flow получения `BusinessConnection` по live `business_connection_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, показывает owner/user chat/lifecycle/can_reply/enabled metadata и не пишет owner-поля или полный объект в structured logs. |
+| `readBusinessMessage` | `bot/services/read_business_message.py`, `/readbusinessmessage` в `bot/handlers/commands.py` | Admin-flow отметки одного сообщения подключенного business account как прочитанного по live `business_connection_id` и положительному `message_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, а Telegram ownership/rights errors возвращаются оператору без retry. |
 | `getManagedBotToken` | `bot/services/get_managed_bot_token.py`, `/managedbottoken` в `bot/handlers/commands.py` | Admin-flow получения live token управляемого бота по положительному `user_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для managed-bot методов Bot API 9.6; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует trusted source для id из `managed_bot`/`managed_bot_created`, показывает токен только в ответе admin-чата и не пишет токен в structured logs. |
 | `getManagedBotAccessSettings` | `bot/services/get_managed_bot_access_settings.py`, `/managedbotaccess` в `bot/handlers/commands.py` | Admin-flow чтения `BotAccessSettings` управляемого бота по положительному `user_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для managed-bot access settings Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует trusted source для id из `managed_bot`/`managed_bot_created`, показывает restricted flag и allowlist summary в admin-чате и не пишет returned user objects в structured logs. |
 | `setManagedBotAccessSettings` | `bot/services/set_managed_bot_access_settings.py`, `/setmanagedbotaccess` в `bot/handlers/commands.py` | Admin-flow изменения `BotAccessSettings` управляемого бота по положительному `user_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для managed-bot access settings Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует trusted source для id из `managed_bot`/`managed_bot_created`, требует явный `confirm`, принимает режим `restricted`/`open` и optional allowlist user ids, а structured logs содержат только `user_id`, restricted flag и count. |
@@ -1531,6 +1532,44 @@ allowlist или очистить `TELEGRAM_ADMIN_CHAT_IDS`, после чего
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/businessconnection` так же, как к другим
 командам.
+
+### readBusinessMessage
+
+Команда `/readbusinessmessage <business_connection_id> <message_id>` помечает
+одно сообщение подключенного business account как прочитанное методом
+`readBusinessMessage` (Bot API 10.0). Метод принимает только live
+`business_connection_id` и `message_id`; Telegram на своей стороне проверяет,
+что сообщение принадлежит указанному business connection, что подключение еще
+активно и что текущие права бота позволяют выполнить операцию.
+
+Pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода, поэтому
+реализация идет через изолированный raw Bot API helper
+`bot/services/read_business_message.py`. Helper POST'ит JSON payload
+`{"business_connection_id": ..., "message_id": ...}` на endpoint
+`readBusinessMessage` через `httpx`, берет URL через
+`bot.session.api.api_url(...)` для поддержки local Bot API server и ожидает
+Telegram result `true`. Транспортные ошибки, невалидный JSON, Telegram
+`ok: false` и неожиданный result поднимаются как `ReadBusinessMessageError`.
+
+Сценарий изолирован от остальных business-account методов: команда не читает
+профиль, gifts, Stars balance и не вызывает `free-claude-code`. Локальная
+валидация проверяет, что `business_connection_id` передан одним токеном, а
+`message_id` является положительным целым числом; при ошибке ввода показывается
+usage и Telegram не вызывается. Required update types для самой команды не
+отличаются от обычных message updates, но значения должны приходить из live
+business connection updates или другого доверенного operator source.
+
+Security/privacy impact: команда меняет состояние прочитанности сообщения,
+поэтому доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; при пустом admin allowlist команда
+отключена. Structured logs содержат только `business_connection_id`,
+`message_id` и форму ошибки; содержимое сообщения, owner-поля и полный ответ
+Telegram не логируются. Rollback операционный: убрать admin chat из
+`TELEGRAM_ADMIN_CHAT_IDS` или удалить handler/helper; уже выставленный read
+state в Telegram обратным действием не откатывается.
+
+Глобальный `RateLimitMiddleware` применяется к `/readbusinessmessage` так же,
+как к другим командам.
 
 ### getManagedBotToken
 

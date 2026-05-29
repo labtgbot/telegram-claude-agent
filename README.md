@@ -184,6 +184,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/messagedraft` – Stream an ephemeral message draft (a ~30-second preview shown above the input field) into this private chat (admin only).
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
 - `/businessconnection` – Fetch metadata for a connected Telegram business account by `business_connection_id` (admin only).
+- `/readbusinessmessage` – Mark one connected business-account message as read by `business_connection_id` and `message_id` (admin only).
 - `/managedbottoken` – Fetch the live token of a managed bot by its Telegram user id (admin only).
 - `/managedbotaccess` – Fetch access settings for a managed bot by its Telegram user id (admin only).
 - `/setmanagedbotaccess` – Update access settings for a managed bot by its Telegram user id (admin only, requires confirmation).
@@ -1344,6 +1345,30 @@ guarded like the sensitive business commands:
   not written to structured logs;
 - Telegram errors, such as an expired or unknown `business_connection_id`, are
   reported back without retrying or changing connection state.
+
+### Read a business message
+
+The restricted `/readbusinessmessage` command calls Telegram Bot API
+`readBusinessMessage` to mark one message from a connected business account as
+read. Because the pinned `aiogram==3.3.0` does not expose a typed wrapper for
+this Bot API 10.0 method, the command uses an isolated raw Bot API helper
+(`bot/services/read_business_message.py`) over `httpx`.
+
+Usage: `/readbusinessmessage <business_connection_id> <message_id>`
+
+- `business_connection_id` must come from a live business connection update or
+  another trusted operator source;
+- `message_id` must be a positive integer for a message that belongs to that
+  business connection;
+- Telegram enforces connection ownership, current business rights and expired or
+  unknown connection handling; the command reports those Telegram errors without
+  retrying or changing connection state;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- structured logs contain only the connection id, message id and error shape.
+
+The command does not call `free-claude-code`. Rollback is operational: remove
+the admin chat from `TELEGRAM_ADMIN_CHAT_IDS` or remove the command handler.
 
 ### Get a managed bot token
 
