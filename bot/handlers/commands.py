@@ -334,6 +334,13 @@ from bot.services.get_business_account_star_balance import (
     format_business_account_star_balance,
     perform_get_business_account_star_balance,
 )
+from bot.services.get_business_account_gifts import (
+    GET_BUSINESS_ACCOUNT_GIFTS_MAX_LIMIT,
+    GET_BUSINESS_ACCOUNT_GIFTS_MIN_LIMIT,
+    GetBusinessAccountGiftsError,
+    format_business_account_gifts,
+    perform_get_business_account_gifts,
+)
 from bot.services.read_business_message import (
     ReadBusinessMessageError,
     perform_read_business_message,
@@ -835,6 +842,21 @@ GET_BUSINESS_ACCOUNT_STAR_BALANCE_USAGE = (
     "The id must come from a live business connection update or another "
     "trusted operator source. Telegram requires the bot's current "
     "<code>can_view_gifts_and_stars</code> business right."
+)
+
+GET_BUSINESS_ACCOUNT_GIFTS_USAGE = (
+    "<b>businessgifts usage</b>\n"
+    "Fetches Telegram <code>getBusinessAccountGifts</code> for a connected "
+    "business account. This is an admin-only business-mode diagnostic because "
+    "it exposes the account's owned gifts and pagination cursor.\n"
+    "Usage: <code>/businessgifts &lt;business_connection_id&gt; "
+    "[exclude_unsaved=true|false] [exclude_saved=true|false] "
+    "[exclude_unlimited=true|false] [exclude_limited=true|false] "
+    "[exclude_unique=true|false] [sort_by_price=true|false] "
+    "[offset=&lt;offset&gt;] [limit=1..100]</code>\n"
+    "The id must come from a live business connection update or another "
+    "trusted operator source. Telegram requires connection ownership and the "
+    "current business right to view gifts and Stars."
 )
 
 TRANSFER_BUSINESS_ACCOUNT_STARS_CONFIRM_KEYWORD = "confirm"
@@ -2125,6 +2147,7 @@ async def cmd_help(message: Message):
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/businessstarbalance - Fetch a connected business account Telegram Stars balance by business connection id (admin only)\n"
+        "/businessgifts - Fetch connected business account gifts by business connection id (admin only)\n"
         "/transferbusinessstars - Transfer connected business account Stars to the bot balance (admin only)\n"
         "/readbusinessmessage - Mark a business message as read by business connection id and message id (admin only)\n"
         "/setbusinessaccountname - Set a connected business account name by business connection id (admin only)\n"
@@ -3163,6 +3186,39 @@ async def cmd_business_star_balance(message: Message):
     await message.answer(
         format_business_account_star_balance(
             balance,
+            business_connection_id=business_connection_id,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("businessgifts"))
+async def cmd_business_gifts(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_get_business_account_gifts_args(message.text or "")
+    if parsed is None:
+        await message.answer(GET_BUSINESS_ACCOUNT_GIFTS_USAGE, parse_mode="HTML")
+        return
+
+    business_connection_id, options = parsed
+    try:
+        gifts = await perform_get_business_account_gifts(
+            message.bot,
+            business_connection_id=business_connection_id,
+            **options,
+        )
+    except GetBusinessAccountGiftsError as exc:
+        await message.answer(
+            f"Could not fetch the business account gifts: {exc}"
+        )
+        return
+
+    await message.answer(
+        format_business_account_gifts(
+            gifts,
             business_connection_id=business_connection_id,
         ),
         parse_mode="HTML",
@@ -6491,6 +6547,60 @@ def _parse_get_business_account_star_balance_args(text: str) -> str | None:
 
     business_connection_id = parts[1].strip()
     return business_connection_id or None
+
+
+def _parse_get_business_account_gifts_args(
+    text: str,
+) -> tuple[str, dict[str, bool | str | int]] | None:
+    """Parse ``/businessgifts`` args into connection id and optional filters."""
+    parts = (text or "").split()
+    if len(parts) < 2:
+        return None
+
+    business_connection_id = parts[1].strip()
+    if not business_connection_id:
+        return None
+
+    bool_keys = {
+        "exclude_unsaved",
+        "exclude_saved",
+        "exclude_unlimited",
+        "exclude_limited",
+        "exclude_unique",
+        "sort_by_price",
+    }
+    options: dict[str, bool | str | int] = {}
+    for option in parts[2:]:
+        if "=" not in option:
+            return None
+        key, value = option.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key in bool_keys:
+            parsed_value = _parse_bool_option(value)
+            if parsed_value is None:
+                return None
+            options[key] = parsed_value
+        elif key == "offset":
+            if not value:
+                return None
+            options[key] = value
+        elif key == "limit":
+            try:
+                limit = int(value)
+            except ValueError:
+                return None
+            if not (
+                GET_BUSINESS_ACCOUNT_GIFTS_MIN_LIMIT
+                <= limit
+                <= GET_BUSINESS_ACCOUNT_GIFTS_MAX_LIMIT
+            ):
+                return None
+            options[key] = limit
+        else:
+            return None
+
+    return business_connection_id, options
 
 
 def _parse_transfer_business_account_stars_args(
