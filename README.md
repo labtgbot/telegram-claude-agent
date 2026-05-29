@@ -1171,6 +1171,46 @@ admin commands:
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Edit a live location
+
+The restricted `/editlivelocation` command calls Telegram Bot API
+`editMessageLiveLocation` through an isolated raw Bot API helper. It lets an
+operator move an active live location message that was previously sent by the
+bot, either by regular `chat_id` + `message_id` or by `inline_message_id`.
+
+Usage: `/editlivelocation <chat_id> <message_id> <latitude> <longitude>`
+Usage: `/editlivelocation inline=<inline_message_id> <latitude> <longitude>`
+
+Optional flags: `accuracy=<0-1500>`, `heading=<1-360>`,
+`proximity=<1-100000>`.
+
+- latitude and longitude are decimal degrees and are validated before Telegram
+  is called;
+- `horizontal_accuracy`, `heading` and `proximity_alert_radius` follow
+  Telegram's documented ranges;
+- the command only edits active live locations sent by the bot, and Telegram
+  returns a validation error when the target message cannot be edited;
+- no special update type is required for the command path; the bot must have
+  normal permission to edit its own target message in the destination chat;
+- coordinates can reveal a person's whereabouts, so the service keeps them out
+  of structured logs;
+- rollback is another `/editlivelocation` call with the previous coordinates,
+  or `stopMessageLiveLocation`/manual Telegram action when the location should
+  no longer be live.
+
+Because this is a message-management action, it is guarded like the other admin
+commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the command does not call `free-claude-code`; it is an operator action for
+  streaming, moderation and media workflows that need to update an existing
+  Telegram message;
+- Telegram validation, authorization, transport and rate-limit errors are
+  reported back to the admin chat, and the global rate-limit middleware still
+  applies.
+
 ### Send a poll
 
 The restricted `/poll` command calls Telegram Bot API `sendPoll` through
