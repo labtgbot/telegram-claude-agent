@@ -1,4 +1,5 @@
 import re
+import json
 
 from aiogram import Router
 from aiogram.exceptions import TelegramAPIError
@@ -215,6 +216,10 @@ from bot.services.verify_chat import (
 )
 from bot.services.send_gift import SendGiftError, perform_send_gift
 from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
+from bot.services.answer_web_app_query import (
+    AnswerWebAppQueryError,
+    perform_answer_web_app_query,
+)
 from bot.services.post_story import (
     POST_STORY_ACTIVE_PERIODS,
     POST_STORY_CAPTION_LIMIT,
@@ -731,6 +736,15 @@ PAID_MEDIA_USAGE = (
     "The caption is optional and limited to 1024 characters. When this chat is a "
     "channel the Telegram Star proceeds are credited to the channel balance, "
     "otherwise to the bot balance."
+)
+
+ANSWER_WEB_APP_QUERY_USAGE = (
+    "<b>answerwebappquery usage</b>\n"
+    "Answers a Telegram Web App query and sends one InlineQueryResult on "
+    "behalf of the user to the chat where the Web App was opened.\n"
+    "Usage: <code>/answerwebappquery &lt;web_app_query_id&gt; &lt;result_json&gt;</code>\n"
+    "The result JSON must be one InlineQueryResult object, for example an "
+    "article result with input_message_content."
 )
 
 LOCATION_MIN_LATITUDE = -90.0
@@ -2337,6 +2351,7 @@ async def cmd_help(message: Message):
         "/animation - Send an animation (GIF/soundless video) into this chat (admin only)\n"
         "/voice - Send a voice message into this chat as a playable audio clip (admin only)\n"
         "/paidmedia - Send a paid photo into this chat priced in Telegram Stars (admin only)\n"
+        "/answerwebappquery - Answer a Web App query with an inline result (admin only)\n"
         "/location - Send a point on the map into this chat as a location (admin only)\n"
         "/venue - Send a venue (named place with title and address) into this chat (admin only)\n"
         "/poll - Send a native poll (question with answer options) into this chat (admin only)\n"
@@ -3051,6 +3066,38 @@ async def cmd_paid_media(message: Message):
     await message.answer(
         "Sent paid media with caption." if caption else "Sent paid media."
     )
+
+
+@router.message(Command("answerwebappquery"))
+async def cmd_answer_web_app_query(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_answer_web_app_query_args(message.text or "")
+    if parsed is None:
+        await message.answer(ANSWER_WEB_APP_QUERY_USAGE, parse_mode="HTML")
+        return
+
+    web_app_query_id, result = parsed
+    try:
+        sent_message = await perform_answer_web_app_query(
+            message.bot,
+            web_app_query_id=web_app_query_id,
+            result=result,
+        )
+    except AnswerWebAppQueryError as exc:
+        await message.answer(f"Could not answer the Web App query: {exc}")
+        return
+
+    inline_message_id = sent_message.get("inline_message_id")
+    if inline_message_id:
+        await message.answer(
+            f"Answered Web App query: inline message {inline_message_id}."
+        )
+    else:
+        await message.answer("Answered Web App query.")
+
 
 @router.message(Command("location"))
 async def cmd_location(message: Message):
@@ -6841,6 +6888,27 @@ def _parse_paid_media_args(text: str):
         caption = None
 
     return star_count, media, caption
+
+
+def _parse_answer_web_app_query_args(text: str):
+    """Parse ``/answerwebappquery`` args into query id and result JSON."""
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) != 3:
+        return None
+
+    web_app_query_id = parts[1].strip()
+    if not web_app_query_id:
+        return None
+
+    try:
+        result = json.loads(parts[2])
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(result, dict) or not result:
+        return None
+
+    return web_app_query_id, result
 
 
 def _parse_location_args(text: str):
