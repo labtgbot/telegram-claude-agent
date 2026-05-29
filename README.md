@@ -208,6 +208,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/removebusinessaccountprofilephoto` – Remove a profile photo of a connected business account by `business_connection_id` (admin only, requires confirmation).
 - `/setbusinessaccountgiftsettings` – Change incoming gift settings of a connected business account by `business_connection_id` (admin only).
 - `/deletebusinessmessages` – Delete connected business-account messages by `business_connection_id` and `message_ids` (admin only, requires confirmation).
+- `/deletemessage` – Delete one message by `chat_id` and `message_id` where Telegram allows the bot to delete it (admin only, requires confirmation).
 - `/managedbottoken` – Fetch the live token of a managed bot by its Telegram user id (admin only).
 - `/managedbotaccess` – Fetch access settings for a managed bot by its Telegram user id (admin only).
 - `/setmanagedbotaccess` – Update access settings for a managed bot by its Telegram user id (admin only, requires confirmation).
@@ -2060,6 +2061,34 @@ Usage: `/deletebusinessmessages <business_connection_id> <message_id> [message_i
 The command does not call `free-claude-code`. Rollback is operational only:
 remove the admin chat from `TELEGRAM_ADMIN_CHAT_IDS` or remove the command
 handler before further deletes.
+
+### Delete a message
+
+The restricted `/deletemessage` command calls Telegram Bot API `deleteMessage`
+through aiogram's typed API. It is intended for controlled cleanup of bot
+messages and trusted admin moderation actions.
+
+Usage: `/deletemessage <chat_id> <message_id> confirm`
+
+- `chat_id` and `message_id` identify the target message; `message_id` must be
+  positive;
+- the command requires the explicit `confirm` keyword because Telegram deletes
+  the message and this bot cannot restore it;
+- Telegram only allows deletion of messages that fit Bot API constraints:
+  usually messages younger than 48 hours, dice messages in private chats only
+  after 24 hours, and messages covered by the bot's own-message or admin
+  deletion rights;
+- the bot must have `can_delete_messages` to delete other users' messages in
+  groups, supergroups or channels; own messages may be deletable without that
+  moderation right where Telegram permits it;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- structured logs contain only the target chat id, message id and error shape.
+
+No special update subscription is required because the scenario is initiated by
+a normal command message from an admin chat. The command does not call
+`free-claude-code`. Rollback is manual only: repost or restore the content
+outside the Bot API.
 
 ### Get a managed bot token
 
