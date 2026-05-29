@@ -546,6 +546,10 @@ from bot.services.unpin_chat_message import (
     format_unpin_chat_message_result,
     perform_unpin_chat_message,
 )
+from bot.services.delete_message import (
+    format_delete_message_result,
+    perform_delete_message,
+)
 from bot.services.unpin_all_chat_messages import (
     format_unpin_all_chat_messages_result,
     perform_unpin_all_chat_messages,
@@ -1813,6 +1817,30 @@ UNPIN_CHAT_MESSAGE_USAGE = (
     "operational tool."
 )
 
+DELETE_MESSAGE_CONFIRM_KEYWORD = "confirm"
+
+DELETE_MESSAGE_USAGE = (
+    "<b>deletemessage usage</b>\n"
+    "Deletes one message from the specified chat via "
+    "<code>deleteMessage</code>. This is a destructive moderation operation: "
+    "the bot must be allowed to delete the target message, and Telegram may "
+    "reject old messages, recent private-chat dice messages, or messages "
+    "outside the bot's rights. This command is deny-by-default and only works "
+    "from <code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/deletemessage &lt;chat_id&gt; &lt;message_id&gt; "
+    "confirm</code>\n"
+    "Rollback is not available through Telegram Bot API; restore the content "
+    "manually if needed."
+)
+
+DELETE_MESSAGE_WARNING = (
+    "<b>deletemessage confirmation required</b>\n"
+    "This will delete one Telegram message and cannot be rolled back by this "
+    "bot. Review the target chat id and message id before confirming.\n"
+    "Run <code>/deletemessage &lt;chat_id&gt; &lt;message_id&gt; confirm</code> "
+    "to proceed."
+)
+
 UNPIN_ALL_CHAT_MESSAGES_USAGE = (
     "<b>unpinallchatmessages usage</b>\n"
     "Unpins all pinned messages from the specified group, supergroup or "
@@ -2573,6 +2601,7 @@ async def cmd_help(message: Message):
         "/removebusinessaccountprofilephoto - Remove a connected business account profile photo by business connection id (admin only)\n"
         "/setbusinessaccountgiftsettings - Set connected business account gift settings by business connection id (admin only)\n"
         "/deletebusinessmessages - Delete business messages by business connection id and message ids (admin only)\n"
+        "/deletemessage - Delete one message by chat id and message id (admin only)\n"
         "/managedbottoken - Fetch a managed bot token by user id (admin only)\n"
         "/managedbotaccess - Fetch managed bot access settings by user id (admin only)\n"
         "/setmanagedbotaccess - Update managed bot access settings by user id (admin only)\n"
@@ -5358,6 +5387,38 @@ async def cmd_unpin_chat_message(message: Message):
 
     await message.answer(
         format_unpin_chat_message_result(chat_id=chat_id, message_id=message_id),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("deletemessage"))
+async def cmd_delete_message(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_delete_message_args(message.text or "")
+    if parsed is None:
+        await message.answer(DELETE_MESSAGE_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, message_id, confirmed = parsed
+    if not confirmed:
+        await message.answer(DELETE_MESSAGE_WARNING, parse_mode="HTML")
+        return
+
+    try:
+        await perform_delete_message(
+            message.bot,
+            chat_id=chat_id,
+            message_id=message_id,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not delete the message: {exc}")
+        return
+
+    await message.answer(
+        format_delete_message_result(chat_id=chat_id, message_id=message_id),
         parse_mode="HTML",
     )
 
@@ -9989,6 +10050,28 @@ def _parse_unpin_chat_message_args(text: str):
         return None
 
     return chat_id, message_id
+
+
+def _parse_delete_message_args(text: str):
+    """Parse ``/deletemessage`` args into ``chat_id``, ``message_id`` and confirm flag."""
+    parts = (text or "").split()
+    if len(parts) not in {3, 4}:
+        return None
+
+    confirmed = len(parts) == 4 and parts[3].lower() == DELETE_MESSAGE_CONFIRM_KEYWORD
+    if len(parts) == 4 and not confirmed:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+        message_id = int(parts[2])
+    except ValueError:
+        return None
+
+    if message_id <= 0:
+        return None
+
+    return chat_id, message_id, confirmed
 
 
 def _parse_unpin_all_chat_messages_args(text: str):
