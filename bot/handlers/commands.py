@@ -333,6 +333,10 @@ from bot.services.save_prepared_inline_message import (
     SavePreparedInlineMessageError,
     perform_save_prepared_inline_message,
 )
+from bot.services.set_passport_data_errors import (
+    SetPassportDataErrorsError,
+    perform_set_passport_data_errors,
+)
 from bot.services.save_prepared_keyboard_button import (
     SavePreparedKeyboardButtonError,
     perform_save_prepared_keyboard_button,
@@ -973,6 +977,17 @@ SAVE_PREPARED_INLINE_MESSAGE_USAGE = (
     "[allow_group_chats=true|false] [allow_channel_chats=true|false]</code>\n"
     "The result JSON must be one InlineQueryResult object. Optional allow_* "
     "flags restrict which chat types Telegram may offer for sending it."
+)
+
+SET_PASSPORT_DATA_ERRORS_USAGE = (
+    "<b>setpassporterrors usage</b>\n"
+    "Reports Telegram Passport validation errors for a user after that user "
+    "submitted encrypted Passport data to this bot. This is an admin-only "
+    "validation probe and does not call free-claude-code.\n"
+    "Usage: <code>/setpassporterrors &lt;user_id&gt; &lt;errors_json_array&gt;</code>\n"
+    "The errors JSON must be a non-empty array of PassportElementError "
+    "objects from Telegram Bot API documentation. Do not paste decrypted "
+    "Passport data into this command."
 )
 
 SAVE_PREPARED_KEYBOARD_BUTTON_USAGE = (
@@ -3047,6 +3062,7 @@ async def cmd_help(message: Message):
         "/refundstars - Refund a Telegram Stars payment by charge id (admin only)\n"
         "/answerwebappquery - Answer a Web App query with an inline result (admin only)\n"
         "/savepreparedinline - Save a prepared inline message for a user (admin only)\n"
+        "/setpassporterrors - Report Telegram Passport validation errors (admin only)\n"
         "/savepreparedkeyboard - Save a prepared keyboard button for a Mini App user (admin only)\n"
         "/location - Send a point on the map into this chat as a location (admin only)\n"
         "/venue - Send a venue (named place with title and address) into this chat (admin only)\n"
@@ -3959,6 +3975,33 @@ async def cmd_save_prepared_inline_message(message: Message):
         )
     else:
         await message.answer("Saved prepared inline message.")
+
+
+@router.message(Command("setpassporterrors"))
+async def cmd_set_passport_data_errors(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_passport_data_errors_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_PASSPORT_DATA_ERRORS_USAGE, parse_mode="HTML")
+        return
+
+    user_id, errors = parsed
+    try:
+        await perform_set_passport_data_errors(
+            message.bot,
+            user_id=user_id,
+            errors=errors,
+        )
+    except SetPassportDataErrorsError as exc:
+        await message.answer(f"Could not set Passport data errors: {exc}")
+        return
+
+    await message.answer(
+        f"Set {len(errors)} Passport data error(s) for user {user_id}."
+    )
 
 
 @router.message(Command("savepreparedkeyboard"))
@@ -9011,6 +9054,32 @@ def _parse_save_prepared_inline_message_args(text: str):
         options[name] = normalized_value == "true"
 
     return user_id, result, options
+
+
+def _parse_set_passport_data_errors_args(text: str):
+    """Parse ``/setpassporterrors`` args into user id and errors JSON array."""
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) != 3:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+    if user_id <= 0:
+        return None
+
+    try:
+        errors = json.loads(parts[2])
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(errors, list) or not errors:
+        return None
+    if not all(isinstance(error, dict) and error for error in errors):
+        return None
+
+    return user_id, errors
 
 
 def _parse_save_prepared_keyboard_button_args(text: str):
