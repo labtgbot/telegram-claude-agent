@@ -182,6 +182,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/setstickeremojis <sticker_file_id> <emoji[,emoji...]>` – Replace the emoji list for a sticker in its sticker set (admin only).
 - `/setstickermaskposition <sticker_file_id> <point> <x_shift> <y_shift> <scale>` – Change a mask sticker position in its sticker set (admin only). Pass `/setstickermaskposition <sticker_file_id> -` to clear it.
 - `/setstickerkeywords <sticker_file_id> <keyword[,keyword...]|->` – Replace or clear sticker search keywords in its sticker set (admin only).
+- `/setstickersetthumbnail <user_id> <sticker_set_name> <format> <thumbnail_file_id|->` – Set or clear a sticker set thumbnail (admin only).
 - `/deletestickerfromset <sticker_file_id>` – Delete a sticker from its sticker set (admin only).
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
 - `/paidmedia` – Send a paid photo into this chat that users must pay for with Telegram Stars to access, via a URL or file_id (admin only).
@@ -282,6 +283,7 @@ typed method when available and an isolated raw Bot API helper on pinned
   or clear sticker search keywords in its sticker set (admin only).
 - `/setstickersettitle <sticker_set_name> <title>` – Change a sticker set
   title for a set created by the bot (admin only).
+- `/setstickersetthumbnail <user_id> <sticker_set_name> <format> <thumbnail_file_id|->` – Set or clear a sticker set thumbnail (admin only).
 - `/deletestickerfromset <sticker_file_id>` – Delete a sticker from its
   sticker set (admin only).
 - `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` – Promote or demote a group, supergroup, or channel member where the bot has `can_promote_members` (admin only).
@@ -1232,6 +1234,25 @@ Usage: `/setstickersettitle <sticker_set_name> <title>`
 - Telegram validation and rate-limit errors are reported back to the operator;
 - rollback is manual: call `/setstickersettitle` again with the previous title
   captured from `/getstickerset` or operational notes.
+
+### Set sticker set thumbnail
+
+The restricted `/setstickersetthumbnail` command calls Telegram Bot API
+`setStickerSetThumbnail` through an isolated raw helper because the project pins
+`aiogram==3.3.0`. It sets or clears the thumbnail of a bot-created sticker set
+by set name, owner `user_id`, sticker `format`, and thumbnail `file_id`.
+
+Usage: `/setstickersetthumbnail <user_id> <sticker_set_name> <format> <thumbnail_file_id|->`
+
+- use `/getstickerset` first to inspect the current set name and thumbnail;
+- `format` must be `static`, `animated`, or `video`;
+- pass `-` as `thumbnail_file_id` to clear the current thumbnail;
+- Telegram only allows updating sticker sets created by the bot;
+- no special update types are required because the scenario starts from a
+  normal admin command message;
+- Telegram validation and rate-limit errors are reported back to the operator;
+- rollback is manual: call `/setstickersetthumbnail` again with the previous
+  thumbnail file id captured from `/getstickerset` or operational notes.
 
 ### Delete a sticker from a set
 
@@ -3720,7 +3741,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /sticker, /getstickerset, /setstickerkeywords, /setstickersettitle, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /checklist, /setmycommands, /mediagroup, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /sticker, /getstickerset, /setstickerkeywords, /setstickersettitle, /setstickersetthumbnail, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /checklist, /setmycommands, /mediagroup, /clear
 │   │   ├── chat.py             # Text and media message handler (shows typing… while processing)
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -3746,6 +3767,7 @@ telegram-claude-agent/
 │   │   ├── set_sticker_mask_position.py # Telegram setStickerMaskPosition raw helper
 │   │   ├── set_sticker_keywords.py # Telegram setStickerKeywords raw helper
 │   │   ├── set_sticker_set_title.py # Telegram setStickerSetTitle raw helper
+│   │   ├── set_sticker_set_thumbnail.py # Telegram setStickerSetThumbnail raw helper
 │   │   ├── send_voice.py       # Telegram sendVoice outbound helper
 │   │   ├── send_paid_media.py  # Telegram sendPaidMedia raw Bot API helper
 │   │   ├── send_location.py    # Telegram sendLocation outbound helper
