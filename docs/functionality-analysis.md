@@ -72,8 +72,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `closeForumTopic`, `closeGeneralForumTopic`, `reopenForumTopic`,
 `unpinAllForumTopicMessages`, `unpinAllGeneralForumTopicMessages`,
 `unhideGeneralForumTopic`, `setMyName`, `getMyName`, `setMyDescription`,
-`getChatMenuButton`;
-остается 107 пока не
+`getChatMenuButton`, `editMessageChecklist`;
+остается 106 пока не
 интегрированных метода.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
@@ -119,6 +119,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendLocation` | `bot/services/send_location.py`, `/location` в `bot/handlers/commands.py` | Admin-flow отправки точки на карте в текущий чат как настоящей Telegram-локации по широте и долготе, через typed aiogram API; у локаций нет caption, координаты валидируются по диапазонам и не пишутся в structured logs. |
 | `editMessageLiveLocation` | `bot/services/edit_message_live_location.py`, `/editlivelocation` в `bot/handlers/commands.py` | Admin-flow обновления координат активной live location, ранее отправленной ботом, по `chat_id` + `message_id` или `inline_message_id`; используется изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`, координаты и optional `horizontal_accuracy`/`heading`/`proximity_alert_radius` валидируются до обращения к Telegram и не пишутся в structured logs. |
 | `stopMessageLiveLocation` | `bot/services/stop_message_live_location.py`, `/stoplivelocation` в `bot/handlers/commands.py` | Admin-flow остановки активной live location, ранее отправленной ботом, по `chat_id` + `message_id` или `inline_message_id`; используется изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`, optional `reply_markup` поддержан на уровне сервиса, а structured logs фиксируют только target message и наличие inline/reply markup. |
+| `editMessageChecklist` | `bot/services/edit_message_checklist.py`, `/editchecklist` в `bot/handlers/commands.py` | Admin-flow редактирования checklist message от имени подключенного business account по live `business_connection_id`, `chat_id`, `message_id` и replacement `InputChecklist`; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, валидирует title/tasks как `/checklist`, не требует специальных update types и не пишет title/task text в structured logs. |
 | `sendMediaGroup` | `bot/services/send_media_group.py`, `/mediagroup` в `bot/handlers/commands.py` | Admin-flow отправки 2-10 медиа в текущий чат как единого альбома (media group) по URL или `file_id`, через typed aiogram API; все элементы одного типа (photo/video/document/audio), единый caption применяется к первому элементу. |
 | `sendVenue` | `bot/services/send_venue.py`, `/venue` в `bot/handlers/commands.py` | Admin-flow отправки заведения (venue) — именованного места с названием и адресом, закрепленного на карте — в текущий чат по широте, долготе, title и address, через typed aiogram API; координаты валидируются по диапазонам, а сами координаты, title и address не пишутся в structured logs. |
 | `sendPoll` | `bot/services/send_poll.py`, `/poll` в `bot/handlers/commands.py` | Admin-flow отправки нативного опроса (poll) — интерактивного вопроса с 2-10 вариантами ответа — в текущий чат, через typed aiogram API; длины вопроса (до 300) и вариантов (до 100) и их количество валидируются до обращения к Telegram, а сам вопрос и варианты ответа не пишутся в structured logs. |
@@ -237,7 +238,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
    `sendMessageDraft`, `setMessageReaction` (все четыре уже интегрированы).
 4. Управление сообщениями: `editMessageCaption`, `editMessageMedia`,
    `editMessageLiveLocation` и `stopMessageLiveLocation` (уже интегрированы),
-   `editMessageChecklist`, `editMessageReplyMarkup`, `stopPoll`,
+   `editMessageChecklist` (уже интегрирован), `editMessageReplyMarkup`, `stopPoll`,
    `approveSuggestedPost`, `declineSuggestedPost`, `deleteMessage`,
    `deleteMessages`, `deleteMessageReaction`, `deleteAllMessageReactions`.
 5. Интерактивность: полноценные `answerInlineQuery` ответы через Claude,
@@ -1587,6 +1588,44 @@ Telegram-чеклист от имени подключенного business acco
 
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/checklist` так же, как к другим командам.
+
+### editMessageChecklist
+
+Команда `/editchecklist` редактирует ранее отправленное checklist-сообщение от
+имени подключенного business account методом Telegram `editMessageChecklist`
+(Bot API 10.0). По официальной документации метод принимает обязательные
+`business_connection_id`, `chat_id`, `message_id` и `checklist` (`InputChecklist`)
+и возвращает отредактированное `Message`; опционально поддерживается
+`reply_markup` с inline keyboard. Метод относится к business-account flow:
+`business_connection_id` должен быть живым подключением, а бот должен иметь
+права этого подключения на редактирование целевого checklist message. Для
+командного сценария специальных `allowed_updates` не требуется, потому что
+оператор запускает обычную admin-команду.
+
+Pinned `aiogram==3.3.0` не имеет typed wrapper для Bot API 10.0
+`editMessageChecklist`, поэтому реализация идет через изолированный raw helper
+`bot/services/edit_message_checklist.py`. Helper собирает payload,
+JSON-сериализует `checklist` и optional `reply_markup`, выбирает endpoint через
+`bot.session.api.api_url(...)` с fallback на cloud Bot API и поднимает ошибки
+транспорта или Telegram `ok: false` как `EditMessageChecklistError`.
+
+Выбран message-management сценарий: администратор может обновить checklist,
+который был отправлен business account, без смешивания с обычным Claude
+streaming. Синтаксис команды:
+`/editchecklist <business_connection_id> <chat_id> <message_id> <title> | <task> [| <task> ...]`.
+`chat_id` и `message_id` указывают целевое сообщение, а replacement checklist
+строится так же, как в `/checklist`: title, 1-30 tasks, sequential task ids с 1.
+Локальная validation path отклоняет отсутствующие поля, неположительный
+`message_id`, пустые сегменты, title длиннее 255 символов, task длиннее 100
+символов или число задач вне 1-30 до обращения к Telegram.
+
+Команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не делает fallback на
+`TELEGRAM_ALLOWED_CHAT_IDS`, не вызывает `free-claude-code`, и на нее действует
+глобальный `RateLimitMiddleware`. Privacy/security impact такой же, как у
+`/checklist`: operator-provided title и task text не пишутся в structured logs;
+логи содержат target ids, task count и форму ошибки. Rollback выполняется
+повторным `/editchecklist` с прежним checklist content или ручным редактированием
+от имени подключенного business account в Telegram.
 
 ### postStory
 
