@@ -2090,6 +2090,38 @@ a normal command message from an admin chat. The command does not call
 `free-claude-code`. Rollback is manual only: repost or restore the content
 outside the Bot API.
 
+### Delete messages in bulk
+
+The restricted `/deletemessages` command calls Telegram Bot API
+`deleteMessages` through aiogram's typed API. It is intended for controlled
+bulk cleanup of bot messages and trusted admin moderation actions.
+
+Usage: `/deletemessages <chat_id> <message_id> [message_id ...] confirm`
+
+- `chat_id` and `message_id` values identify the target messages; message ids
+  may be separated by spaces or commas and must be positive integers;
+- Telegram accepts 1-100 message ids per `deleteMessages` request, so the helper
+  chunks larger operator cleanup requests into 100-id Bot API calls;
+- the command requires the explicit `confirm` keyword because Telegram deletes
+  messages and this bot cannot restore them;
+- Telegram skips messages that are not found and rejects chunks that violate Bot
+  API constraints: usually messages older than 48 hours, dice messages in
+  private chats newer than 24 hours, or messages outside the bot's own-message
+  or admin deletion rights;
+- the bot must have `can_delete_messages` to delete other users' messages in
+  groups, supergroups or channels; own messages may be deletable without that
+  moderation right where Telegram permits it;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- structured logs contain only the target chat id, per-chunk message counts and
+  error shape, not message text.
+
+No special update subscription is required because the scenario is initiated by
+a normal command message from an admin chat. The command does not call
+`free-claude-code`. Rollback is manual only: repost or restore the content
+outside the Bot API. Partial Telegram failures are reported back to the
+operator with the affected chunk ids while successful chunks remain deleted.
+
 ### Get a managed bot token
 
 The restricted `/managedbottoken` command calls Telegram Bot API
