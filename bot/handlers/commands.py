@@ -195,6 +195,11 @@ from bot.services.gift_premium_subscription import (
     MIN_PREMIUM_MONTHS,
     perform_gift_premium_subscription,
 )
+from bot.services.verify_user import (
+    VERIFY_USER_DESCRIPTION_LIMIT,
+    VerifyUserError,
+    perform_verify_user,
+)
 from bot.services.send_gift import SendGiftError, perform_send_gift
 from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
 from bot.services.send_photo import perform_send_photo
@@ -908,6 +913,30 @@ GIFT_PREMIUM_WARNING = (
     "rollback plan before confirming.\n"
     "Run <code>/giftpremium &lt;user_id&gt; &lt;month_count&gt; "
     "&lt;star_count&gt; confirm [text]</code> to proceed."
+)
+
+VERIFY_USER_CONFIRM_KEYWORD = "confirm"
+
+VERIFY_USER_USAGE = (
+    "<b>verifyuser usage</b>\n"
+    "Calls Telegram <code>verifyUser</code> for a user. This changes a "
+    "visible Telegram verification state, so the command is admin-only, "
+    "requires product-rule review and requires an explicit confirmation "
+    "keyword in the same command.\n"
+    "Usage: <code>/verifyuser &lt;user_id&gt; confirm [custom_description]</code>\n"
+    f"The optional <code>custom_description</code> is capped at "
+    f"{VERIFY_USER_DESCRIPTION_LIMIT} characters. Telegram requires the bot to "
+    "be able to verify users and validates the target user."
+)
+
+VERIFY_USER_WARNING = (
+    "<b>verifyuser confirmation required</b>\n"
+    "This will verify a Telegram user with the bot's verification authority. "
+    "Review the user id, product rules, audit trail and rollback plan before "
+    "confirming. Run a separate remove verification action if a mistake must "
+    "be undone later.\n"
+    "Run <code>/verifyuser &lt;user_id&gt; confirm [custom_description]</code> "
+    "to proceed."
 )
 
 USER_PROFILE_PHOTOS_USAGE = (
@@ -1807,6 +1836,7 @@ async def cmd_help(message: Message):
         "/availablegifts - Fetch the current Telegram gift catalog (admin only)\n"
         "/sendgift - Send a Telegram gift with explicit confirmation (admin only)\n"
         "/giftpremium - Gift Telegram Premium with explicit Stars confirmation (admin only)\n"
+        "/verifyuser - Verify a Telegram user with explicit confirmation (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
@@ -3034,6 +3064,45 @@ async def cmd_gift_premium(message: Message):
         return
 
     await message.answer("Gifted Premium subscription.")
+
+
+@router.message(Command("verifyuser"))
+async def cmd_verify_user(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_verify_user_args(message.text or "")
+    if parsed is None:
+        await message.answer(VERIFY_USER_USAGE, parse_mode="HTML")
+        return
+
+    user_id, confirmed, custom_description = parsed
+    if not confirmed:
+        await message.answer(VERIFY_USER_WARNING, parse_mode="HTML")
+        return
+
+    if (
+        custom_description is not None
+        and len(custom_description) > VERIFY_USER_DESCRIPTION_LIMIT
+    ):
+        await message.answer(
+            f"Verification description is too long: {len(custom_description)} "
+            f"characters (max {VERIFY_USER_DESCRIPTION_LIMIT})."
+        )
+        return
+
+    try:
+        await perform_verify_user(
+            message.bot,
+            user_id=user_id,
+            custom_description=custom_description,
+        )
+    except VerifyUserError as exc:
+        await message.answer(f"Could not verify user: {exc}")
+        return
+
+    await message.answer(f"Verified user {user_id}.")
 
 
 @router.message(Command("userprofilephotos"))
@@ -5866,6 +5935,30 @@ def _parse_gift_premium_args(
 
     gift_text = parts[5].strip() if len(parts) == 6 else None
     return user_id, month_count, star_count, True, gift_text or None
+
+
+def _parse_verify_user_args(text: str) -> tuple[int, bool, str | None] | None:
+    """Parse ``/verifyuser`` args into user id and confirmation state."""
+    parts = (text or "").split(maxsplit=3)
+    if len(parts) not in (2, 3, 4):
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+
+    if user_id <= 0:
+        return None
+
+    if len(parts) == 2:
+        return user_id, False, None
+
+    if parts[2].strip().lower() != VERIFY_USER_CONFIRM_KEYWORD:
+        return None
+
+    custom_description = parts[3].strip() if len(parts) == 4 else None
+    return user_id, True, custom_description or None
 
 
 def _parse_user_profile_photos_args(text: str):

@@ -1095,6 +1095,44 @@ Product rules и audit log:
 - Telegram permission/balance/transport/rate-limit errors возвращаются в admin
   chat.
 
+### verifyUser
+
+Команда `/verifyuser` вызывает Telegram `verifyUser` (Bot API 10.0) для
+верификации пользователя от имени бота, которому Telegram выдал право
+верифицировать пользователей. По официальной документации метод требует
+`user_id`, опционально принимает `custom_description` и возвращает boolean
+`True`. Специальные update types не нужны, потому что сценарий запускается
+обычным admin message update; доступность пользователя и право бота на
+верификацию проверяет Telegram.
+
+Так как pinned `aiogram==3.3.0` не имеет typed wrapper для `verifyUser`,
+реализация использует изолированный raw Bot API helper
+`bot/services/verify_user.py`. Helper POST'ит JSON-payload на endpoint
+`verifyUser`, использует URL из `bot.session.api.api_url(...)` для поддержки
+local Bot API server, валидирует positive `user_id` и ограничение
+`custom_description` в 70 символов до HTTP-вызова и поднимает
+transport/Telegram `ok: false`/unexpected-result ошибки как `VerifyUserError`.
+
+Выбран отдельный admin verification scenario:
+`/verifyuser <user_id> confirm [custom_description]`. Оператор должен заранее
+проверить user identity, product rules, право бота на verification action,
+audit trail и rollback plan. Команда не вызывает `free-claude-code`, не тратит
+Stars и не смешивается с gifts или Premium gifting. Rollback должен выполняться
+отдельным remove-verification действием, когда оно доступно в боте.
+
+Product rules и audit log:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если список пустой, команда
+  отключена;
+- команда требует literal `confirm` в том же сообщении, которое запускает
+  verification action;
+- parser принимает positive `user_id`; optional `custom_description` ограничен
+  70 символами до отправки;
+- structured logs включают `user_id` и факт наличия description, но не сам
+  description и не unrelated chat data;
+- Telegram permission/transport/rate-limit errors возвращаются в admin chat.
+
 ### sendLocation
 
 Команда `/location` вызывает typed aiogram API `Bot.send_location()` для метода
