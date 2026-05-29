@@ -185,6 +185,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
 - `/poststory` – Post a photo story on behalf of a connected business account by `business_connection_id` (admin only).
 - `/repoststory` – Repost a bot-posted story between managed business accounts by `business_connection_id` (admin only).
+- `/editstory` – Edit a bot-posted photo story for a connected business account by `business_connection_id` and `story_id` (admin only).
 - `/businessconnection` – Fetch metadata for a connected Telegram business account by `business_connection_id` (admin only).
 - `/businessstarbalance` – Fetch the Telegram Stars balance of a connected business account by `business_connection_id` (admin only).
 - `/businessgifts` – Fetch owned gifts of a connected business account by `business_connection_id` (admin only).
@@ -1395,6 +1396,38 @@ Usage: `/repoststory <business_connection_id> <from_chat_id> <from_story_id> <ac
 Rollback is operational: delete or archive the reposted story from the managed
 business account in Telegram. The separate Bot API `deleteStory` method is
 tracked independently and is not invoked by `/repoststory`.
+
+### Edit a business story
+
+The restricted `/editstory` command calls Telegram Bot API `editStory`
+(introduced in Bot API 10.0). Because the pinned `aiogram==3.3.0` predates this
+method and ships no typed wrapper, the command goes through an **isolated raw
+Bot API helper** (`bot/services/edit_story.py`) that POSTs the request over
+`httpx`. This is a dedicated admin publishing flow for stories and is not mixed
+with Claude chat replies.
+
+`editStory` edits a story that was previously posted by the bot on behalf of a
+managed business account. The bot must have the `can_manage_stories` business
+bot right for the supplied live `business_connection_id`. The command exposes a
+minimal photo replacement path from a Telegram `photo_file_id`.
+
+Usage: `/editstory <business_connection_id> <story_id> <photo_file_id> [caption]`
+
+- `story_id` must identify an existing story posted by this bot for that
+  business connection;
+- the optional caption is limited to 2048 characters after Telegram entity
+  parsing;
+- the replacement story content is sent as
+  `{"type": "photo", "photo": "<photo_file_id>"}`;
+- operator-provided caption text is kept out of structured logs; logs include
+  only business connection id, source story id and returned story id;
+- a missing or expired `business_connection_id`, missing `can_manage_stories`
+  right, inaccessible story, invalid media or rate limit response is reported
+  back to the operator.
+
+Rollback is operational: run `/editstory` again with the previous media and
+caption if they are still available, or edit/archive the story from the managed
+business account in Telegram.
 
 ### Get a business connection
 

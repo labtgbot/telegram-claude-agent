@@ -221,6 +221,7 @@ from bot.services.post_story import (
     PostStoryError,
     perform_post_story,
 )
+from bot.services.edit_story import EditStoryError, perform_edit_story
 from bot.services.repost_story import RepostStoryError, perform_repost_story
 from bot.services.send_photo import perform_send_photo
 from bot.services.send_poll import perform_send_poll
@@ -882,6 +883,20 @@ REPOST_STORY_USAGE = (
     "Usage: <code>/repoststory &lt;business_connection_id&gt; "
     "&lt;from_chat_id&gt; &lt;from_story_id&gt; &lt;active_period&gt;</code>\n"
     "The active period must be one of 21600, 43200, 86400 or 172800 seconds."
+)
+
+EDIT_STORY_USAGE = (
+    "<b>editstory usage</b>\n"
+    "Edits a photo story previously posted by this bot on behalf of a "
+    "connected Telegram business account. This is an admin-only publishing "
+    "flow, separate from Claude chat replies. The bot must have the "
+    "<code>can_manage_stories</code> business right for the live business "
+    "connection id.\n"
+    "Usage: <code>/editstory &lt;business_connection_id&gt; &lt;story_id&gt; "
+    "&lt;photo_file_id&gt; [caption]</code>\n"
+    f"The caption is optional and limited to {POST_STORY_CAPTION_LIMIT} "
+    "characters. This command accepts a Telegram photo file_id; direct upload "
+    "and URL story editing are intentionally not exposed here."
 )
 
 BUSINESS_CONNECTION_USAGE = (
@@ -3389,6 +3404,45 @@ async def cmd_repost_story(message: Message):
         f"Reposted story {story_id}."
         if story_id is not None
         else "Reposted story."
+    )
+
+
+@router.message(Command("editstory"))
+async def cmd_edit_story(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_edit_story_args(message.text or "")
+    if parsed is None:
+        await message.answer(EDIT_STORY_USAGE, parse_mode="HTML")
+        return
+
+    business_connection_id, story_id, photo, caption = parsed
+    if caption is not None and len(caption) > POST_STORY_CAPTION_LIMIT:
+        await message.answer(
+            f"Caption is too long: {len(caption)} characters "
+            f"(max {POST_STORY_CAPTION_LIMIT})."
+        )
+        return
+
+    try:
+        story = await perform_edit_story(
+            message.bot,
+            business_connection_id=business_connection_id,
+            story_id=story_id,
+            content={"type": "photo", "photo": photo},
+            caption=caption,
+        )
+    except EditStoryError as exc:
+        await message.answer(f"Could not edit the story: {exc}")
+        return
+
+    result_story_id = story.get("id")
+    await message.answer(
+        f"Edited story {result_story_id}."
+        if result_story_id is not None
+        else "Edited story."
     )
 
 
@@ -7005,6 +7059,32 @@ def _parse_repost_story_args(text: str):
         return None
 
     return business_connection_id, from_chat_id, from_story_id, active_period
+
+
+def _parse_edit_story_args(text: str):
+    """Parse ``/editstory`` args into business id, story id, photo and caption."""
+    parts = (text or "").split(maxsplit=4)
+    if len(parts) < 4:
+        return None
+
+    business_connection_id = parts[1].strip()
+    photo = parts[3].strip()
+    if not business_connection_id or not photo:
+        return None
+
+    try:
+        story_id = int(parts[2].strip())
+    except ValueError:
+        return None
+
+    if story_id <= 0:
+        return None
+
+    caption = parts[4].strip() if len(parts) >= 5 else None
+    if caption == "":
+        caption = None
+
+    return business_connection_id, story_id, photo, caption
 
 
 def _parse_business_connection_args(text: str) -> str | None:
