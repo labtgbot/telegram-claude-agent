@@ -329,6 +329,11 @@ from bot.services.get_business_connection import (
     format_business_connection,
     perform_get_business_connection,
 )
+from bot.services.get_business_account_star_balance import (
+    GetBusinessAccountStarBalanceError,
+    format_business_account_star_balance,
+    perform_get_business_account_star_balance,
+)
 from bot.services.read_business_message import (
     ReadBusinessMessageError,
     perform_read_business_message,
@@ -814,6 +819,17 @@ BUSINESS_CONNECTION_USAGE = (
     "The id must come from a live business connection update or another "
     "trusted operator source. This command is unavailable unless "
     "<code>TELEGRAM_ADMIN_CHAT_IDS</code> contains the current chat."
+)
+
+GET_BUSINESS_ACCOUNT_STAR_BALANCE_USAGE = (
+    "<b>businessstarbalance usage</b>\n"
+    "Fetches Telegram <code>getBusinessAccountStarBalance</code> for a "
+    "connected business account. This is an admin-only business-mode "
+    "diagnostic because it exposes the account's Telegram Stars balance.\n"
+    "Usage: <code>/businessstarbalance &lt;business_connection_id&gt;</code>\n"
+    "The id must come from a live business connection update or another "
+    "trusted operator source. Telegram requires the bot's current "
+    "<code>can_view_gifts_and_stars</code> business right."
 )
 
 READ_BUSINESS_MESSAGE_USAGE = (
@@ -2078,6 +2094,7 @@ async def cmd_help(message: Message):
         "/chataction - Show a chat action (e.g. typing…) in this chat (admin only)\n"
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
+        "/businessstarbalance - Fetch a connected business account Telegram Stars balance by business connection id (admin only)\n"
         "/readbusinessmessage - Mark a business message as read by business connection id and message id (admin only)\n"
         "/setbusinessaccountname - Set a connected business account name by business connection id (admin only)\n"
         "/setbusinessaccountusername - Set a connected business account username by business connection id (admin only)\n"
@@ -3083,6 +3100,42 @@ async def cmd_business_connection(message: Message):
         return
 
     await message.answer(format_business_connection(connection), parse_mode="HTML")
+
+
+@router.message(Command("businessstarbalance"))
+async def cmd_business_star_balance(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    business_connection_id = _parse_get_business_account_star_balance_args(
+        message.text or ""
+    )
+    if business_connection_id is None:
+        await message.answer(
+            GET_BUSINESS_ACCOUNT_STAR_BALANCE_USAGE,
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        balance = await perform_get_business_account_star_balance(
+            message.bot,
+            business_connection_id=business_connection_id,
+        )
+    except GetBusinessAccountStarBalanceError as exc:
+        await message.answer(
+            f"Could not fetch the business account Star balance: {exc}"
+        )
+        return
+
+    await message.answer(
+        format_business_account_star_balance(
+            balance,
+            business_connection_id=business_connection_id,
+        ),
+        parse_mode="HTML",
+    )
 
 
 @router.message(Command("readbusinessmessage"))
@@ -6348,6 +6401,16 @@ def _parse_checklist_args(text: str):
 
 def _parse_business_connection_args(text: str) -> str | None:
     """Parse ``/businessconnection`` args into ``business_connection_id``."""
+    parts = (text or "").split()
+    if len(parts) != 2:
+        return None
+
+    business_connection_id = parts[1].strip()
+    return business_connection_id or None
+
+
+def _parse_get_business_account_star_balance_args(text: str) -> str | None:
+    """Parse ``/businessstarbalance`` args into ``business_connection_id``."""
     parts = (text or "").split()
     if len(parts) != 2:
         return None
