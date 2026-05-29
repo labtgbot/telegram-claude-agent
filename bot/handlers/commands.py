@@ -55,6 +55,10 @@ from bot.services.set_chat_menu_button import (
     format_set_chat_menu_button_result,
     perform_set_chat_menu_button,
 )
+from bot.services.get_chat_menu_button import (
+    format_get_chat_menu_button_result,
+    perform_get_chat_menu_button,
+)
 from bot.services.set_my_commands import (
     format_set_my_commands_result,
     perform_set_my_commands,
@@ -1071,6 +1075,20 @@ SET_CHAT_MENU_BUTTON_USAGE = (
     "default|commands|web_app &lt;text&gt; &lt;url&gt;</code>\n"
     "Examples: <code>/setchatmenubutton commands</code>, "
     "<code>/setchatmenubutton chat_id=-100123 web_app Support https://example.com</code>"
+)
+
+GET_CHAT_MENU_BUTTON_USAGE = (
+    "<b>getchatmenubutton usage</b>\n"
+    "Fetches the menu button for a specific chat or the default menu button via "
+    "<code>getChatMenuButton</code>. Use this read-only check to verify actual "
+    "Telegram client state after <code>/setchatmenubutton</code>, startup sync "
+    "or BotFather changes. The method does not require chat administrator "
+    "rights or specific update subscriptions, but this command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/getchatmenubutton [chat_id=&lt;id&gt;]</code>\n"
+    "Examples: <code>/getchatmenubutton</code>, "
+    "<code>/getchatmenubutton chat_id=-100123</code>"
 )
 
 SET_MY_COMMANDS_USAGE = (
@@ -3356,6 +3374,32 @@ async def cmd_set_chat_menu_button(message: Message):
 
     await message.answer(
         format_set_chat_menu_button_result(chat_id=chat_id, menu_button=menu_button),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("getchatmenubutton"))
+async def cmd_get_chat_menu_button(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_get_chat_menu_button_args(message.text or "")
+    if parsed is False:
+        await message.answer(GET_CHAT_MENU_BUTTON_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        menu_button = await perform_get_chat_menu_button(
+            message.bot,
+            chat_id=parsed,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not get the chat menu button: {exc}")
+        return
+
+    await message.answer(
+        format_get_chat_menu_button_result(menu_button, chat_id=parsed),
         parse_mode="HTML",
     )
 
@@ -6539,6 +6583,23 @@ def _parse_set_chat_menu_button_args(text: str):
         text=text_value,
         web_app=WebAppInfo(url=url),
     )
+
+
+def _parse_get_chat_menu_button_args(text: str):
+    """Parse ``/getchatmenubutton`` args into optional ``chat_id``."""
+    parts = (text or "").split()
+    if not parts:
+        return False
+    if len(parts) == 1:
+        return None
+    if len(parts) != 2 or not parts[1].startswith("chat_id="):
+        return False
+
+    raw_chat_id = parts[1].split("=", maxsplit=1)[1]
+    try:
+        return int(raw_chat_id)
+    except ValueError:
+        return False
 
 
 def _parse_set_my_name_args(text: str):
