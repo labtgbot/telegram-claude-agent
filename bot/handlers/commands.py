@@ -369,6 +369,11 @@ from bot.services.set_business_account_gift_settings import (
     format_set_business_account_gift_settings_result,
     perform_set_business_account_gift_settings,
 )
+from bot.services.transfer_business_account_stars import (
+    TransferBusinessAccountStarsError,
+    format_transfer_business_account_stars_result,
+    perform_transfer_business_account_stars,
+)
 from bot.services.set_business_account_username import (
     MAX_BUSINESS_ACCOUNT_USERNAME_LENGTH,
     MIN_BUSINESS_ACCOUNT_USERNAME_LENGTH,
@@ -830,6 +835,31 @@ GET_BUSINESS_ACCOUNT_STAR_BALANCE_USAGE = (
     "The id must come from a live business connection update or another "
     "trusted operator source. Telegram requires the bot's current "
     "<code>can_view_gifts_and_stars</code> business right."
+)
+
+TRANSFER_BUSINESS_ACCOUNT_STARS_CONFIRM_KEYWORD = "confirm"
+
+TRANSFER_BUSINESS_ACCOUNT_STARS_USAGE = (
+    "<b>transferbusinessstars usage</b>\n"
+    "Transfers Telegram Stars from a connected business account to this bot's "
+    "balance via <code>transferBusinessAccountStars</code>. This is a "
+    "destructive admin-only business-mode operation because it moves Stars out "
+    "of the supplied business connection.\n"
+    "Usage: <code>/transferbusinessstars &lt;business_connection_id&gt; "
+    "&lt;star_count&gt; confirm</code>\n"
+    "The business connection id must come from a live business connection "
+    "update or another trusted operator source; star_count must be a positive "
+    "integer. Telegram requires the bot's current "
+    "<code>can_transfer_stars</code> business right."
+)
+
+TRANSFER_BUSINESS_ACCOUNT_STARS_WARNING = (
+    "<b>transferbusinessstars confirmation required</b>\n"
+    "This will move Telegram Stars from the connected business account to this "
+    "bot's balance and cannot be rolled back by this bot. Review connection "
+    "ownership and the amount before confirming.\n"
+    "Run <code>/transferbusinessstars &lt;business_connection_id&gt; "
+    "&lt;star_count&gt; confirm</code> to proceed."
 )
 
 READ_BUSINESS_MESSAGE_USAGE = (
@@ -2095,6 +2125,7 @@ async def cmd_help(message: Message):
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/businessstarbalance - Fetch a connected business account Telegram Stars balance by business connection id (admin only)\n"
+        "/transferbusinessstars - Transfer connected business account Stars to the bot balance (admin only)\n"
         "/readbusinessmessage - Mark a business message as read by business connection id and message id (admin only)\n"
         "/setbusinessaccountname - Set a connected business account name by business connection id (admin only)\n"
         "/setbusinessaccountusername - Set a connected business account username by business connection id (admin only)\n"
@@ -3133,6 +3164,49 @@ async def cmd_business_star_balance(message: Message):
         format_business_account_star_balance(
             balance,
             business_connection_id=business_connection_id,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("transferbusinessstars"))
+async def cmd_transfer_business_stars(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_transfer_business_account_stars_args(message.text or "")
+    if parsed is None:
+        await message.answer(
+            TRANSFER_BUSINESS_ACCOUNT_STARS_USAGE,
+            parse_mode="HTML",
+        )
+        return
+
+    business_connection_id, star_count, confirmed = parsed
+    if not confirmed:
+        await message.answer(
+            TRANSFER_BUSINESS_ACCOUNT_STARS_WARNING,
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        await perform_transfer_business_account_stars(
+            message.bot,
+            business_connection_id=business_connection_id,
+            star_count=star_count,
+        )
+    except TransferBusinessAccountStarsError as exc:
+        await message.answer(
+            f"Could not transfer the business account Stars: {exc}"
+        )
+        return
+
+    await message.answer(
+        format_transfer_business_account_stars_result(
+            business_connection_id=business_connection_id,
+            star_count=star_count,
         ),
         parse_mode="HTML",
     )
@@ -6417,6 +6491,34 @@ def _parse_get_business_account_star_balance_args(text: str) -> str | None:
 
     business_connection_id = parts[1].strip()
     return business_connection_id or None
+
+
+def _parse_transfer_business_account_stars_args(
+    text: str,
+) -> tuple[str, int, bool] | None:
+    """Parse transfer Stars args into connection id, amount and confirmation."""
+    parts = (text or "").split()
+    if len(parts) not in {3, 4}:
+        return None
+
+    business_connection_id = parts[1].strip()
+    if not business_connection_id:
+        return None
+
+    try:
+        star_count = int(parts[2])
+    except ValueError:
+        return None
+    if star_count <= 0:
+        return None
+
+    confirmed = False
+    if len(parts) == 4:
+        if parts[3].lower() != TRANSFER_BUSINESS_ACCOUNT_STARS_CONFIRM_KEYWORD:
+            return None
+        confirmed = True
+
+    return business_connection_id, star_count, confirmed
 
 
 def _parse_read_business_message_args(text: str) -> tuple[str, int] | None:
