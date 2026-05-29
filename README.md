@@ -195,6 +195,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/edituserstarsubscription` – Cancel or reactivate a Telegram Stars subscription by charge id (admin only, requires confirmation).
 - `/answerwebappquery` – Answer a Telegram Web App query with one inline result (admin only).
 - `/savepreparedinline` – Save one prepared inline message for a user (admin only).
+- `/setpassporterrors` – Report Telegram Passport validation errors for a user (admin only).
 - `/savepreparedkeyboard` – Save a prepared keyboard button for a Mini App user (admin only).
 - `/location` – Send a point on the map into this chat as a real Telegram location via latitude and longitude (admin only).
 - `/venue` – Send a venue (a named place with a title and an address pinned on the map) into this chat via latitude and longitude (admin only).
@@ -1451,6 +1452,41 @@ Security and operational notes:
 - rollback is explicit: create and save a replacement prepared message/button
   or remove the Mini App entry point/menu button that exposes the prepared
   keyboard button;
+- Telegram validation, authorization, transport and rate-limit errors are
+  reported back to the admin chat, and the global rate-limit middleware still
+  applies.
+
+### Telegram Passport validation
+
+The restricted `/setpassporterrors <user_id> <errors_json_array>` command calls
+Telegram Bot API `setPassportDataErrors` through an isolated raw helper because
+the project pins `aiogram==3.3.0`. It lets an operator return validation errors
+for Telegram Passport data after a user submitted encrypted Passport data to
+this bot.
+
+The `errors_json_array` value must be a non-empty JSON array of
+`PassportElementError` objects exactly as documented by Telegram, for example
+`PassportElementErrorDataField`, `PassportElementErrorFrontSide` or
+`PassportElementErrorFiles`. The method sends only `user_id` and the serialized
+errors to Telegram; structured logs include only `user_id`, error count and
+Telegram error metadata, not Passport field values.
+
+Security and operational notes:
+
+- this is an admin-triggered validation command and does not call
+  `free-claude-code`;
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the user must have submitted Telegram Passport data to the bot; production
+  use requires handling `passport_data` message updates, decrypting/validating
+  data in a dedicated Passport domain, and constructing error hashes from that
+  validation result;
+- no chat administrator rights are required, and no extra update type is needed
+  for the admin command path itself;
+- rollback is to rerun Passport validation and call the method again with the
+  corrected error list, or accept the user's data in the product flow once the
+  validation problems are resolved;
 - Telegram validation, authorization, transport and rate-limit errors are
   reported back to the admin chat, and the global rate-limit middleware still
   applies.
