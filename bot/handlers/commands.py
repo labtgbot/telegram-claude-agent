@@ -168,6 +168,11 @@ from bot.services.set_sticker_position_in_set import (
     format_set_sticker_position_in_set_result,
     perform_set_sticker_position_in_set,
 )
+from bot.services.set_sticker_emoji_list import (
+    SetStickerEmojiListError,
+    format_set_sticker_emoji_list_result,
+    perform_set_sticker_emoji_list,
+)
 from bot.services.delete_sticker_from_set import (
     DeleteStickerFromSetError,
     format_delete_sticker_from_set_result,
@@ -2442,6 +2447,18 @@ SET_STICKER_POSITION_IN_SET_USAGE = (
     "&lt;position&gt;</code>"
 )
 
+SET_STICKER_EMOJI_LIST_USAGE = (
+    "<b>setstickeremojis usage</b>\n"
+    "Replaces the emoji list for one sticker in its current sticker set "
+    "through <code>setStickerEmojiList</code>. Use "
+    "<code>/getstickerset</code> first when you need to inspect current "
+    "file ids and emoji metadata. The bot can only update stickers in sets "
+    "created by the bot. This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setstickeremojis &lt;sticker_file_id&gt; "
+    "&lt;emoji[,emoji...]&gt;</code>"
+)
+
 DELETE_STICKER_FROM_SET_USAGE = (
     "<b>deletestickerfromset usage</b>\n"
     "Deletes one sticker from its current sticker set through "
@@ -2852,6 +2869,7 @@ async def cmd_help(message: Message):
         "/addstickertoset - Add one sticker file id to a sticker set (admin only)\n"
         "/replacestickerinset - Replace one sticker file id in a sticker set (admin only)\n"
         "/setstickerposition - Move a sticker inside its sticker set (admin only)\n"
+        "/setstickeremojis - Replace a sticker emoji list (admin only)\n"
         "/deletestickerfromset - Delete a sticker from its sticker set (admin only)\n"
         "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
@@ -6785,6 +6803,37 @@ async def cmd_set_sticker_position_in_set(message: Message):
         format_set_sticker_position_in_set_result(
             sticker=sticker,
             position=position,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setstickeremojis"))
+async def cmd_set_sticker_emoji_list(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_sticker_emoji_list_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_STICKER_EMOJI_LIST_USAGE, parse_mode="HTML")
+        return
+
+    sticker, emoji_list = parsed
+    try:
+        await perform_set_sticker_emoji_list(
+            message.bot,
+            sticker=sticker,
+            emoji_list=emoji_list,
+        )
+    except SetStickerEmojiListError as exc:
+        await message.answer(f"Could not set the sticker emoji list: {exc}")
+        return
+
+    await message.answer(
+        format_set_sticker_emoji_list_result(
+            sticker=sticker,
+            emoji_list=emoji_list,
         ),
         parse_mode="HTML",
     )
@@ -11454,6 +11503,19 @@ def _parse_set_sticker_position_in_set_args(text: str):
     if not sticker or position < 0:
         return None
     return sticker, position
+
+
+def _parse_set_sticker_emoji_list_args(text: str):
+    """Parse ``/setstickeremojis`` args into sticker file id and emoji list."""
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) != 3:
+        return None
+
+    sticker = parts[1].strip()
+    emoji_list = [item.strip() for item in parts[2].split(",") if item.strip()]
+    if not sticker or not emoji_list:
+        return None
+    return sticker, emoji_list
 
 
 def _parse_delete_sticker_from_set_args(text: str):
