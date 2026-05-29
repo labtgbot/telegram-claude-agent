@@ -186,6 +186,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/businessconnection` – Fetch metadata for a connected Telegram business account by `business_connection_id` (admin only).
 - `/readbusinessmessage` – Mark one connected business-account message as read by `business_connection_id` and `message_id` (admin only).
 - `/setbusinessaccountname` – Set the first and optional last name of a connected business account by `business_connection_id` (admin only).
+- `/setbusinessaccountbio` – Set or clear the bio of a connected business account by `business_connection_id` (admin only).
 - `/deletebusinessmessages` – Delete connected business-account messages by `business_connection_id` and `message_ids` (admin only, requires confirmation).
 - `/managedbottoken` – Fetch the live token of a managed bot by its Telegram user id (admin only).
 - `/managedbotaccess` – Fetch access settings for a managed bot by its Telegram user id (admin only).
@@ -1421,6 +1422,32 @@ Usage: `/setbusinessaccountusername <business_connection_id> <username>`
 
 The command does not call `free-claude-code`. Rollback is operational: set the
 previous username through Telegram or remove the admin chat from
+`TELEGRAM_ADMIN_CHAT_IDS` before further changes.
+
+### Set business account bio
+
+The restricted `/setbusinessaccountbio` command calls Telegram Bot API
+`setBusinessAccountBio` to update or clear the public bio of a connected
+business account. Because the pinned `aiogram==3.3.0` does not expose a typed
+wrapper for this Bot API 10.0 method, the command uses an isolated raw Bot API
+helper (`bot/services/set_business_account_bio.py`) over `httpx`.
+
+Usage: `/setbusinessaccountbio <business_connection_id> <bio|clear>`
+
+- `business_connection_id` must come from a live business connection update or
+  another trusted operator source;
+- `bio` may contain spaces and must be at most 140 characters; pass `clear` to
+  send an empty bio value and clear the current bio;
+- Telegram enforces connection ownership, current `can_change_bio` business
+  right and expired or unknown connection handling; those errors are reported
+  back without retry;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- structured logs contain only the connection id, whether a bio value was
+  supplied and the error shape; bio text is kept out of structured logs.
+
+The command does not call `free-claude-code`. Rollback is operational: set the
+previous bio through Telegram, use `clear`, or remove the admin chat from
 `TELEGRAM_ADMIN_CHAT_IDS` before further changes.
 
 ### Delete business messages

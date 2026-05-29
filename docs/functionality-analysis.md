@@ -1638,8 +1638,45 @@ account, поэтому доступна только chat id из `TELEGRAM_ADM
 прежний username через Telegram или отключить
 поверхность, убрав admin chat из `TELEGRAM_ADMIN_CHAT_IDS`/удалив handler.
 
-Глобальный `RateLimitMiddleware` применяется к `/setbusinessaccountname` и
-`/setbusinessaccountusername` так же, как к другим командам.
+### setBusinessAccountBio
+
+Команда `/setbusinessaccountbio <business_connection_id> <bio|clear>` меняет
+или очищает публичный bio подключенного business account методом
+`setBusinessAccountBio` (Bot API 10.0). Метод принимает live
+`business_connection_id` и опциональный `bio` длиной 0-140 символов; Telegram
+на своей стороне проверяет, что подключение активно, принадлежит боту и
+текущие business rights включают `can_change_bio`.
+
+Pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода, поэтому
+реализация идет через изолированный raw Bot API helper
+`bot/services/set_business_account_bio.py`. Helper POST'ит JSON payload
+`{"business_connection_id": ..., "bio": ...}` на endpoint
+`setBusinessAccountBio` через `httpx`, берет URL через
+`bot.session.api.api_url(...)` для поддержки local Bot API server и ожидает
+Telegram result `true`. Если `bio` не передан helper'у, поле не добавляется в
+payload; CLI-команда использует keyword `clear`, чтобы явно отправить пустой
+bio и очистить профиль. Транспортные ошибки, невалидный JSON, Telegram
+`ok: false` и неожиданный result поднимаются как
+`SetBusinessAccountBioError`.
+
+Сценарий намеренно ограничен admin CLI-формой: `bio` может содержать пробелы,
+но ограничен 140 символами; пустой bio вводится только как `clear`, чтобы не
+смешивать usage error и очистку. При ошибке ввода показывается usage и
+Telegram не вызывается. Значение `business_connection_id` должно приходить из
+live business connection update или другого доверенного operator source.
+
+Security/privacy impact: команда меняет публичные profile metadata business
+account, поэтому доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не
+делает fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; при пустом admin allowlist
+команда отключена. Structured logs содержат только `business_connection_id`,
+признак наличия `bio` и форму ошибки; сам bio не логируется. Rollback
+операционный: вернуть прежний bio через Telegram, выполнить `clear` или
+отключить поверхность, убрав admin chat из `TELEGRAM_ADMIN_CHAT_IDS`/удалив
+handler.
+
+Глобальный `RateLimitMiddleware` применяется к `/setbusinessaccountname`,
+`/setbusinessaccountusername` и `/setbusinessaccountbio` так же, как к другим
+командам.
 
 ### getManagedBotToken
 
