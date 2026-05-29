@@ -400,6 +400,11 @@ from bot.services.convert_gift_to_stars import (
     format_convert_gift_to_stars_result,
     perform_convert_gift_to_stars,
 )
+from bot.services.upgrade_gift import (
+    UpgradeGiftError,
+    format_upgrade_gift_result,
+    perform_upgrade_gift,
+)
 from bot.services.set_business_account_username import (
     MAX_BUSINESS_ACCOUNT_USERNAME_LENGTH,
     MIN_BUSINESS_ACCOUNT_USERNAME_LENGTH,
@@ -956,6 +961,33 @@ CONVERT_GIFT_TO_STARS_WARNING = (
     "gift id before confirming.\n"
     "Run <code>/convertgiftstars &lt;business_connection_id&gt; "
     "&lt;owned_gift_id&gt; confirm</code> to proceed."
+)
+
+UPGRADE_GIFT_CONFIRM_KEYWORD = "confirm"
+
+UPGRADE_GIFT_USAGE = (
+    "<b>upgradegift usage</b>\n"
+    "Upgrades one owned gift from a connected business account via "
+    "<code>upgradeGift</code>. This is a destructive admin-only business-mode "
+    "operation because it spends Telegram Stars from the business account "
+    "balance and changes the selected gift.\n"
+    "Usage: <code>/upgradegift &lt;business_connection_id&gt; "
+    "&lt;owned_gift_id&gt; [keep_original_details=true|false] confirm</code>\n"
+    "The business connection id and owned gift id must come from "
+    "<code>/businessgifts</code> or another trusted operator source. Telegram "
+    "requires connection ownership, enough Stars and the current business "
+    "right to transfer and upgrade gifts."
+)
+
+UPGRADE_GIFT_WARNING = (
+    "<b>upgradegift confirmation required</b>\n"
+    "This will spend Telegram Stars from the connected business account to "
+    "upgrade the selected owned gift and cannot be rolled back by this bot. "
+    "Review connection ownership, the gift id and Star balance before "
+    "confirming.\n"
+    "Run <code>/upgradegift &lt;business_connection_id&gt; "
+    "&lt;owned_gift_id&gt; [keep_original_details=true|false] confirm</code> "
+    "to proceed."
 )
 
 READ_BUSINESS_MESSAGE_USAGE = (
@@ -2224,6 +2256,7 @@ async def cmd_help(message: Message):
         "/businessgifts - Fetch connected business account gifts by business connection id (admin only)\n"
         "/transferbusinessstars - Transfer connected business account Stars to the bot balance (admin only)\n"
         "/convertgiftstars - Convert a connected business account owned gift to Telegram Stars (admin only)\n"
+        "/upgradegift - Upgrade a connected business account owned gift with Telegram Stars (admin only)\n"
         "/readbusinessmessage - Mark a business message as read by business connection id and message id (admin only)\n"
         "/setbusinessaccountname - Set a connected business account name by business connection id (admin only)\n"
         "/setbusinessaccountusername - Set a connected business account username by business connection id (admin only)\n"
@@ -3434,6 +3467,43 @@ async def cmd_convert_gift_stars(message: Message):
         format_convert_gift_to_stars_result(
             business_connection_id=business_connection_id,
             owned_gift_id=owned_gift_id,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("upgradegift"))
+async def cmd_upgrade_gift(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_upgrade_gift_args(message.text or "")
+    if parsed is None:
+        await message.answer(UPGRADE_GIFT_USAGE, parse_mode="HTML")
+        return
+
+    business_connection_id, owned_gift_id, keep_original_details, confirmed = parsed
+    if not confirmed:
+        await message.answer(UPGRADE_GIFT_WARNING, parse_mode="HTML")
+        return
+
+    try:
+        await perform_upgrade_gift(
+            message.bot,
+            business_connection_id=business_connection_id,
+            owned_gift_id=owned_gift_id,
+            keep_original_details=keep_original_details,
+        )
+    except UpgradeGiftError as exc:
+        await message.answer(f"Could not upgrade the gift: {exc}")
+        return
+
+    await message.answer(
+        format_upgrade_gift_result(
+            business_connection_id=business_connection_id,
+            owned_gift_id=owned_gift_id,
+            keep_original_details=keep_original_details,
         ),
         parse_mode="HTML",
     )
@@ -6935,6 +7005,41 @@ def _parse_convert_gift_to_stars_args(text: str) -> tuple[str, str, bool] | None
         confirmed = True
 
     return business_connection_id, owned_gift_id, confirmed
+
+
+def _parse_upgrade_gift_args(
+    text: str,
+) -> tuple[str, str, bool | None, bool] | None:
+    """Parse upgrade gift args into connection id, gift id, options and confirm."""
+    parts = (text or "").split()
+    if len(parts) not in {3, 4, 5}:
+        return None
+
+    business_connection_id = parts[1].strip()
+    owned_gift_id = parts[2].strip()
+    if not business_connection_id or not owned_gift_id:
+        return None
+
+    keep_original_details: bool | None = None
+    confirmed = False
+    for option in parts[3:]:
+        if option.lower() == UPGRADE_GIFT_CONFIRM_KEYWORD:
+            if confirmed:
+                return None
+            confirmed = True
+            continue
+
+        if "=" not in option:
+            return None
+        key, value = option.split("=", 1)
+        if key.strip() != "keep_original_details":
+            return None
+        parsed_value = _parse_bool_option(value.strip())
+        if parsed_value is None or keep_original_details is not None:
+            return None
+        keep_original_details = parsed_value
+
+    return business_connection_id, owned_gift_id, keep_original_details, confirmed
 
 
 def _parse_read_business_message_args(text: str) -> tuple[str, int] | None:
