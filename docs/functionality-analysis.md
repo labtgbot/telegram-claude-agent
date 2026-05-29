@@ -122,6 +122,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `getBusinessAccountStarBalance` | `bot/services/get_business_account_star_balance.py`, `/businessstarbalance` в `bot/handlers/commands.py` | Read-only admin-flow получения `StarAmount` для подключенного business account по live `business_connection_id`; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует Telegram business right `can_view_gifts_and_stars`, а ownership/permission errors возвращаются оператору без retry; structured logs содержат connection id и форму результата, но не сумму Stars. |
 | `transferBusinessAccountStars` | `bot/services/transfer_business_account_stars.py`, `/transferbusinessstars` в `bot/handlers/commands.py` | Destructive admin-flow перевода Telegram Stars с подключенного business account на баланс бота по live `business_connection_id` и положительному `star_count`; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует явный `confirm`, Telegram business right `can_transfer_stars` и Telegram ownership/balance checks; structured logs содержат connection id, amount и форму ошибки. |
 | `convertGiftToStars` | `bot/services/convert_gift_to_stars.py`, `/convertgiftstars` в `bot/handlers/commands.py` | Destructive admin-flow конвертации одного regular owned gift подключенного business account в Telegram Stars по live `business_connection_id` и `owned_gift_id`; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует явный `confirm`, Telegram business right для конвертации gifts to Stars и Telegram ownership/eligibility checks; structured logs содержат connection id, owned gift id и форму ошибки. |
+| `upgradeGift` | `bot/services/upgrade_gift.py`, `/upgradegift` в `bot/handlers/commands.py` | Destructive admin-flow upgrade одного owned gift подключенного business account по live `business_connection_id`, `owned_gift_id` и optional `keep_original_details`; используется изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует явный `confirm`, Telegram business right для transfer/upgrade gifts и Telegram ownership/balance/eligibility checks; structured logs содержат connection id, owned gift id, optional detail flag и форму ошибки. |
 | `readBusinessMessage` | `bot/services/read_business_message.py`, `/readbusinessmessage` в `bot/handlers/commands.py` | Admin-flow отметки одного сообщения подключенного business account как прочитанного по live `business_connection_id` и положительному `message_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, а Telegram ownership/rights errors возвращаются оператору без retry. |
 | `deleteBusinessMessages` | `bot/services/delete_business_messages.py`, `/deletebusinessmessages` в `bot/handlers/commands.py` | Destructive admin-flow удаления 1-100 сообщений подключенного business account по live `business_connection_id` и положительным `message_ids`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует явный `confirm`, а Telegram ownership/rights errors возвращаются оператору без retry; structured logs содержат connection id, count и error shape, но не содержимое сообщений. |
 | `setBusinessAccountProfilePhoto` | `bot/services/set_business_account_profile_photo.py`, `/setbusinessaccountprofilephoto` в `bot/handlers/commands.py` | Admin-flow установки static JPG profile photo подключенного business account по live `business_connection_id`, локальному `photo_path` и опциональному `public=true`; используется изолированный raw multipart Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0, а Telegram требует fresh upload через `InputProfilePhotoStatic`; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, а Telegram ownership/`can_edit_profile_photo` errors возвращаются оператору без retry; structured logs содержат connection id, path, visibility flag и error shape, но не содержимое файла. |
@@ -1642,6 +1643,40 @@ Rollback ограничен операционно: конвертация не 
 остановки сценария нужно убрать admin chat из `TELEGRAM_ADMIN_CHAT_IDS`, удалить
 handler или отозвать у бота Telegram business right для конвертации gifts to
 Stars.
+
+### upgradeGift
+
+Команда `/upgradegift <business_connection_id> <owned_gift_id> [keep_original_details=true|false] confirm`
+повышает один owned gift подключенного business account методом `upgradeGift`
+(Bot API 10.0). Метод принимает live `business_connection_id`, `owned_gift_id`
+и optional `keep_original_details`; Telegram на своей стороне проверяет, что
+подключение активно, принадлежит боту, подарок существует, может быть upgraded,
+на business account достаточно Stars и текущие business rights позволяют
+transfer/upgrade gifts.
+
+Pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода, поэтому
+реализация идет через изолированный raw Bot API helper
+`bot/services/upgrade_gift.py`. Helper POST'ит JSON payload
+`{"business_connection_id": ..., "owned_gift_id": ...}` с optional
+`keep_original_details` на endpoint `upgradeGift` через `httpx`, берет URL через
+`bot.session.api.api_url(...)` для поддержки local Bot API server и поднимает
+validation errors, транспортные ошибки, невалидный JSON, Telegram `ok: false`
+и неожиданный result как `UpgradeGiftError`.
+
+Сценарий намеренно отделен от read-only `/businessgifts` и от
+`/convertgiftstars`: оператор сначала получает trusted `owned_gift_id`, затем
+запускает upgrade отдельной командой с явным `confirm`. Команда доступна только
+chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает fallback на
+`TELEGRAM_ALLOWED_CHAT_IDS`; при пустом admin allowlist команда отключена.
+Security/privacy impact: команда тратит Stars business account и изменяет gift,
+поэтому она не вызывается автоматически, не связана с `free-claude-code` и не
+использует обычный allowed-chat режим. Structured logs содержат
+`business_connection_id`, `owned_gift_id`, optional `keep_original_details` и
+форму ошибки, но не полный gift payload или owner metadata.
+
+Rollback ограничен операционно: upgrade не откатывается ботом. Для остановки
+сценария нужно убрать admin chat из `TELEGRAM_ADMIN_CHAT_IDS`, удалить handler
+или отозвать у бота Telegram business right для transfer/upgrade gifts.
 
 ### readBusinessMessage
 
