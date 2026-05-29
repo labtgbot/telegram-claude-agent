@@ -177,6 +177,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/getstickerset <sticker_set_name>` – Fetch sticker set metadata and sticker file_ids by set name (admin only).
 - `/customemojistickers <custom_emoji_id> [...]` – Fetch custom emoji sticker metadata by up to 200 custom emoji ids (admin only).
 - `/addstickertoset <user_id> <name> <sticker_format> <sticker_file_id> <emoji[,emoji...]>` – Add a pre-uploaded sticker to an existing sticker set (admin only).
+- `/replacestickerinset <user_id> <name> <old_sticker_file_id> <sticker_format> <new_sticker_file_id> <emoji[,emoji...]>` – Replace a sticker in an existing sticker set (admin only).
 - `/setstickerposition <sticker_file_id> <position>` – Move a sticker inside its sticker set by zero-based position (admin only).
 - `/deletestickerfromset <sticker_file_id>` – Delete a sticker from its sticker set (admin only).
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
@@ -268,6 +269,7 @@ typed method when available and an isolated raw Bot API helper on pinned
 - `/customemojistickers <custom_emoji_id> [...]` – Fetch custom emoji sticker
   metadata by id for sticker/custom emoji lifecycle review (admin only).
 - `/addstickertoset <user_id> <name> <sticker_format> <sticker_file_id> <emoji[,emoji...]>` – Add a pre-uploaded sticker to an existing sticker set (admin only).
+- `/replacestickerinset <user_id> <name> <old_sticker_file_id> <sticker_format> <new_sticker_file_id> <emoji[,emoji...]>` – Replace a sticker in an existing sticker set (admin only).
 - `/setstickerposition <sticker_file_id> <position>` – Move a sticker inside
   its sticker set by zero-based position (admin only).
 - `/deletestickerfromset <sticker_file_id>` – Delete a sticker from its
@@ -1097,6 +1099,28 @@ Usage: `/addstickertoset <user_id> <name> <sticker_format> <sticker_file_id> <em
 - Telegram validation and rate-limit errors are reported back to the operator.
 - rollback is manual: delete or replace the created sticker set through the
   Telegram sticker lifecycle tools.
+
+### Replace a sticker in a set
+
+The restricted `/replacestickerinset` command calls Telegram Bot API
+`replaceStickerInSet` through an isolated raw helper because the project pins
+`aiogram==3.3.0`. It replaces one existing sticker/custom emoji in a bot-owned
+set with a new pre-uploaded sticker `file_id`.
+
+Usage: `/replacestickerinset <user_id> <name> <old_sticker_file_id> <sticker_format> <new_sticker_file_id> <emoji[,emoji...]>`
+
+- use `/getstickerset` first to inspect current sticker file ids;
+- use `/uploadstickerfile` first when the replacement asset is a local file on
+  the bot host;
+- `sticker_format` must be `static`, `animated` or `video`;
+- the target user must own the existing sticker set;
+- Telegram only allows replacing stickers in sets created by the bot;
+- no special update types are required because the scenario starts from a
+  normal admin command message;
+- Telegram validation and rate-limit errors are reported back to the operator;
+- rollback is manual: call `/replacestickerinset` again with the previous
+  sticker file id and emoji metadata, or use the Telegram sticker lifecycle
+  tools.
 
 ### Set sticker position in a set
 

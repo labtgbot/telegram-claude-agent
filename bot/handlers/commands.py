@@ -158,6 +158,11 @@ from bot.services.add_sticker_to_set import (
     format_add_sticker_to_set_result,
     perform_add_sticker_to_set,
 )
+from bot.services.replace_sticker_in_set import (
+    ReplaceStickerInSetError,
+    format_replace_sticker_in_set_result,
+    perform_replace_sticker_in_set,
+)
 from bot.services.set_sticker_position_in_set import (
     SetStickerPositionInSetError,
     format_set_sticker_position_in_set_result,
@@ -2408,6 +2413,23 @@ ADD_STICKER_TO_SET_USAGE = (
     "&lt;emoji[,emoji...]&gt;</code>"
 )
 
+REPLACE_STICKER_IN_SET_USAGE = (
+    "<b>replacestickerinset usage</b>\n"
+    "Replaces one existing sticker in a sticker set through "
+    "<code>replaceStickerInSet</code> using a new pre-uploaded sticker file id. "
+    "Use <code>/getstickerset</code> first to inspect current file ids and "
+    "<code>/uploadstickerfile</code> first when you need to upload a local "
+    "asset. The target user must be the sticker set owner, and the bot can "
+    "only replace stickers in sets created by the bot. Supported "
+    "<code>sticker_format</code> values are <code>static</code>, "
+    "<code>animated</code> and <code>video</code>. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/replacestickerinset &lt;user_id&gt; &lt;name&gt; "
+    "&lt;old_sticker_file_id&gt; &lt;sticker_format&gt; "
+    "&lt;new_sticker_file_id&gt; &lt;emoji[,emoji...]&gt;</code>"
+)
+
 SET_STICKER_POSITION_IN_SET_USAGE = (
     "<b>setstickerposition usage</b>\n"
     "Moves one sticker to a zero-based position inside its current sticker set "
@@ -2828,6 +2850,7 @@ async def cmd_help(message: Message):
         "/uploadstickerfile - Upload a sticker file and return its file id (admin only)\n"
         "/createnewstickerset - Create a sticker set with one sticker file id (admin only)\n"
         "/addstickertoset - Add one sticker file id to a sticker set (admin only)\n"
+        "/replacestickerinset - Replace one sticker file id in a sticker set (admin only)\n"
         "/setstickerposition - Move a sticker inside its sticker set (admin only)\n"
         "/deletestickerfromset - Delete a sticker from its sticker set (admin only)\n"
         "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
@@ -6689,6 +6712,45 @@ async def cmd_add_sticker_to_set(message: Message):
         format_add_sticker_to_set_result(
             user_id=user_id,
             name=name,
+            sticker_format=sticker_format,
+            sticker=sticker,
+            emoji_list=emoji_list,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("replacestickerinset"))
+async def cmd_replace_sticker_in_set(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_replace_sticker_in_set_args(message.text or "")
+    if parsed is None:
+        await message.answer(REPLACE_STICKER_IN_SET_USAGE, parse_mode="HTML")
+        return
+
+    user_id, name, old_sticker, sticker_format, sticker, emoji_list = parsed
+    try:
+        await perform_replace_sticker_in_set(
+            message.bot,
+            user_id=user_id,
+            name=name,
+            old_sticker=old_sticker,
+            sticker_format=sticker_format,
+            sticker=sticker,
+            emoji_list=emoji_list,
+        )
+    except ReplaceStickerInSetError as exc:
+        await message.answer(f"Could not replace the sticker in the set: {exc}")
+        return
+
+    await message.answer(
+        format_replace_sticker_in_set_result(
+            user_id=user_id,
+            name=name,
+            old_sticker=old_sticker,
             sticker_format=sticker_format,
             sticker=sticker,
             emoji_list=emoji_list,
@@ -11351,6 +11413,30 @@ def _parse_add_sticker_to_set_args(text: str):
     if not all([name, sticker_format, sticker, emoji_list]):
         return None
     return user_id, name, sticker_format, sticker, emoji_list
+
+
+def _parse_replace_sticker_in_set_args(text: str):
+    """Parse ``/replacestickerinset`` args into the replacement scenario."""
+    parts = (text or "").split(maxsplit=6)
+    if len(parts) != 7:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+
+    if user_id <= 0:
+        return None
+
+    name = parts[2].strip()
+    old_sticker = parts[3].strip()
+    sticker_format = parts[4].strip()
+    sticker = parts[5].strip()
+    emoji_list = [item.strip() for item in parts[6].split(",") if item.strip()]
+    if not all([name, old_sticker, sticker_format, sticker, emoji_list]):
+        return None
+    return user_id, name, old_sticker, sticker_format, sticker, emoji_list
 
 
 def _parse_set_sticker_position_in_set_args(text: str):
