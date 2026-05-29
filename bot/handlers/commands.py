@@ -201,6 +201,10 @@ from bot.services.edit_message_media import (
     EditMessageMediaError,
     perform_edit_message_media,
 )
+from bot.services.edit_message_live_location import (
+    EditMessageLiveLocationError,
+    perform_edit_message_live_location,
+)
 from bot.services.gift_premium_subscription import (
     GiftPremiumSubscriptionError,
     MAX_PREMIUM_MONTHS,
@@ -943,6 +947,21 @@ EDIT_MESSAGE_MEDIA_USAGE = (
     f"The optional caption is limited to {EDIT_MESSAGE_MEDIA_CAPTION_LIMIT} "
     "characters. Optional trailing flags: <code>parse_mode=HTML</code>, "
     "<code>above=true</code>, <code>spoiler=true</code>."
+)
+
+EDIT_MESSAGE_LIVE_LOCATION_USAGE = (
+    "<b>editlivelocation usage</b>\n"
+    "Edits an active live location message previously sent by this bot. This "
+    "is an admin-only message-management command. Target a regular message "
+    "with <code>chat_id</code> and <code>message_id</code>, or target inline "
+    "mode with <code>inline=&lt;inline_message_id&gt;</code>.\n"
+    "Usage: <code>/editlivelocation &lt;chat_id&gt; &lt;message_id&gt; "
+    "&lt;latitude&gt; &lt;longitude&gt;</code>\n"
+    "Usage: <code>/editlivelocation inline=&lt;inline_message_id&gt; "
+    "&lt;latitude&gt; &lt;longitude&gt;</code>\n"
+    "Coordinates are decimal degrees. Optional trailing flags: "
+    "<code>accuracy=&lt;0-1500&gt;</code>, <code>heading=&lt;1-360&gt;</code>, "
+    "<code>proximity=&lt;1-100000&gt;</code>."
 )
 
 POST_STORY_USAGE = (
@@ -2434,6 +2453,7 @@ async def cmd_help(message: Message):
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/editcaption - Edit or clear a media message caption (admin only)\n"
         "/editmedia - Replace media in a previously sent media message (admin only)\n"
+        "/editlivelocation - Move an active live location message (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
         "/poststory - Post a photo story via a business connection (admin only)\n"
         "/repoststory - Repost a story between managed business accounts (admin only)\n"
@@ -3604,6 +3624,43 @@ async def cmd_edit_message_media(message: Message):
         return
 
     await message.answer("Edited inline message media.")
+
+
+@router.message(Command("editlivelocation"))
+async def cmd_edit_message_live_location(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_edit_message_live_location_args(message.text or "")
+    if parsed is None:
+        await message.answer(EDIT_MESSAGE_LIVE_LOCATION_USAGE, parse_mode="HTML")
+        return
+
+    target, latitude, longitude, options = parsed
+
+    try:
+        result = await perform_edit_message_live_location(
+            message.bot,
+            latitude=latitude,
+            longitude=longitude,
+            **target,
+            **options,
+        )
+    except EditMessageLiveLocationError as exc:
+        await message.answer(f"Could not edit the live location: {exc}")
+        return
+
+    if isinstance(result, dict):
+        result_message_id = result.get("message_id")
+        await message.answer(
+            f"Edited live location for message {result_message_id}."
+            if result_message_id is not None
+            else "Edited message live location."
+        )
+        return
+
+    await message.answer("Edited inline live location.")
 
 
 @router.message(Command("poststory"))
@@ -7586,6 +7643,77 @@ def _parse_edit_message_media_args(text: str):
 
     caption = " ".join(kept_tokens).strip() or None
     return target, media_type, media, caption, options
+
+
+def _parse_edit_message_live_location_args(text: str):
+    """Parse ``/editlivelocation`` args into target, coordinates and options."""
+    parts = (text or "").split()
+    if len(parts) < 4:
+        return None
+
+    target: dict[str, object]
+    latitude_index: int
+    if parts[1].startswith("inline="):
+        inline_message_id = parts[1].split("=", maxsplit=1)[1].strip()
+        if not inline_message_id:
+            return None
+        target = {"inline_message_id": inline_message_id}
+        latitude_index = 2
+    else:
+        if len(parts) < 5:
+            return None
+        try:
+            chat_id = int(parts[1])
+            message_id = int(parts[2])
+        except ValueError:
+            return None
+        if message_id <= 0:
+            return None
+        target = {"chat_id": chat_id, "message_id": message_id}
+        latitude_index = 3
+
+    try:
+        latitude = float(parts[latitude_index])
+        longitude = float(parts[latitude_index + 1])
+    except (IndexError, ValueError):
+        return None
+
+    if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+        return None
+
+    options: dict[str, object] = {}
+    for token in parts[latitude_index + 2 :]:
+        lower = token.lower()
+        if lower.startswith("accuracy="):
+            try:
+                accuracy = float(token.split("=", maxsplit=1)[1])
+            except ValueError:
+                return None
+            if not 0 <= accuracy <= 1500:
+                return None
+            options["horizontal_accuracy"] = accuracy
+        elif lower.startswith("heading="):
+            try:
+                heading = int(token.split("=", maxsplit=1)[1])
+            except ValueError:
+                return None
+            if not 1 <= heading <= 360:
+                return None
+            options["heading"] = heading
+        elif lower.startswith("proximity=") or lower.startswith(
+            "proximity_alert_radius="
+        ):
+            try:
+                radius = int(token.split("=", maxsplit=1)[1])
+            except ValueError:
+                return None
+            if not 1 <= radius <= 100000:
+                return None
+            options["proximity_alert_radius"] = radius
+        else:
+            return None
+
+    return target, latitude, longitude, options
 
 
 def _parse_delete_story_args(text: str):
