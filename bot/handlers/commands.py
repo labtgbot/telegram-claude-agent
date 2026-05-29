@@ -329,6 +329,10 @@ from bot.services.get_business_connection import (
     format_business_connection,
     perform_get_business_connection,
 )
+from bot.services.read_business_message import (
+    ReadBusinessMessageError,
+    perform_read_business_message,
+)
 from bot.services.get_managed_bot_token import (
     GetManagedBotTokenError,
     format_managed_bot_token,
@@ -773,6 +777,19 @@ BUSINESS_CONNECTION_USAGE = (
     "The id must come from a live business connection update or another "
     "trusted operator source. This command is unavailable unless "
     "<code>TELEGRAM_ADMIN_CHAT_IDS</code> contains the current chat."
+)
+
+READ_BUSINESS_MESSAGE_USAGE = (
+    "<b>readbusinessmessage usage</b>\n"
+    "Marks one message from a connected Telegram business account as read via "
+    "<code>readBusinessMessage</code>. This is an admin-only business-mode "
+    "operation because Telegram accepts only messages that belong to the "
+    "supplied business connection.\n"
+    "Usage: <code>/readbusinessmessage &lt;business_connection_id&gt; "
+    "&lt;message_id&gt;</code>\n"
+    "The business connection id must come from a live business connection "
+    "update or another trusted operator source; the message id must be a "
+    "positive integer."
 )
 
 MANAGED_BOT_TOKEN_USAGE = (
@@ -1912,6 +1929,7 @@ async def cmd_help(message: Message):
         "/chataction - Show a chat action (e.g. typing…) in this chat (admin only)\n"
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/checklist - Send a checklist (titled list of tasks) into this chat via a business connection (admin only)\n"
+        "/readbusinessmessage - Mark a business message as read by business connection id and message id (admin only)\n"
         "/managedbottoken - Fetch a managed bot token by user id (admin only)\n"
         "/managedbotaccess - Fetch managed bot access settings by user id (admin only)\n"
         "/setmanagedbotaccess - Update managed bot access settings by user id (admin only)\n"
@@ -2909,6 +2927,33 @@ async def cmd_business_connection(message: Message):
         return
 
     await message.answer(format_business_connection(connection), parse_mode="HTML")
+
+
+@router.message(Command("readbusinessmessage"))
+async def cmd_read_business_message(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_read_business_message_args(message.text or "")
+    if parsed is None:
+        await message.answer(READ_BUSINESS_MESSAGE_USAGE, parse_mode="HTML")
+        return
+
+    business_connection_id, message_id = parsed
+    try:
+        await perform_read_business_message(
+            message.bot,
+            business_connection_id=business_connection_id,
+            message_id=message_id,
+        )
+    except ReadBusinessMessageError as exc:
+        await message.answer(f"Could not mark the business message as read: {exc}")
+        return
+
+    await message.answer(
+        f"Marked business message {message_id} as read for {business_connection_id}."
+    )
 
 
 @router.message(Command("managedbottoken"))
@@ -5933,6 +5978,26 @@ def _parse_business_connection_args(text: str) -> str | None:
 
     business_connection_id = parts[1].strip()
     return business_connection_id or None
+
+
+def _parse_read_business_message_args(text: str) -> tuple[str, int] | None:
+    """Parse ``/readbusinessmessage`` args into connection id and message id."""
+    parts = (text or "").split()
+    if len(parts) != 3:
+        return None
+
+    business_connection_id = parts[1].strip()
+    if not business_connection_id:
+        return None
+
+    try:
+        message_id = int(parts[2])
+    except ValueError:
+        return None
+    if message_id <= 0:
+        return None
+
+    return business_connection_id, message_id
 
 
 def _parse_managed_bot_token_args(text: str) -> int | None:
