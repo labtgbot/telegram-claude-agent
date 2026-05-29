@@ -190,6 +190,7 @@ from bot.services.send_message_draft import (
     SendMessageDraftError,
     perform_send_message_draft,
 )
+from bot.services.send_sticker import perform_send_sticker
 from bot.services.edit_message_caption import (
     EDIT_MESSAGE_CAPTION_LIMIT,
     EditMessageCaptionError,
@@ -775,6 +776,17 @@ ANIMATION_USAGE = (
     "The caption is optional and limited to 1024 characters. Telegram delivers "
     "GIF and H.264/MPEG-4 AVC files without sound and limits a file sent by URL "
     "to 20 MB."
+)
+
+STICKER_USAGE = (
+    "<b>sticker usage</b>\n"
+    "Sends a sticker or custom emoji into this chat instead of plain text. "
+    "Pass an HTTP(S) URL Telegram can fetch or a file_id of a sticker already "
+    "on Telegram servers.\n"
+    "Usage: <code>/sticker &lt;url_or_file_id&gt; [emoji]</code>\n"
+    "The optional emoji hint is passed to Telegram. Static and animated "
+    "stickers are limited to 512 KB; video stickers are limited to 256 KB and "
+    "must fit in a 512x512 square."
 )
 
 VOICE_CAPTION_LIMIT = 1024
@@ -2624,6 +2636,7 @@ async def cmd_help(message: Message):
         "/video - Send a video into this chat as a playable video (admin only)\n"
         "/videonote - Send a rounded square video message (video note) into this chat (admin only)\n"
         "/animation - Send an animation (GIF/soundless video) into this chat (admin only)\n"
+        "/sticker - Send a sticker or custom emoji into this chat (admin only)\n"
         "/voice - Send a voice message into this chat as a playable audio clip (admin only)\n"
         "/paidmedia - Send a paid photo into this chat priced in Telegram Stars (admin only)\n"
         "/answerwebappquery - Answer a Web App query with an inline result (admin only)\n"
@@ -3277,6 +3290,36 @@ async def cmd_animation(message: Message):
     await message.answer(
         "Sent animation with caption." if caption else "Sent animation."
     )
+
+
+@router.message(Command("sticker"))
+async def cmd_sticker(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_sticker_args(message.text or "")
+    if parsed is None:
+        await message.answer(STICKER_USAGE, parse_mode="HTML")
+        return
+
+    sticker, emoji = parsed
+
+    try:
+        await perform_send_sticker(
+            message.bot,
+            chat_id=message.chat.id,
+            sticker=sticker,
+            emoji=emoji,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not send the sticker: {exc}")
+        return
+
+    await message.answer(
+        "Sent sticker with emoji hint." if emoji else "Sent sticker."
+    )
+
 
 @router.message(Command("voice"))
 async def cmd_voice(message: Message):
@@ -7623,6 +7666,28 @@ def _parse_animation_args(text: str):
         caption = None
 
     return animation, caption
+
+
+def _parse_sticker_args(text: str):
+    """Parse ``/sticker`` arguments into ``(sticker, emoji)``.
+
+    Splits the raw command text into the command, the sticker reference (URL or
+    ``file_id``) and an optional emoji hint passed through to Telegram. Returns
+    ``None`` when no sticker reference is provided so the caller can show usage.
+    """
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) < 2:
+        return None
+
+    sticker = parts[1].strip()
+    if not sticker:
+        return None
+
+    emoji = parts[2].strip() if len(parts) >= 3 else None
+    if emoji == "":
+        emoji = None
+
+    return sticker, emoji
 
 
 def _parse_voice_args(text: str):

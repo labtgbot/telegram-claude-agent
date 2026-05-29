@@ -111,6 +111,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendVideo` | `bot/services/send_video.py`, `/video` в `bot/handlers/commands.py` | Admin-flow отправки видео в текущий чат как проигрываемого Telegram-видео по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendVideoNote` | `bot/services/send_video_note.py`, `/videonote` в `bot/handlers/commands.py` | Admin-flow отправки видеосообщения-кружка (круглого квадратного видео) в текущий чат по `file_id`, через typed aiogram API; у видеосообщений нет caption, и Telegram не поддерживает их отправку по URL. |
 | `sendAnimation` | `bot/services/send_animation.py`, `/animation` в `bot/handlers/commands.py` | Admin-flow отправки анимации (GIF или видео без звука) в текущий чат как проигрываемого зацикленного клипа по URL или `file_id`, а не только текстовой интерпретации. |
+| `sendSticker` | `bot/services/send_sticker.py`, `/sticker` в `bot/handlers/commands.py` | Admin-flow отправки sticker/custom emoji в текущий чат по URL или `file_id`, через typed aiogram API; сценарий изолирован от основного Claude chat flow и закрыт строгим admin allowlist. |
 | `sendVoice` | `bot/services/send_voice.py`, `/voice` в `bot/handlers/commands.py` | Admin-flow отправки голосового сообщения в текущий чат как проигрываемого аудиоклипа (в виде waveform) по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendPaidMedia` | `bot/services/send_paid_media.py`, `/paidmedia` в `bot/handlers/commands.py` | Admin-flow отправки платного фото в текущий чат, доступ к которому пользователи оплачивают Telegram Stars, по URL или `file_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 7.6. |
 | `answerWebAppQuery` | `bot/services/answer_web_app_query.py`, `/answerwebappquery` в `bot/handlers/commands.py` | Admin-flow ответа на Telegram Web App query одним `InlineQueryResult` от имени пользователя через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, не вызывает `free-claude-code`, а Telegram проверяет действительность `web_app_query_id`. |
@@ -917,6 +918,48 @@ Telegram. Метод обрабатывает анимацию без звука
 
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/animation` так же, как к другим командам.
+
+### sendSticker
+
+Команда `/sticker` вызывает typed aiogram API `Bot.send_sticker()` для метода
+Telegram `sendSticker`. В pinned `aiogram==3.3.0` wrapper уже есть и принимает
+`chat_id`, `sticker`, optional `message_thread_id`, `emoji`,
+`disable_notification` и `protect_content`. По официальной документации метод
+отправляет static `.WEBP`, animated `.TGS` или video `.WEBM` sticker и
+возвращает отправленное `Message`. `sticker` может быть `file_id`, HTTP(S)-URL
+для static `.WEBP` или загружаемым файлом; video stickers отправляются только
+по `file_id`, animated stickers нельзя отправить по HTTP URL. Static и animated
+stickers ограничены 512 KB, video stickers — 256 KB, размер должен вписываться
+в 512x512. Optional `emoji` используется Telegram как emoji hint для только что
+загруженных stickers.
+
+Выбран отдельный admin-сценарий creative/media module: оператор отправляет
+готовый sticker/custom emoji в текущий чат по URL или `file_id`. Это не часть
+основного Claude chat flow, не вызывает `free-claude-code`, не требует приема
+специальных update types и не требует chat administrator rights для обычной
+отправки в чат, где бот может писать сообщения. Для групп/каналов действуют
+обычные права бота на отправку сообщений/stickers; ошибки Telegram возвращаются
+оператору без retry.
+
+Синтаксис: `/sticker <url_or_file_id> [emoji]`.
+
+`/sticker` закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующем sticker-аргументе команда показывает usage и не обращается
+  к Telegram;
+- ошибки Telegram (например, недоступный URL, неподдерживаемый формат или
+  запрет отправки stickers в чате) возвращаются пользователю, а отправка не
+  выполняется.
+
+Rollback не требует миграций: удалить команду из меню/документации или убрать
+чат из `TELEGRAM_ADMIN_CHAT_IDS`; уже отправленные stickers удаляются обычным
+`deleteMessage` при наличии прав. Structured logs пишут только chat id, наличие
+emoji hint, protect flag и id отправленного сообщения, без sticker file_id/URL.
+Глобальный `RateLimitMiddleware` применяется к `/sticker` так же, как к другим
+командам.
 
 ### sendVoice
 
@@ -2731,7 +2774,7 @@ admin-командам `/webhook` и `/deletewebhook`. Для диагности
 если оба списка пустые, эти команды недоступны. Для деструктивных `/logout`,
 `/close`, для message-relay `/forward`, `/forwards`, `/copy`, `/copies` и для
 исходящего медиа `/photo`, `/audio`, `/livephoto`, `/document`, `/video`,
-`/videonote`, `/animation`, `/voice`, `/paidmedia`, `/location`, `/venue`,
+`/videonote`, `/animation`, `/sticker`, `/voice`, `/paidmedia`, `/location`, `/venue`,
 `/poll`, `/contact`, `/dice`, `/chataction`, `/messagedraft` и `/checklist`
 fallback не применяется: команды требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`,
 иначе они отключены. Автоматический `typing…`-индикатор (управляемый
