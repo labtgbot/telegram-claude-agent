@@ -207,6 +207,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/dice` – Send an animated dice (an emoji that shows a random value) into this chat (admin only).
 - `/game` – Send a Telegram game by its BotFather short name into this chat (admin only).
 - `/setgamescore` – Set a Telegram game score for a user on a chat or inline game message (admin only).
+- `/gamehighscores` – Fetch Telegram game high scores for a user on a chat or inline game message (admin only).
 - `/chataction` – Show a chat action (a transient status such as `typing…`) in this chat (admin only).
 - `/messagedraft` – Stream an ephemeral message draft (a ~30-second preview shown above the input field) into this private chat (admin only).
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
@@ -1843,6 +1844,36 @@ access to the relevant chat or inline game. It does not call `free-claude-code`.
 Rollback is setting the previous score explicitly when Telegram allows it
 (usually with `force=true`) or disabling the command by removing the chat from
 the admin allowlist.
+
+### Get game high scores
+
+The restricted `/gamehighscores` command calls Telegram Bot API
+`getGameHighScores` through aiogram's typed `Bot.get_game_high_scores()`
+wrapper. It lets an operator inspect the high-score table around a user for an
+existing Telegram game message.
+
+Usage for a normal game message:
+`/gamehighscores <user_id> chat_id=<chat_id> message_id=<message_id>`
+
+Usage for an inline game message:
+`/gamehighscores <user_id> inline_message_id=<inline_message_id>`
+
+- exactly one target form is required: `chat_id` plus `message_id`, or
+  `inline_message_id`;
+- invalid input shows usage and does not contact Telegram;
+- Telegram game, permission, or rate-limit errors are reported back to the
+  operator;
+- returned scores are shown as `position`, `user_id`, and `score`.
+
+The command is an admin-only game platform operation, so it requires a non-empty
+`TELEGRAM_ADMIN_CHAT_IDS` entry for the chat and never falls back to
+`TELEGRAM_ALLOWED_CHAT_IDS`. It does not require special update types, but the
+bot must have access to the target game message or inline game, and the game
+must belong to this bot. It does not call `free-claude-code`. Structured logs
+store only ids, whether an inline id was used, and the returned score count; the
+inline id itself is not logged. Rollback is operational: remove the chat from
+the admin allowlist, ignore the read-only response, or disable the game in
+BotFather.
 
 ### Show a chat action
 

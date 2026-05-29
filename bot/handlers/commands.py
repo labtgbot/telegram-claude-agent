@@ -259,6 +259,10 @@ from bot.services.send_contact import perform_send_contact
 from bot.services.send_dice import perform_send_dice
 from bot.services.send_document import perform_send_document
 from bot.services.send_game import SendGameValidationError, perform_send_game
+from bot.services.get_game_high_scores import (
+    GetGameHighScoresValidationError,
+    perform_get_game_high_scores,
+)
 from bot.services.set_game_score import (
     SetGameScoreValidationError,
     perform_set_game_score,
@@ -1140,6 +1144,18 @@ SET_GAME_SCORE_USAGE = (
     "inline_message_id=&lt;inline_message_id&gt; "
     "[force=true] [disable_edit_message=true]</code>\n"
     "The score must be a non-negative integer."
+)
+
+GET_GAME_HIGH_SCORES_USAGE = (
+    "<b>gamehighscores usage</b>\n"
+    "Fetches Telegram game high scores via <code>getGameHighScores</code>. "
+    "Target a normal game message with <code>chat_id</code> and "
+    "<code>message_id</code>, or an inline game message with "
+    "<code>inline_message_id</code>.\n"
+    "Usage: <code>/gamehighscores &lt;user_id&gt; "
+    "chat_id=&lt;chat_id&gt; message_id=&lt;message_id&gt;</code>\n"
+    "Usage: <code>/gamehighscores &lt;user_id&gt; "
+    "inline_message_id=&lt;inline_message_id&gt;</code>"
 )
 
 CHAT_ACTION_USAGE = (
@@ -3101,6 +3117,7 @@ async def cmd_help(message: Message):
         "/dice - Send an animated dice (random value) into this chat (admin only)\n"
         "/game - Send a Telegram game by BotFather short name into this chat (admin only)\n"
         "/setgamescore - Set a Telegram game score for a user (admin only)\n"
+        "/gamehighscores - Fetch Telegram game high scores for a user (admin only)\n"
         "/chataction - Show a chat action (e.g. typing…) in this chat (admin only)\n"
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
         "/editcaption - Edit or clear a media message caption (admin only)\n"
@@ -4376,6 +4393,26 @@ async def cmd_set_game_score(message: Message):
         return
 
     await message.answer("Set game score.")
+
+
+@router.message(Command("gamehighscores"))
+async def cmd_get_game_high_scores(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_get_game_high_scores_args(message.text or "")
+    if parsed is None:
+        await message.answer(GET_GAME_HIGH_SCORES_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        scores = await perform_get_game_high_scores(message.bot, **parsed)
+    except (GetGameHighScoresValidationError, TelegramAPIError) as exc:
+        await message.answer(f"Could not fetch game high scores: {exc}")
+        return
+
+    await message.answer(_format_game_high_scores(scores))
 
 
 @router.message(Command("chataction"))
@@ -9424,6 +9461,64 @@ def _parse_set_game_score_args(text: str):
         return None
 
     return kwargs
+
+
+def _parse_get_game_high_scores_args(text: str):
+    """Parse ``/gamehighscores`` args for ``perform_get_game_high_scores``."""
+    parts = (text or "").split()
+    if len(parts) < 3:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+
+    kwargs = {
+        "user_id": user_id,
+        "chat_id": None,
+        "message_id": None,
+        "inline_message_id": None,
+    }
+    allowed_keys = {"chat_id", "message_id", "inline_message_id"}
+    seen = set()
+    for raw_part in parts[2:]:
+        if "=" not in raw_part:
+            return None
+        key, value = raw_part.split("=", 1)
+        if key not in allowed_keys or key in seen or value == "":
+            return None
+        seen.add(key)
+        if key in {"chat_id", "message_id"}:
+            try:
+                kwargs[key] = int(value)
+            except ValueError:
+                return None
+        else:
+            kwargs[key] = value
+
+    has_chat_message = kwargs["chat_id"] is not None or kwargs["message_id"] is not None
+    has_inline_message = kwargs["inline_message_id"] is not None
+    if has_chat_message == has_inline_message:
+        return None
+    if has_chat_message and (kwargs["chat_id"] is None or kwargs["message_id"] is None):
+        return None
+
+    return kwargs
+
+
+def _format_game_high_scores(scores) -> str:
+    if not scores:
+        return "No game high scores returned."
+
+    lines = ["Game high scores:"]
+    for index, score in enumerate(scores, start=1):
+        position = getattr(score, "position", index)
+        user = getattr(score, "user", None)
+        user_id = getattr(user, "id", "unknown")
+        value = getattr(score, "score", "unknown")
+        lines.append(f"{position}. user_id={user_id} score={value}")
+    return "\n".join(lines)
 
 
 def _parse_chat_action_args(text: str):
