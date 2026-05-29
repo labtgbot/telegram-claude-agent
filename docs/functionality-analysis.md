@@ -149,6 +149,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `stopPoll` | `bot/services/stop_poll.py`, `/stoppoll` в `bot/handlers/commands.py` | Admin-flow закрытия активного нативного опроса, ранее отправленного ботом, по `chat_id` и `message_id`, через typed aiogram API; `message_id` валидируется как positive id, команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, а structured logs фиксируют только target message и итоговый poll id/count без текста вопроса и вариантов. |
 | `sendContact` | `bot/services/send_contact.py`, `/contact` в `bot/handlers/commands.py` | Admin-flow отправки телефонного контакта (contact) — имени с номером телефона, который получатель может сохранить в адресную книгу — в текущий чат, через typed aiogram API; phone_number и first_name обязательны, last_name опционален, а номер телефона и имя контакта не пишутся в structured logs. |
 | `sendDice` | `bot/services/send_dice.py`, `/dice` в `bot/handlers/commands.py` | Admin-flow отправки анимированной кости (dice) — анимированного эмодзи со случайным значением, которое выбирает Telegram — в текущий чат, через typed aiogram API; опциональный emoji ограничен набором 🎲/🎯/🏀/⚽/🎳/🎰 и валидируется до обращения к Telegram, без аргумента отправляется 🎲. |
+| `sendGame` | `bot/services/send_game.py`, `/game` в `bot/handlers/commands.py` | Admin-flow отправки Telegram game, заранее созданной для бота в BotFather, в текущий чат по `game_short_name`, через typed aiogram API; short name обязателен и валидируется до обращения к Telegram, команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, не требует специальных update types или chat administrator rights, а rollback выполняется удалением game message или отключением game в BotFather. |
 | `sendChecklist` | `bot/services/send_checklist.py`, `/checklist` в `bot/handlers/commands.py` | Admin-flow отправки чеклиста (checklist) — озаглавленного списка из 1-30 задач — в текущий чат от имени подключенного business account, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 9.1; требует `business_connection_id`, длины title (до 255) и задач (до 100) и их количество валидируются до обращения к Telegram, а title и тексты задач не пишутся в structured logs. |
 | `postStory` | `bot/services/post_story.py`, `/poststory` в `bot/handlers/commands.py` | Admin-flow публикации photo story от имени managed business account по `business_connection_id`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, требует Telegram business right `can_manage_stories`, принимает `active_period` только 21600/43200/86400/172800, caption до 2048 символов и использует изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, rollback выполняется удалением или архивированием story в Telegram. |
 | `repostStory` | `bot/services/repost_story.py`, `/repoststory` в `bot/handlers/commands.py` | Admin-flow репоста story между managed business accounts по destination `business_connection_id`, source `from_chat_id`, `from_story_id` и `active_period`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, требует Telegram business right `can_manage_stories` для обоих business accounts, принимает `active_period` только 21600/43200/86400/172800 и использует изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; source story должна быть ранее опубликована или репостнута этим ботом, rollback выполняется удалением или архивированием reposted story в Telegram. |
@@ -1995,6 +1996,38 @@ Telegram не вызывается. Кость не несет переданн�
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/dice` так же, как к другим командам.
 
+### sendGame
+
+Команда `/game` вызывает typed aiogram API `Bot.send_game()` для метода
+Telegram `sendGame`. По официальной документации метод требует `chat_id` и
+`game_short_name` и возвращает отправленное `Message`. Игра должна быть заранее
+создана для этого бота в BotFather; Telegram сам проверяет существование игры,
+возможность отправки в целевой чат и текущие rate limits. В pinned
+`aiogram==3.3.0` typed wrapper доступен, поэтому raw Bot API helper не нужен.
+
+Выбран изолированный admin-сценарий game platform: оператор отправляет в текущий
+чат настоящую Telegram game по BotFather short name. Синтаксис:
+`/game <game_short_name>`. Short name обязателен и должен быть одним токеном;
+если аргумент отсутствует или передано больше одного токена, команда показывает
+usage и не обращается к Telegram.
+
+`/game` закрыта строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- специальных update types не требуется, потому что сценарий запускается
+  обычным message command update;
+- chat administrator rights не требуются сами по себе, но бот должен иметь
+  право отправлять сообщения в выбранный чат;
+- ошибки Telegram (`game not found`, запрет отправки, rate limit) возвращаются
+  оператору без retry.
+
+Команда не взаимодействует с `free-claude-code`. Structured logs содержат
+только chat id, game short name и id отправленного сообщения. Rollback:
+удалить отправленное game message в Telegram, убрать команду из allowlist или
+отключить/удалить game в BotFather.
+
 ### sendChecklist
 
 Команда `/checklist` отправляет чеклист — озаглавленный список из 1-30 задач,
@@ -3217,7 +3250,7 @@ admin-командам `/webhook` и `/deletewebhook`. Для диагности
 `/close`, для message-relay `/forward`, `/forwards`, `/copy`, `/copies` и для
 исходящего медиа `/photo`, `/audio`, `/livephoto`, `/document`, `/video`,
 `/videonote`, `/animation`, `/sticker`, `/voice`, `/paidmedia`, `/location`, `/venue`,
-`/poll`, `/contact`, `/dice`, `/chataction`, `/messagedraft` и `/checklist`
+`/poll`, `/contact`, `/dice`, `/game`, `/chataction`, `/messagedraft` и `/checklist`
 fallback не применяется: команды требуют непустой `TELEGRAM_ADMIN_CHAT_IDS`,
 иначе они отключены. Автоматический `typing…`-индикатор (управляемый
 `TELEGRAM_CHAT_ACTION_ENABLED`), draft-стриминг (управляемый
