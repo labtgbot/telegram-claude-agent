@@ -188,6 +188,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/deletestickerset <sticker_set_name>` – Delete a bot-created sticker set (admin only).
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
 - `/paidmedia` – Send a paid photo into this chat that users must pay for with Telegram Stars to access, via a URL or file_id (admin only).
+- `/sendinvoice` – Send a Telegram Stars test invoice into this chat (admin only).
 - `/answerwebappquery` – Answer a Telegram Web App query with one inline result (admin only).
 - `/savepreparedinline` – Save one prepared inline message for a user (admin only).
 - `/savepreparedkeyboard` – Save a prepared keyboard button for a Mini App user (admin only).

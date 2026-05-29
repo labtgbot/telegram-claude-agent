@@ -2592,6 +2592,10 @@ Area label: `area:payments-stars`. Priority baseline: `priority:P3`
 - Labels: `telegram-api`, `bot-api-10.0`, `kind:feature`, `area:payments-stars`, `priority:P3`, `stage:S1-spec`
 - Stages: `S1-spec` -> `S2-design` -> `S3-implementation` -> `S4-tests` -> `S5-docs`
 - Scope: Добавить paid сценарий только после проектирования billing domain, payload signing и audit log.
+- Status: implemented in PR #333 as restricted admin `/sendinvoice` Telegram
+  Stars test-invoice command via an isolated raw Bot API helper. Full billing
+  remains out of scope until payload signing, audit log, pre-checkout handling
+  and rollback operations are designed.
 - Acceptance criteria:
   - параметры метода, права бота и ограничения Telegram описаны в issue;
   - реализация идет через typed aiogram API или изолированный raw Bot API

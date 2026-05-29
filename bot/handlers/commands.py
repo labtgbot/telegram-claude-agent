@@ -319,6 +319,7 @@ from bot.services.verify_chat import (
     perform_verify_chat,
 )
 from bot.services.send_gift import SendGiftError, perform_send_gift
+from bot.services.send_invoice import SendInvoiceError, perform_send_invoice
 from bot.services.send_paid_media import SendPaidMediaError, perform_send_paid_media
 from bot.services.answer_web_app_query import (
     AnswerWebAppQueryError,
@@ -893,6 +894,25 @@ PAID_MEDIA_USAGE = (
     "The caption is optional and limited to 1024 characters. When this chat is a "
     "channel the Telegram Star proceeds are credited to the channel balance, "
     "otherwise to the bot balance."
+)
+
+INVOICE_TITLE_LIMIT = 32
+INVOICE_DESCRIPTION_LIMIT = 255
+INVOICE_PAYLOAD_LIMIT = 128
+INVOICE_MIN_STARS = 1
+INVOICE_MAX_STARS = 25000
+
+SEND_INVOICE_USAGE = (
+    "<b>sendinvoice usage</b>\n"
+    "Sends a Telegram Stars test invoice into this chat through "
+    "<code>sendInvoice</code>. This is an admin-only payments probe, not a "
+    "full billing flow.\n"
+    "Usage: <code>/sendinvoice &lt;star_count&gt; &lt;payload&gt; &lt;title&gt; | "
+    "&lt;description&gt;</code>\n"
+    "The payload must be unique per invoice and signed by the operator's "
+    "billing process before production use. Telegram payment updates "
+    "<code>pre_checkout_query</code> and <code>successful_payment</code> are "
+    "required to complete real purchases."
 )
 
 ANSWER_WEB_APP_QUERY_USAGE = (
@@ -2907,6 +2927,7 @@ async def cmd_help(message: Message):
         "/sticker - Send a sticker or custom emoji into this chat (admin only)\n"
         "/voice - Send a voice message into this chat as a playable audio clip (admin only)\n"
         "/paidmedia - Send a paid photo into this chat priced in Telegram Stars (admin only)\n"
+        "/sendinvoice - Send a Telegram Stars test invoice (admin only)\n"
         "/answerwebappquery - Answer a Web App query with an inline result (admin only)\n"
         "/savepreparedinline - Save a prepared inline message for a user (admin only)\n"
         "/savepreparedkeyboard - Save a prepared keyboard button for a Mini App user (admin only)\n"
@@ -3678,6 +3699,46 @@ async def cmd_paid_media(message: Message):
     await message.answer(
         "Sent paid media with caption." if caption else "Sent paid media."
     )
+
+
+@router.message(Command("sendinvoice"))
+async def cmd_send_invoice(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_send_invoice_args(message.text or "")
+    if parsed is None:
+        await message.answer(SEND_INVOICE_USAGE, parse_mode="HTML")
+        return
+
+    star_count, payload, title, description = parsed
+    validation_error = _validate_send_invoice_args(
+        star_count=star_count,
+        payload=payload,
+        title=title,
+        description=description,
+    )
+    if validation_error is not None:
+        await message.answer(validation_error)
+        return
+
+    try:
+        await perform_send_invoice(
+            message.bot,
+            chat_id=message.chat.id,
+            title=title,
+            description=description,
+            payload=payload,
+            provider_token="",
+            currency="XTR",
+            prices=[{"label": title, "amount": star_count}],
+        )
+    except SendInvoiceError as exc:
+        await message.answer(f"Could not send the invoice: {exc}")
+        return
+
+    await message.answer("Sent Telegram Stars invoice.")
 
 
 @router.message(Command("answerwebappquery"))
@@ -8521,6 +8582,49 @@ def _parse_paid_media_args(text: str):
         caption = None
 
     return star_count, media, caption
+
+
+def _parse_send_invoice_args(text: str):
+    """Parse ``/sendinvoice`` args into star count, payload, title, description."""
+    parts = (text or "").split(maxsplit=3)
+    if len(parts) < 4:
+        return None
+
+    try:
+        star_count = int(parts[1].strip())
+    except ValueError:
+        return None
+
+    payload = parts[2].strip()
+    invoice_text = parts[3].strip()
+    if not payload or " | " not in invoice_text:
+        return None
+
+    title, description = [part.strip() for part in invoice_text.split(" | ", 1)]
+    if not title or not description:
+        return None
+
+    return star_count, payload, title, description
+
+
+def _validate_send_invoice_args(
+    *, star_count: int, payload: str, title: str, description: str
+) -> str | None:
+    if not INVOICE_MIN_STARS <= star_count <= INVOICE_MAX_STARS:
+        return (
+            f"Star count must be between {INVOICE_MIN_STARS} and "
+            f"{INVOICE_MAX_STARS}."
+        )
+    if len(payload.encode("utf-8")) > INVOICE_PAYLOAD_LIMIT:
+        return f"Payload is too long: max {INVOICE_PAYLOAD_LIMIT} bytes."
+    if len(title) > INVOICE_TITLE_LIMIT:
+        return f"Title is too long: {len(title)} characters (max {INVOICE_TITLE_LIMIT})."
+    if len(description) > INVOICE_DESCRIPTION_LIMIT:
+        return (
+            f"Description is too long: {len(description)} characters "
+            f"(max {INVOICE_DESCRIPTION_LIMIT})."
+        )
+    return None
 
 
 def _parse_answer_web_app_query_args(text: str):
