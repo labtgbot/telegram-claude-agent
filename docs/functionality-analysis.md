@@ -242,7 +242,12 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
    `readBusinessMessage`, `deleteBusinessMessages`, методы
    `setBusinessAccount*`, `getManagedBotToken`, `replaceManagedBotToken`,
    `getManagedBotAccessSettings`, `setManagedBotAccessSettings`.
-9. Gifts, Stars и платежи: `getAvailableGifts`, `sendGift`,
+9. Gifts, Stars и платежи: `getAvailableGifts` (уже интегрирован как
+   deny-by-default admin billing/rewards diagnostic
+   `/availablegifts confirm`; метод не принимает параметры, не требует
+   специальных update types или chat admin rights и вызывает raw Bot API helper,
+   так как pinned `aiogram==3.3.0` не имеет typed wrapper),
+   `sendGift`,
    `giftPremiumSubscription`, `getMyStarBalance`, `getStarTransactions`,
    `refundStarPayment`, `editUserStarSubscription`, `sendInvoice`,
    `createInvoiceLink`, `answerShippingQuery`, `answerPreCheckoutQuery`.
@@ -966,6 +971,43 @@ fallback на cloud-endpoint. Ошибки транспорта и ответы 
 
 Команда не взаимодействует с `free-claude-code`. Глобальный
 `RateLimitMiddleware` применяется к `/paidmedia` так же, как к другим командам.
+
+### getAvailableGifts
+
+Команда `/availablegifts` вызывает Telegram `getAvailableGifts` (Bot API 10.0)
+для получения текущего каталога обычных подарков. По официальной документации
+метод не принимает параметров и возвращает объект `Gifts` со списком `gifts`.
+Он не требует прав администратора в чатах и не требует подписки на специальные
+update types: сценарий запускается обычным admin message update.
+
+Ключевое отличие от старых методов: pinned `aiogram==3.3.0` не имеет typed
+wrapper для `getAvailableGifts`, поэтому реализация идет через изолированный
+raw Bot API helper `bot/services/get_available_gifts.py`. Helper POST'ит пустой
+JSON-payload на endpoint `getAvailableGifts`, использует URL из
+`bot.session.api.api_url(...)` для поддержки local Bot API server и поднимает
+transport/Telegram `ok: false` ошибки как `GetAvailableGiftsError`.
+
+Выбран отдельный админский billing/rewards scenario: оператор явно выполняет
+`/availablegifts confirm`, чтобы получить каталог перед отдельными будущими
+действиями, которые могут тратить Telegram Stars, отправлять подарки или
+участвовать в verification/rewards flow. Этот метод сам по себе read-only: он
+не тратит Stars, не отправляет gifts, не меняет verification state и не вызывает
+`free-claude-code`. Rollback не нужен, достаточно игнорировать результат или
+отключить команду.
+
+Product rules и audit log:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если список пустой, команда
+  отключена;
+- команда требует literal `confirm`, чтобы billing/rewards review был явным
+  действием оператора, даже несмотря на read-only nature метода;
+- structured logs включают только `gifts_count` и gift ids, без user/chat data и
+  без содержимого будущих spending actions;
+- Telegram permission/transport/rate-limit errors возвращаются в admin chat;
+- любые будущие методы `sendGift`, `giftPremiumSubscription` или verification
+  actions должны быть отдельными командами с собственным подтверждением,
+  allowlist checks, rollback notes и audit log.
 
 ### sendLocation
 
