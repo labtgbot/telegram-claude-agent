@@ -204,6 +204,10 @@ from bot.services.remove_user_verification import (
     RemoveUserVerificationError,
     perform_remove_user_verification,
 )
+from bot.services.remove_chat_verification import (
+    RemoveChatVerificationError,
+    perform_remove_chat_verification,
+)
 from bot.services.verify_chat import (
     VERIFY_CHAT_DESCRIPTION_LIMIT,
     VerifyChatError,
@@ -968,6 +972,29 @@ REMOVE_USER_VERIFICATION_WARNING = (
     "and rollback plan before confirming. Re-applying verification later is a "
     "separate confirmed <code>/verifyuser</code> action.\n"
     "Run <code>/removeuserverification &lt;user_id&gt; confirm</code> to proceed."
+)
+
+REMOVE_CHAT_VERIFICATION_CONFIRM_KEYWORD = "confirm"
+
+REMOVE_CHAT_VERIFICATION_USAGE = (
+    "<b>removechatverification usage</b>\n"
+    "Calls Telegram <code>removeChatVerification</code> for a chat. This "
+    "removes a visible Telegram verification state, so the command is "
+    "admin-only, requires product-rule review and requires an explicit "
+    "confirmation keyword in the same command.\n"
+    "Usage: <code>/removechatverification &lt;chat_id|@username&gt; confirm</code>\n"
+    "Telegram requires the bot to be able to remove chat verification and "
+    "validates the target chat."
+)
+
+REMOVE_CHAT_VERIFICATION_WARNING = (
+    "<b>removechatverification confirmation required</b>\n"
+    "This will remove a Telegram chat's verification with the bot's "
+    "verification authority. Review the chat identity, product rules, audit "
+    "trail and rollback plan before confirming. Re-applying verification later "
+    "is a separate confirmed <code>/verifychat</code> action.\n"
+    "Run <code>/removechatverification &lt;chat_id|@username&gt; confirm</code> "
+    "to proceed."
 )
 
 VERIFY_CHAT_CONFIRM_KEYWORD = "confirm"
@@ -1895,6 +1922,7 @@ async def cmd_help(message: Message):
         "/verifyuser - Verify a Telegram user with explicit confirmation (admin only)\n"
         "/removeuserverification - Remove user verification with explicit confirmation (admin only)\n"
         "/verifychat - Verify a Telegram chat with explicit confirmation (admin only)\n"
+        "/removechatverification - Remove chat verification with explicit confirmation (admin only)\n"
         "/mediagroup - Send several media items into this chat as an album (admin only)\n"
         "/userprofilephotos - Fetch profile photos of a Telegram user (admin only)\n"
         "/userprofileaudios - Fetch profile audios of a Telegram user (admin only)\n"
@@ -3228,6 +3256,34 @@ async def cmd_verify_chat(message: Message):
         return
 
     await message.answer(f"Verified chat {chat_id}.")
+
+
+@router.message(Command("removechatverification"))
+async def cmd_remove_chat_verification(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_remove_chat_verification_args(message.text or "")
+    if parsed is None:
+        await message.answer(REMOVE_CHAT_VERIFICATION_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, confirmed = parsed
+    if not confirmed:
+        await message.answer(REMOVE_CHAT_VERIFICATION_WARNING, parse_mode="HTML")
+        return
+
+    try:
+        await perform_remove_chat_verification(
+            message.bot,
+            chat_id=chat_id,
+        )
+    except RemoveChatVerificationError as exc:
+        await message.answer(f"Could not remove chat verification: {exc}")
+        return
+
+    await message.answer(f"Removed verification from chat {chat_id}.")
 
 
 @router.message(Command("userprofilephotos"))
@@ -6107,6 +6163,36 @@ def _parse_remove_user_verification_args(text: str) -> tuple[int, bool] | None:
         return None
 
     return user_id, True
+
+
+def _parse_remove_chat_verification_args(text: str) -> tuple[int | str, bool] | None:
+    """Parse ``/removechatverification`` args into chat id and confirmation."""
+    parts = (text or "").split()
+    if len(parts) not in (2, 3):
+        return None
+
+    raw_chat_id = parts[1].strip()
+    if not raw_chat_id:
+        return None
+
+    chat_id: int | str
+    try:
+        chat_id = int(raw_chat_id)
+    except ValueError:
+        if not raw_chat_id.startswith("@") or len(raw_chat_id) == 1:
+            return None
+        chat_id = raw_chat_id
+
+    if chat_id == 0:
+        return None
+
+    if len(parts) == 2:
+        return chat_id, False
+
+    if parts[2].strip().lower() != REMOVE_CHAT_VERIFICATION_CONFIRM_KEYWORD:
+        return None
+
+    return chat_id, True
 
 
 def _parse_verify_chat_args(text: str) -> tuple[int | str, bool, str | None] | None:
