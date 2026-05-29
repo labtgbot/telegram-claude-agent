@@ -1133,6 +1133,45 @@ Product rules и audit log:
   description и не unrelated chat data;
 - Telegram permission/transport/rate-limit errors возвращаются в admin chat.
 
+### verifyChat
+
+Команда `/verifychat` вызывает Telegram `verifyChat` (Bot API 10.0) для
+верификации чата от имени бота, которому Telegram выдал право верифицировать
+чаты. По официальной документации метод требует `chat_id`, опционально
+принимает `custom_description` и возвращает boolean `True`. Специальные update
+types не нужны, потому что сценарий запускается обычным admin message update;
+доступность чата и право бота на верификацию проверяет Telegram.
+
+Так как pinned `aiogram==3.3.0` не имеет typed wrapper для `verifyChat`,
+реализация использует изолированный raw Bot API helper
+`bot/services/verify_chat.py`. Helper POST'ит JSON-payload на endpoint
+`verifyChat`, использует URL из `bot.session.api.api_url(...)` для поддержки
+local Bot API server, валидирует non-zero numeric `chat_id`, non-empty string
+`chat_id` и ограничение `custom_description` в 70 символов до HTTP-вызова и
+поднимает transport/Telegram `ok: false`/unexpected-result ошибки как
+`VerifyChatError`.
+
+Выбран отдельный admin verification scenario:
+`/verifychat <chat_id|@username> confirm [custom_description]`. Оператор должен
+заранее проверить chat identity, product rules, право бота на verification
+action, audit trail и rollback plan. Команда не вызывает `free-claude-code`, не
+тратит Stars и не смешивается с gifts или Premium gifting. Rollback должен
+выполняться отдельным remove-verification действием, когда оно доступно в боте.
+
+Product rules и audit log:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если список пустой, команда
+  отключена;
+- команда требует literal `confirm` в том же сообщении, которое запускает
+  verification action;
+- parser принимает non-zero numeric `chat_id` или string `@username`; optional
+  `custom_description` ограничен 70 символами до отправки;
+- structured logs включают `chat_id` и факт наличия description, но не сам
+  description и не unrelated chat data;
+- Telegram permission/privacy/validation/transport/rate-limit errors
+  возвращаются в admin chat.
+
 ### sendLocation
 
 Команда `/location` вызывает typed aiogram API `Bot.send_location()` для метода
