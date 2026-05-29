@@ -188,6 +188,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/businessgifts` – Fetch owned gifts of a connected business account by `business_connection_id` (admin only).
 - `/chatgifts` – Fetch owned gifts of a channel chat by `chat_id` or `@channelusername` (admin only).
 - `/transferbusinessstars` – Transfer Telegram Stars from a connected business account to the bot balance (admin only, requires confirmation).
+- `/convertgiftstars` – Convert an owned gift of a connected business account to Telegram Stars (admin only, requires confirmation).
 - `/readbusinessmessage` – Mark one connected business-account message as read by `business_connection_id` and `message_id` (admin only).
 - `/setbusinessaccountname` – Set the first and optional last name of a connected business account by `business_connection_id` (admin only).
 - `/setbusinessaccountbio` – Set or clear the bio of a connected business account by `business_connection_id` (admin only).
@@ -1459,6 +1460,33 @@ Usage: `/transferbusinessstars <business_connection_id> <star_count> confirm`
 The command does not call `free-claude-code`. Rollback is operational only:
 stop using the command, remove the admin chat from `TELEGRAM_ADMIN_CHAT_IDS`,
 or adjust the bot's business rights in Telegram.
+
+### Convert gift to Stars
+
+The restricted `/convertgiftstars` command calls Telegram Bot API
+`convertGiftToStars` to convert one regular owned gift of a connected business
+account into Telegram Stars on that business account balance. Because the pinned
+`aiogram==3.3.0` does not expose a typed wrapper for this Bot API 10.0 method,
+the command uses an isolated raw Bot API helper
+(`bot/services/convert_gift_to_stars.py`) over `httpx`.
+
+Usage: `/convertgiftstars <business_connection_id> <owned_gift_id> confirm`
+
+- `business_connection_id` and `owned_gift_id` must come from
+  `/businessgifts` or another trusted operator source;
+- Telegram requires the current business right to convert gifts to Stars and
+  enforces connection ownership, expired connection and gift eligibility checks;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- `confirm` is required because the operation consumes the original gift and
+  cannot be reversed by this bot;
+- structured logs contain the connection id, owned gift id and error shape, but
+  no owner profile data or full gift payload.
+
+The command does not call `free-claude-code`. Rollback is operational only:
+stop using the command, remove the admin chat from `TELEGRAM_ADMIN_CHAT_IDS`,
+or adjust the bot's business rights in Telegram. Operators can verify the new
+business Stars balance with `/businessstarbalance`.
 
 ### Read a business message
 
@@ -3098,6 +3126,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/checklist` command makes the bot post an arbitrary checklist into the chat on behalf of a connected business account, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the title and task texts are kept out of the structured logs.
 - The `/businessconnection` command fetches business connection owner/lifecycle metadata by `business_connection_id`, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps returned owner fields out of structured logs.
 - The `/businessgifts` command fetches owned gifts of a connected business account by `business_connection_id`, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and logs only the connection id, item count, next-offset presence and error shape.
+- The `/convertgiftstars` command converts an owned gift of a connected business account to Telegram Stars, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, explicit `confirm`, is unavailable when that list is empty, and logs only the connection id, owned gift id and error shape.
 - The `/setbusinessaccountname` command changes connected business account profile metadata, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps name values out of structured logs.
 - The `/setbusinessaccountgiftsettings` command changes connected business account incoming gift privacy settings, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and logs only the connection id, gift button flag and enabled-type count.
 - The `/managedbottoken` command returns a live managed-bot token, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps the token itself out of structured logs.

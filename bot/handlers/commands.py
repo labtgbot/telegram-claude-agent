@@ -395,6 +395,11 @@ from bot.services.transfer_business_account_stars import (
     format_transfer_business_account_stars_result,
     perform_transfer_business_account_stars,
 )
+from bot.services.convert_gift_to_stars import (
+    ConvertGiftToStarsError,
+    format_convert_gift_to_stars_result,
+    perform_convert_gift_to_stars,
+)
 from bot.services.set_business_account_username import (
     MAX_BUSINESS_ACCOUNT_USERNAME_LENGTH,
     MIN_BUSINESS_ACCOUNT_USERNAME_LENGTH,
@@ -927,6 +932,30 @@ TRANSFER_BUSINESS_ACCOUNT_STARS_WARNING = (
     "ownership and the amount before confirming.\n"
     "Run <code>/transferbusinessstars &lt;business_connection_id&gt; "
     "&lt;star_count&gt; confirm</code> to proceed."
+)
+
+CONVERT_GIFT_TO_STARS_CONFIRM_KEYWORD = "confirm"
+
+CONVERT_GIFT_TO_STARS_USAGE = (
+    "<b>convertgiftstars usage</b>\n"
+    "Converts one regular owned gift from a connected business account to "
+    "Telegram Stars via <code>convertGiftToStars</code>. This is a destructive "
+    "admin-only business-mode operation because the original gift is consumed.\n"
+    "Usage: <code>/convertgiftstars &lt;business_connection_id&gt; "
+    "&lt;owned_gift_id&gt; confirm</code>\n"
+    "The business connection id and owned gift id must come from "
+    "<code>/businessgifts</code> or another trusted operator source. Telegram "
+    "requires connection ownership and the current business right to convert "
+    "gifts to Stars."
+)
+
+CONVERT_GIFT_TO_STARS_WARNING = (
+    "<b>convertgiftstars confirmation required</b>\n"
+    "This will convert the selected owned gift into Telegram Stars and cannot "
+    "be rolled back by this bot. Review connection ownership and the owned "
+    "gift id before confirming.\n"
+    "Run <code>/convertgiftstars &lt;business_connection_id&gt; "
+    "&lt;owned_gift_id&gt; confirm</code> to proceed."
 )
 
 READ_BUSINESS_MESSAGE_USAGE = (
@@ -2194,6 +2223,7 @@ async def cmd_help(message: Message):
         "/businessstarbalance - Fetch a connected business account Telegram Stars balance by business connection id (admin only)\n"
         "/businessgifts - Fetch connected business account gifts by business connection id (admin only)\n"
         "/transferbusinessstars - Transfer connected business account Stars to the bot balance (admin only)\n"
+        "/convertgiftstars - Convert a connected business account owned gift to Telegram Stars (admin only)\n"
         "/readbusinessmessage - Mark a business message as read by business connection id and message id (admin only)\n"
         "/setbusinessaccountname - Set a connected business account name by business connection id (admin only)\n"
         "/setbusinessaccountusername - Set a connected business account username by business connection id (admin only)\n"
@@ -3366,6 +3396,44 @@ async def cmd_transfer_business_stars(message: Message):
         format_transfer_business_account_stars_result(
             business_connection_id=business_connection_id,
             star_count=star_count,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("convertgiftstars"))
+async def cmd_convert_gift_stars(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_convert_gift_to_stars_args(message.text or "")
+    if parsed is None:
+        await message.answer(CONVERT_GIFT_TO_STARS_USAGE, parse_mode="HTML")
+        return
+
+    business_connection_id, owned_gift_id, confirmed = parsed
+    if not confirmed:
+        await message.answer(
+            CONVERT_GIFT_TO_STARS_WARNING,
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        await perform_convert_gift_to_stars(
+            message.bot,
+            business_connection_id=business_connection_id,
+            owned_gift_id=owned_gift_id,
+        )
+    except ConvertGiftToStarsError as exc:
+        await message.answer(f"Could not convert the gift to Stars: {exc}")
+        return
+
+    await message.answer(
+        format_convert_gift_to_stars_result(
+            business_connection_id=business_connection_id,
+            owned_gift_id=owned_gift_id,
         ),
         parse_mode="HTML",
     )
@@ -6847,6 +6915,26 @@ def _parse_transfer_business_account_stars_args(
         confirmed = True
 
     return business_connection_id, star_count, confirmed
+
+
+def _parse_convert_gift_to_stars_args(text: str) -> tuple[str, str, bool] | None:
+    """Parse convert gift args into connection id, owned gift id and confirm."""
+    parts = (text or "").split()
+    if len(parts) not in {3, 4}:
+        return None
+
+    business_connection_id = parts[1].strip()
+    owned_gift_id = parts[2].strip()
+    if not business_connection_id or not owned_gift_id:
+        return None
+
+    confirmed = False
+    if len(parts) == 4:
+        if parts[3].lower() != CONVERT_GIFT_TO_STARS_CONFIRM_KEYWORD:
+            return None
+        confirmed = True
+
+    return business_connection_id, owned_gift_id, confirmed
 
 
 def _parse_read_business_message_args(text: str) -> tuple[str, int] | None:
