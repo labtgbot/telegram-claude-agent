@@ -1050,6 +1050,32 @@ admin commands:
   permission failures are reported back to the operator;
 - the global rate-limit middleware still applies.
 
+### Create a sticker set
+
+The restricted `/createnewstickerset` command calls Telegram Bot API
+`createNewStickerSet` through an isolated raw helper because the project pins
+`aiogram==3.3.0`. It covers the first lifecycle step for sticker/custom emoji
+sets by creating a set with one pre-uploaded sticker `file_id`.
+
+Usage: `/createnewstickerset <user_id> <name> <sticker_type> <sticker_format> <sticker_file_id> <emoji[,emoji...]> <title>`
+
+- use `/uploadstickerfile` first when the asset is a local file on the bot host;
+- `sticker_type` must be `regular`, `mask` or `custom_emoji`;
+- `sticker_format` must be `static`, `animated` or `video`;
+- the sticker set name must be unique and follow Telegram's bot-owned naming
+  rule, ending with `_by_<bot_username>`;
+- the target user must be the owner of the created set.
+
+Because the command creates Telegram state, it is guarded like the other admin
+commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- Telegram validation and rate-limit errors are reported back to the operator;
+- rollback is manual: delete or replace the created sticker set through the
+  Telegram sticker lifecycle tools.
+
 ### Send a voice message
 
 The restricted `/voice` command calls Telegram Bot API `sendVoice` through
@@ -3542,6 +3568,7 @@ telegram-claude-agent/
 │   │   ├── send_animation.py   # Telegram sendAnimation outbound helper
 │   │   ├── send_sticker.py     # Telegram sendSticker outbound helper
 │   │   ├── get_sticker_set.py  # Telegram getStickerSet raw Bot API helper
+│   │   ├── create_new_sticker_set.py # Telegram createNewStickerSet raw helper
 │   │   ├── send_voice.py       # Telegram sendVoice outbound helper
 │   │   ├── send_paid_media.py  # Telegram sendPaidMedia raw Bot API helper
 │   │   ├── send_location.py    # Telegram sendLocation outbound helper

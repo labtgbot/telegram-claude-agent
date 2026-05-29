@@ -148,6 +148,11 @@ from bot.services.upload_sticker_file import (
     format_upload_sticker_file_result,
     perform_upload_sticker_file,
 )
+from bot.services.create_new_sticker_set import (
+    CreateNewStickerSetError,
+    format_create_new_sticker_set_result,
+    perform_create_new_sticker_set,
+)
 from bot.services.copy_message import perform_copy_message
 from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
@@ -2356,6 +2361,24 @@ UPLOAD_STICKER_FILE_USAGE = (
     "&lt;sticker_format&gt; &lt;sticker_path&gt;</code>"
 )
 
+CREATE_NEW_STICKER_SET_USAGE = (
+    "<b>createnewstickerset usage</b>\n"
+    "Creates a sticker set through <code>createNewStickerSet</code> with one "
+    "pre-uploaded sticker file id and an emoji list. Use "
+    "<code>/uploadstickerfile</code> first when you need to upload a local "
+    "asset. The target user must be the sticker set owner, and the sticker set "
+    "name must be unique and end with <code>_by_&lt;bot_username&gt;</code>. "
+    "Supported <code>sticker_type</code> values are <code>regular</code>, "
+    "<code>mask</code> and <code>custom_emoji</code>; supported "
+    "<code>sticker_format</code> values are <code>static</code>, "
+    "<code>animated</code> and <code>video</code>. This command is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/createnewstickerset &lt;user_id&gt; &lt;name&gt; "
+    "&lt;sticker_type&gt; &lt;sticker_format&gt; &lt;sticker_file_id&gt; "
+    "&lt;emoji[,emoji...]&gt; &lt;title&gt;</code>"
+)
+
 CREATE_FORUM_TOPIC_USAGE = (
     "<b>createforumtopic usage</b>\n"
     "Creates a forum topic in a supergroup through "
@@ -2752,6 +2775,7 @@ async def cmd_help(message: Message):
         "/customemojistickers - Fetch custom emoji sticker metadata by id (admin only)\n"
         "/getstickerset - Fetch sticker set metadata by name (admin only)\n"
         "/uploadstickerfile - Upload a sticker file and return its file id (admin only)\n"
+        "/createnewstickerset - Create a sticker set with one sticker file id (admin only)\n"
         "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
         "/editgeneralforumtopic - Edit the General forum topic in a supergroup (admin only)\n"
@@ -6536,6 +6560,47 @@ async def cmd_upload_sticker_file(message: Message):
             sticker_path=sticker_path,
             sticker_format=sticker_format,
             file=file,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("createnewstickerset"))
+async def cmd_create_new_sticker_set(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_create_new_sticker_set_args(message.text or "")
+    if parsed is None:
+        await message.answer(CREATE_NEW_STICKER_SET_USAGE, parse_mode="HTML")
+        return
+
+    user_id, name, sticker_type, sticker_format, sticker, emoji_list, title = parsed
+    try:
+        await perform_create_new_sticker_set(
+            message.bot,
+            user_id=user_id,
+            name=name,
+            title=title,
+            sticker_type=sticker_type,
+            sticker_format=sticker_format,
+            sticker=sticker,
+            emoji_list=emoji_list,
+        )
+    except CreateNewStickerSetError as exc:
+        await message.answer(f"Could not create the sticker set: {exc}")
+        return
+
+    await message.answer(
+        format_create_new_sticker_set_result(
+            user_id=user_id,
+            name=name,
+            title=title,
+            sticker_type=sticker_type,
+            sticker_format=sticker_format,
+            sticker=sticker,
+            emoji_list=emoji_list,
         ),
         parse_mode="HTML",
     )
@@ -11093,6 +11158,31 @@ def _parse_upload_sticker_file_args(text: str):
     if not sticker_format or not sticker_path:
         return None
     return user_id, sticker_format, sticker_path
+
+
+def _parse_create_new_sticker_set_args(text: str):
+    """Parse ``/createnewstickerset`` args into the first-sticker scenario."""
+    parts = (text or "").split(maxsplit=7)
+    if len(parts) != 8:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+
+    if user_id <= 0:
+        return None
+
+    name = parts[2].strip()
+    sticker_type = parts[3].strip()
+    sticker_format = parts[4].strip()
+    sticker = parts[5].strip()
+    emoji_list = [item.strip() for item in parts[6].split(",") if item.strip()]
+    title = parts[7].strip()
+    if not all([name, sticker_type, sticker_format, sticker, emoji_list, title]):
+        return None
+    return user_id, name, sticker_type, sticker_format, sticker, emoji_list, title
 
 
 def _parse_approve_chat_join_request_args(text: str):
