@@ -113,6 +113,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `sendAnimation` | `bot/services/send_animation.py`, `/animation` в `bot/handlers/commands.py` | Admin-flow отправки анимации (GIF или видео без звука) в текущий чат как проигрываемого зацикленного клипа по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendSticker` | `bot/services/send_sticker.py`, `/sticker` в `bot/handlers/commands.py` | Admin-flow отправки sticker/custom emoji в текущий чат по URL или `file_id`, через typed aiogram API; сценарий изолирован от основного Claude chat flow и закрыт строгим admin allowlist. |
 | `getStickerSet` | `bot/services/get_sticker_set.py`, `/getstickerset` в `bot/handlers/commands.py` | Admin-flow просмотра metadata sticker/custom emoji set по `sticker_set_name`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, метод принимает только set `name` и не требует специальных update types, так как сценарий запускается обычной командой из admin-чата; используется изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`, результат парсится в aiogram `StickerSet` и выводит title, type, количество stickers и первые `file_id`; команда не вызывает `free-claude-code`, не меняет состояние Telegram и нужна для creative/media module и lifecycle sticker sets triage, а ошибки транспорта, Telegram API validation или rate limit возвращаются оператору. |
+| `getCustomEmojiStickers` | `bot/services/get_custom_emoji_stickers.py`, `/customemojistickers` в `bot/handlers/commands.py` | Admin-flow просмотра metadata custom emoji stickers по 1-200 `custom_emoji_id`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, метод не требует специальных update types или chat administrator rights, так как это read-only Bot API вызов из обычной admin-команды; используется изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`, результат парсится в aiogram `Sticker` и выводит emoji, `custom_emoji_id`, `file_id` и set name; команда не вызывает `free-claude-code`, не меняет состояние Telegram, rollback не нужен, а ошибки локальной валидации, транспорта, Telegram API validation или rate limit возвращаются оператору. |
 | `sendVoice` | `bot/services/send_voice.py`, `/voice` в `bot/handlers/commands.py` | Admin-flow отправки голосового сообщения в текущий чат как проигрываемого аудиоклипа (в виде waveform) по URL или `file_id`, а не только текстовой интерпретации. |
 | `sendPaidMedia` | `bot/services/send_paid_media.py`, `/paidmedia` в `bot/handlers/commands.py` | Admin-flow отправки платного фото в текущий чат, доступ к которому пользователи оплачивают Telegram Stars, по URL или `file_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 7.6. |
 | `answerWebAppQuery` | `bot/services/answer_web_app_query.py`, `/answerwebappquery` в `bot/handlers/commands.py` | Admin-flow ответа на Telegram Web App query одним `InlineQueryResult` от имени пользователя через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, не вызывает `free-claude-code`, а Telegram проверяет действительность `web_app_query_id`. |
@@ -993,6 +994,40 @@ sets или медиа-командах. Это не часть основног
 Ответ показывает имя, title, type, количество stickers и первые `file_id`.
 Structured logs пишут имя sticker set, количество stickers и type без полного
 перечня sticker file ids.
+
+### getCustomEmojiStickers
+
+Команда `/customemojistickers` вызывает Telegram Bot API
+`getCustomEmojiStickers` через изолированный raw Bot API helper, потому что
+проект закреплен на `aiogram==3.3.0`. По официальной документации метод
+принимает обязательный `custom_emoji_ids`: JSON-serialized список строковых
+идентификаторов custom emoji, максимум 200 за один вызов, и возвращает массив
+объектов `Sticker`. Локальная валидация отклоняет пустой список, пустые id и
+запросы больше 200 id до обращения к Telegram.
+
+Метод read-only: специальные update types, права администратора в целевых
+чатах и доступ к пользовательским сообщениям не требуются. Сценарий выбран как
+admin triage для creative/media module и lifecycle sticker sets: оператор
+получает `custom_emoji_id` из `MessageEntity.custom_emoji_id`, `/getstickerset`
+или `/forumtopiciconstickers`, затем проверяет emoji, set name и reusable
+`file_id`. Команда не участвует в основном Claude chat flow, не вызывает
+`free-claude-code`, не меняет Telegram state и не требует rollback.
+
+Синтаксис: `/customemojistickers <custom_emoji_id> [custom_emoji_id...]`.
+
+`/customemojistickers` закрыт строгим admin allowlist:
+
+- команда доступна только chat id из `TELEGRAM_ADMIN_CHAT_IDS` и не делает
+  fallback на `TELEGRAM_ALLOWED_CHAT_IDS`; если `TELEGRAM_ADMIN_CHAT_IDS`
+  пустой, команда отключена;
+- при отсутствующих id команда показывает usage и не обращается к Telegram;
+- ошибки локальной валидации, транспорта, Telegram API validation и rate limit
+  возвращаются оператору.
+
+Ответ показывает количество найденных stickers, emoji, `custom_emoji_id`,
+`file_id` и sticker set name для первых результатов. Structured logs пишут
+только количество запрошенных и полученных stickers и возвращенные
+`custom_emoji_id`, без полного списка входных id.
 
 ### sendVoice
 

@@ -175,6 +175,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/animation` – Send an animation (GIF or soundless video) into this chat as a playable looping clip via a URL or file_id (admin only).
 - `/sticker` – Send a sticker or custom emoji into this chat via a URL or file_id (admin only).
 - `/getstickerset <sticker_set_name>` – Fetch sticker set metadata and sticker file_ids by set name (admin only).
+- `/customemojistickers <custom_emoji_id> [...]` – Fetch custom emoji sticker metadata by up to 200 custom emoji ids (admin only).
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
 - `/paidmedia` – Send a paid photo into this chat that users must pay for with Telegram Stars to access, via a URL or file_id (admin only).
 - `/answerwebappquery` – Answer a Telegram Web App query with one inline result (admin only).
@@ -261,6 +262,8 @@ typed method when available and an isolated raw Bot API helper on pinned
   the bot can change chat information (admin only).
 - `/getstickerset <sticker_set_name>` – Fetch sticker set metadata and sticker
   file_ids by set name (admin only).
+- `/customemojistickers <custom_emoji_id> [...]` – Fetch custom emoji sticker
+  metadata by id for sticker/custom emoji lifecycle review (admin only).
 - `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` – Promote or demote a group, supergroup, or channel member where the bot has `can_promote_members` (admin only).
 - `/approvechatjoinrequest <chat_id> <user_id>` – Approve a pending join request where the bot has `can_invite_users` (admin only).
 - `/declinechatjoinrequest <chat_id> <user_id>` – Decline a pending join request where the bot has `can_invite_users` (admin only).
