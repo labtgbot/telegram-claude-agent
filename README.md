@@ -173,6 +173,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/video` – Send a video into this chat as a playable Telegram video via a URL or file_id (admin only).
 - `/videonote` – Send a rounded square video message (video note) into this chat via a file_id (admin only).
 - `/animation` – Send an animation (GIF or soundless video) into this chat as a playable looping clip via a URL or file_id (admin only).
+- `/sticker` – Send a sticker or custom emoji into this chat via a URL or file_id (admin only).
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
 - `/paidmedia` – Send a paid photo into this chat that users must pay for with Telegram Stars to access, via a URL or file_id (admin only).
 - `/answerwebappquery` – Answer a Telegram Web App query with one inline result (admin only).
@@ -1013,6 +1014,34 @@ admin commands:
 - it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
   **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
   is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
+### Send a sticker
+
+The restricted `/sticker` command calls Telegram Bot API `sendSticker` through
+aiogram's typed `Bot.send_sticker()` wrapper. It lets an operator deliver a
+sticker or custom emoji into the current chat without involving the Claude chat
+flow.
+
+Usage: `/sticker <url_or_file_id> [emoji]`
+
+- the sticker is always sent into the chat where the command was issued;
+- the sticker reference is a `file_id` of a sticker already on Telegram servers
+  or an HTTP(S) URL Telegram can fetch for static `.WEBP` stickers;
+- video stickers can only be sent by `file_id`, and animated stickers cannot be
+  sent by HTTP URL;
+- the optional emoji hint is passed to Telegram for newly uploaded stickers;
+- static and animated stickers are limited to 512 KB, video stickers are
+  limited to 256 KB, and sticker dimensions must fit in a 512x512 square.
+
+Because the command makes the bot post content, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- Telegram errors such as invalid file references, unsupported formats or chat
+  permission failures are reported back to the operator;
 - the global rate-limit middleware still applies.
 
 ### Send a voice message
@@ -3458,7 +3487,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /checklist, /setmycommands, /mediagroup, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /sticker, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /checklist, /setmycommands, /mediagroup, /clear
 │   │   ├── chat.py             # Text and media message handler (shows typing… while processing)
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -3478,6 +3507,7 @@ telegram-claude-agent/
 │   │   ├── send_video.py       # Telegram sendVideo outbound helper
 │   │   ├── send_video_note.py  # Telegram sendVideoNote outbound helper
 │   │   ├── send_animation.py   # Telegram sendAnimation outbound helper
+│   │   ├── send_sticker.py     # Telegram sendSticker outbound helper
 │   │   ├── send_voice.py       # Telegram sendVoice outbound helper
 │   │   ├── send_paid_media.py  # Telegram sendPaidMedia raw Bot API helper
 │   │   ├── send_location.py    # Telegram sendLocation outbound helper
@@ -3533,6 +3563,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/video` command makes the bot post an arbitrary video into the chat as a playable video, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/videonote` command makes the bot post an arbitrary video note (rounded square video message) into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/animation` command makes the bot post an arbitrary animation (GIF or soundless video) into the chat as a playable looping clip, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
+- The `/sticker` command makes the bot post an arbitrary sticker or custom emoji into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/voice` command makes the bot post an arbitrary voice message into the chat as a playable audio clip, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/paidmedia` command makes the bot post arbitrary monetized media priced in Telegram Stars into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/location` command makes the bot post an arbitrary point on the map into the chat as a location, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; coordinates are kept out of the structured logs.
