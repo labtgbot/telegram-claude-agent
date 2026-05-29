@@ -224,6 +224,10 @@ from bot.services.save_prepared_inline_message import (
     SavePreparedInlineMessageError,
     perform_save_prepared_inline_message,
 )
+from bot.services.save_prepared_keyboard_button import (
+    SavePreparedKeyboardButtonError,
+    perform_save_prepared_keyboard_button,
+)
 from bot.services.post_story import (
     POST_STORY_ACTIVE_PERIODS,
     POST_STORY_CAPTION_LIMIT,
@@ -761,6 +765,17 @@ SAVE_PREPARED_INLINE_MESSAGE_USAGE = (
     "[allow_group_chats=true|false] [allow_channel_chats=true|false]</code>\n"
     "The result JSON must be one InlineQueryResult object. Optional allow_* "
     "flags restrict which chat types Telegram may offer for sending it."
+)
+
+SAVE_PREPARED_KEYBOARD_BUTTON_USAGE = (
+    "<b>savepreparedkeyboard usage</b>\n"
+    "Saves a prepared keyboard button for a Telegram Mini App user. The button "
+    "is tied to a prepared inline message created earlier with "
+    "savePreparedInlineMessage and can be shown by the Mini App integration.\n"
+    "Usage: <code>/savepreparedkeyboard &lt;user_id&gt; "
+    "&lt;prepared_message_id&gt;</code>\n"
+    "The user must have opened the Mini App and authorized the bot context; "
+    "Telegram validates the prepared message id and user eligibility."
 )
 
 LOCATION_MIN_LATITUDE = -90.0
@@ -2369,6 +2384,7 @@ async def cmd_help(message: Message):
         "/paidmedia - Send a paid photo into this chat priced in Telegram Stars (admin only)\n"
         "/answerwebappquery - Answer a Web App query with an inline result (admin only)\n"
         "/savepreparedinline - Save a prepared inline message for a user (admin only)\n"
+        "/savepreparedkeyboard - Save a prepared keyboard button for a Mini App user (admin only)\n"
         "/location - Send a point on the map into this chat as a location (admin only)\n"
         "/venue - Send a venue (named place with title and address) into this chat (admin only)\n"
         "/poll - Send a native poll (question with answer options) into this chat (admin only)\n"
@@ -3146,6 +3162,31 @@ async def cmd_save_prepared_inline_message(message: Message):
         )
     else:
         await message.answer("Saved prepared inline message.")
+
+
+@router.message(Command("savepreparedkeyboard"))
+async def cmd_save_prepared_keyboard_button(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_save_prepared_keyboard_button_args(message.text or "")
+    if parsed is None:
+        await message.answer(SAVE_PREPARED_KEYBOARD_BUTTON_USAGE, parse_mode="HTML")
+        return
+
+    user_id, prepared_message_id = parsed
+    try:
+        await perform_save_prepared_keyboard_button(
+            message.bot,
+            user_id=user_id,
+            prepared_message_id=prepared_message_id,
+        )
+    except SavePreparedKeyboardButtonError as exc:
+        await message.answer(f"Could not save the prepared keyboard button: {exc}")
+        return
+
+    await message.answer("Saved prepared keyboard button.")
 
 
 @router.message(Command("location"))
@@ -7003,6 +7044,26 @@ def _parse_save_prepared_inline_message_args(text: str):
         options[name] = normalized_value == "true"
 
     return user_id, result, options
+
+
+def _parse_save_prepared_keyboard_button_args(text: str):
+    """Parse ``/savepreparedkeyboard`` args into user id and prepared message id."""
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) != 3:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+    if user_id <= 0:
+        return None
+
+    prepared_message_id = parts[2].strip()
+    if not prepared_message_id:
+        return None
+
+    return user_id, prepared_message_id
 
 
 def _parse_location_args(text: str):

@@ -175,6 +175,9 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/animation` – Send an animation (GIF or soundless video) into this chat as a playable looping clip via a URL or file_id (admin only).
 - `/voice` – Send a voice message into this chat as a playable audio clip (shown as a waveform) via a URL or file_id (admin only).
 - `/paidmedia` – Send a paid photo into this chat that users must pay for with Telegram Stars to access, via a URL or file_id (admin only).
+- `/answerwebappquery` – Answer a Telegram Web App query with one inline result (admin only).
+- `/savepreparedinline` – Save one prepared inline message for a user (admin only).
+- `/savepreparedkeyboard` – Save a prepared keyboard button for a Mini App user (admin only).
 - `/location` – Send a point on the map into this chat as a real Telegram location via latitude and longitude (admin only).
 - `/venue` – Send a venue (a named place with a title and an address pinned on the map) into this chat via latitude and longitude (admin only).
 - `/poll` – Send a native poll (an interactive question with 2-10 tappable answer options) into this chat (admin only).
@@ -1065,6 +1068,52 @@ other admin commands:
   **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
+
+### Web App prepared messages
+
+The restricted `/answerwebappquery`, `/savepreparedinline` and
+`/savepreparedkeyboard` commands cover the Mini App integration layer around
+Telegram Web Apps, prepared inline messages and prepared keyboard buttons.
+
+`/answerwebappquery <web_app_query_id> <result_json>` calls
+`answerWebAppQuery` through aiogram's typed wrapper and sends one
+`InlineQueryResult` on behalf of the user who opened the Web App.
+
+`/savepreparedinline <user_id> <result_json> [allow_user_chats=true|false]
+[allow_bot_chats=true|false] [allow_group_chats=true|false]
+[allow_channel_chats=true|false]` calls `savePreparedInlineMessage` through an
+isolated raw Bot API helper because pinned `aiogram==3.3.0` has no typed wrapper
+for that Bot API 10.0 method. The result JSON must be one `InlineQueryResult`;
+Telegram returns a `PreparedInlineMessage` id that can be used by the next step.
+
+`/savepreparedkeyboard <user_id> <prepared_message_id>` calls
+`savePreparedKeyboardButton` through
+`bot/services/save_prepared_keyboard_button.py`, another isolated raw Bot API
+helper for Bot API 10.0. It stores the prepared keyboard button for the Mini App
+user and references a prepared inline message id created earlier.
+
+Security and operational notes:
+
+- these flows are admin-triggered diagnostics/integration commands and do not
+  call `free-claude-code`;
+- they are only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and do
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the commands are disabled;
+- the Mini App must validate Telegram init data and bind the action to the
+  expected user before an operator stores a prepared keyboard button; this bot
+  command validates local argument shape, while Telegram validates user
+  eligibility, prepared message ids and Bot API authorization;
+- no special chat administrator right is needed for these commands themselves,
+  because they operate on a user/Web App context rather than a target group;
+- no extra update type is required for the admin command path, but a production
+  Mini App flow should receive and verify Web App init data or `web_app_data`
+  outside this command before calling it;
+- rollback is explicit: create and save a replacement prepared message/button
+  or remove the Mini App entry point/menu button that exposes the prepared
+  keyboard button;
+- Telegram validation, authorization, transport and rate-limit errors are
+  reported back to the admin chat, and the global rate-limit middleware still
+  applies.
 
 ### Send a location
 
