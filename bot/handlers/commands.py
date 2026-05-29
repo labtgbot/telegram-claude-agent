@@ -158,6 +158,11 @@ from bot.services.add_sticker_to_set import (
     format_add_sticker_to_set_result,
     perform_add_sticker_to_set,
 )
+from bot.services.set_sticker_position_in_set import (
+    SetStickerPositionInSetError,
+    format_set_sticker_position_in_set_result,
+    perform_set_sticker_position_in_set,
+)
 from bot.services.copy_message import perform_copy_message
 from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
@@ -2398,6 +2403,18 @@ ADD_STICKER_TO_SET_USAGE = (
     "&lt;emoji[,emoji...]&gt;</code>"
 )
 
+SET_STICKER_POSITION_IN_SET_USAGE = (
+    "<b>setstickerposition usage</b>\n"
+    "Moves one sticker to a zero-based position inside its current sticker set "
+    "through <code>setStickerPositionInSet</code>. Use "
+    "<code>/getstickerset</code> first when you need to inspect current "
+    "file ids and ordering. The bot can only move stickers in sets created by "
+    "the bot. This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setstickerposition &lt;sticker_file_id&gt; "
+    "&lt;position&gt;</code>"
+)
+
 CREATE_FORUM_TOPIC_USAGE = (
     "<b>createforumtopic usage</b>\n"
     "Creates a forum topic in a supergroup through "
@@ -2796,6 +2813,7 @@ async def cmd_help(message: Message):
         "/uploadstickerfile - Upload a sticker file and return its file id (admin only)\n"
         "/createnewstickerset - Create a sticker set with one sticker file id (admin only)\n"
         "/addstickertoset - Add one sticker file id to a sticker set (admin only)\n"
+        "/setstickerposition - Move a sticker inside its sticker set (admin only)\n"
         "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
         "/editgeneralforumtopic - Edit the General forum topic in a supergroup (admin only)\n"
@@ -6658,6 +6676,37 @@ async def cmd_add_sticker_to_set(message: Message):
             sticker_format=sticker_format,
             sticker=sticker,
             emoji_list=emoji_list,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setstickerposition"))
+async def cmd_set_sticker_position_in_set(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_sticker_position_in_set_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_STICKER_POSITION_IN_SET_USAGE, parse_mode="HTML")
+        return
+
+    sticker, position = parsed
+    try:
+        await perform_set_sticker_position_in_set(
+            message.bot,
+            sticker=sticker,
+            position=position,
+        )
+    except SetStickerPositionInSetError as exc:
+        await message.answer(f"Could not set the sticker position: {exc}")
+        return
+
+    await message.answer(
+        format_set_sticker_position_in_set_result(
+            sticker=sticker,
+            position=position,
         ),
         parse_mode="HTML",
     )
@@ -11263,6 +11312,23 @@ def _parse_add_sticker_to_set_args(text: str):
     if not all([name, sticker_format, sticker, emoji_list]):
         return None
     return user_id, name, sticker_format, sticker, emoji_list
+
+
+def _parse_set_sticker_position_in_set_args(text: str):
+    """Parse ``/setstickerposition`` args into sticker file id and position."""
+    parts = (text or "").split()
+    if len(parts) != 3:
+        return None
+
+    sticker = parts[1].strip()
+    try:
+        position = int(parts[2])
+    except ValueError:
+        return None
+
+    if not sticker or position < 0:
+        return None
+    return sticker, position
 
 
 def _parse_approve_chat_join_request_args(text: str):
