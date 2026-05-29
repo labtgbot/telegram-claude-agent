@@ -196,6 +196,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/setchatphoto <chat_id> <photo_path>` – Set a new group/supergroup photo from a local file where the bot can change chat information (admin only).
 - `/deletechatphoto <chat_id>` – Delete the current group/supergroup photo where the bot can change chat information (admin only).
 - `/setchatmenubutton [chat_id=<id>] default|commands|web_app <text> <url>` – Set the bot menu button for one chat or the default menu button (admin only).
+- `/getchatmenubutton [chat_id=<id>]` – Fetch the bot menu button for one chat or the default menu button (admin only).
 - `/setmyname <name> [language=<code>]` – Set or clear the bot display name shown in Telegram clients (admin only).
 - `/setmydescription <description> [language=<code>]` – Set or clear the public bot profile description shown in Telegram clients (admin only).
 - `/removemyprofilephoto confirm` – Remove the bot profile photo through Bot API 10.0 (admin only, requires confirmation; rollback is `/setmyprofilephoto <photo_path>` with the previous image).
@@ -423,6 +424,27 @@ It is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
 **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
 is empty, the command is disabled. The global rate-limit middleware still
 applies.
+
+### Get chat menu button
+
+The restricted `/getchatmenubutton` command calls Telegram Bot API
+`getChatMenuButton` through aiogram's typed `Bot.get_chat_menu_button()`
+wrapper. It is a read-only diagnostic for checking the menu button Telegram
+currently serves for a selected chat, or the default menu button when `chat_id`
+is omitted.
+
+Usage: `/getchatmenubutton [chat_id=<id>]`
+
+Examples:
+
+- `/getchatmenubutton`
+- `/getchatmenubutton chat_id=-100123`
+
+The method does not require chat administrator rights or special update types,
+but the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS`
+and does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if
+`TELEGRAM_ADMIN_CHAT_IDS` is empty, the command is disabled. The global
+rate-limit middleware still applies.
 
 ### Set bot name
 

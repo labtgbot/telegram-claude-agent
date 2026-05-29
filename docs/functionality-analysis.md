@@ -68,8 +68,9 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `getForumTopicIconStickers`, `editForumTopic`, `editGeneralForumTopic`,
 `closeForumTopic`, `closeGeneralForumTopic`, `reopenForumTopic`,
 `unpinAllForumTopicMessages`, `unpinAllGeneralForumTopicMessages`,
-`unhideGeneralForumTopic`, `setMyName`, `getMyName`, `setMyDescription`;
-остается 113 пока не
+`unhideGeneralForumTopic`, `setMyName`, `getMyName`, `setMyDescription`,
+`getChatMenuButton`;
+остается 112 пока не
 интегрированных метода.
 Эти карточки также заведены как реальные GitHub issues в репозитории; индекс
 соответствия `BOTAPI-###` -> issue описан в
@@ -93,6 +94,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `getMyName` | `bot/services/get_my_name.py`, `/getmyname` в `bot/handlers/commands.py`, startup audit в `bot/main.py` | Read-only admin/config diagnostic для проверки default или localized display name бота через typed aiogram API `Bot.get_my_name`; метод принимает только optional `language_code` и возвращает `BotName`, не требует chat administrator rights и специальных update types, а команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке; startup audit читает фактическое имя после optional `TELEGRAM_BOT_NAME` sync, structured logs пишут только длину имени и наличие language code, ошибки Telegram возвращаются оператору или прерывают startup как операционная misconfiguration. |
 | `deleteMyCommands` | `bot/services/delete_my_commands.py`, `/deletemycommands` в `bot/handlers/commands.py` | Admin-flow безопасной очистки command menu перед повторной синхронизацией через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback, принимает optional `scope`, `chat_id`, `user_id` и `language`, валидирует совместимость scope-параметров до обращения к Telegram, не требует chat administrator rights, а ошибки Telegram возвращаются оператору. |
 | `getMyCommands` | `bot/services/get_my_commands.py`, `/getmycommands` в `bot/handlers/commands.py` | Read-only admin-diagnostic проверки фактического command menu через typed aiogram API; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback, принимает те же optional `scope`, `chat_id`, `user_id` и `language`, валидирует совместимость scope-параметров до обращения к Telegram, не требует chat administrator rights и не вызывает `free-claude-code`; сервис умеет сравнивать actual commands с ожидаемой конфигурацией и выводить missing, unexpected и description mismatch диагностику, а ошибки Telegram возвращаются оператору. |
+| `getChatMenuButton` | `bot/services/get_chat_menu_button.py`, `/getchatmenubutton` в `bot/handlers/commands.py` | Read-only admin-diagnostic проверки фактической menu button для default state или конкретного `chat_id` через typed aiogram API `Bot.get_chat_menu_button`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, принимает только optional `chat_id`, валидирует целочисленный идентификатор до обращения к Telegram, не требует chat administrator rights, специальных update types или вызова `free-claude-code`, а ошибки Telegram возвращаются оператору. |
 | `logOut` | `bot/services/log_out.py`, `/logout` в `bot/handlers/commands.py` | Защищенный admin-flow выхода из cloud Bot API перед запуском local Bot API server, с обязательным подтверждением. |
 | `close` | `bot/services/close.py`, `/close` в `bot/handlers/commands.py` | Защищенный admin-flow закрытия bot instance перед миграцией между local Bot API серверами, с обязательным подтверждением. |
 | `forwardMessage` | `bot/services/forward_message.py`, `/forward` в `bot/handlers/commands.py` | Admin-flow пересылки одного сообщения из другого чата в текущий admin-чат для поддержки/модерации, с `protect_content` по умолчанию. |
@@ -207,7 +209,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
    `getMyDescription`, `setMyShortDescription`, `getMyShortDescription`,
    `setMyProfilePhoto`, `removeMyProfilePhoto` (уже интегрированы),
    `setChatMenuButton`,
-   `getChatMenuButton`, `setMyDefaultAdministratorRights`,
+   `getChatMenuButton` (уже интегрирован), `setMyDefaultAdministratorRights`,
    `getMyDefaultAdministratorRights`.
 3. Более богатые ответы пользователю: `sendChatAction`,
    `sendChecklist`,
