@@ -93,6 +93,11 @@ from bot.services.set_chat_photo import (
     format_set_chat_photo_result,
     perform_set_chat_photo,
 )
+from bot.services.set_my_profile_photo import (
+    SetMyProfilePhotoError,
+    format_set_my_profile_photo_result,
+    perform_set_my_profile_photo,
+)
 from bot.services.set_chat_sticker_set import (
     format_set_chat_sticker_set_result,
     perform_set_chat_sticker_set,
@@ -999,6 +1004,17 @@ SET_CHAT_PHOTO_USAGE = (
     "use Telegram chat administration."
 )
 
+SET_MY_PROFILE_PHOTO_USAGE = (
+    "<b>setmyprofilephoto usage</b>\n"
+    "Sets a new profile photo for this bot. Telegram requires the bot to "
+    "upload a fresh image file, so pass a local file path available to the "
+    "running bot process. This command is deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setmyprofilephoto &lt;photo_path&gt;</code>\n"
+    "Rollback is manual: run this command again with the previous photo, or "
+    "remove the photo in BotFather/Telegram if needed."
+)
+
 SET_CHAT_DESCRIPTION_USAGE = (
     "<b>setchatdescription usage</b>\n"
     "Sets the description for the specified group, supergroup or channel. The "
@@ -1639,6 +1655,7 @@ async def cmd_help(message: Message):
         "/pinchatmessage - Pin a message in a chat (admin only)\n"
         "/unpinchatmessage - Unpin a message from a chat (admin only)\n"
         "/setchatphoto - Set a group or supergroup photo (admin only)\n"
+        "/setmyprofilephoto - Set the bot profile photo (admin only)\n"
         "/setchatdescription - Set or clear a chat description (admin only)\n"
         "/setchattitle - Set a group, supergroup or channel title (admin only)\n"
         "/setmyname - Set or clear the bot display name (admin only)\n"
@@ -3139,6 +3156,32 @@ async def cmd_set_chat_photo(message: Message):
 
     await message.answer(
         format_set_chat_photo_result(chat_id=chat_id, photo_path=photo_path),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setmyprofilephoto"))
+async def cmd_set_my_profile_photo(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    photo_path = _parse_set_my_profile_photo_args(message.text or "")
+    if photo_path is None:
+        await message.answer(SET_MY_PROFILE_PHOTO_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        await perform_set_my_profile_photo(
+            message.bot,
+            photo_path=photo_path,
+        )
+    except SetMyProfilePhotoError as exc:
+        await message.answer(f"Could not set the bot profile photo: {exc}")
+        return
+
+    await message.answer(
+        format_set_my_profile_photo_result(photo_path=photo_path),
         parse_mode="HTML",
     )
 
@@ -6284,6 +6327,19 @@ def _parse_set_chat_photo_args(text: str):
         return None
 
     return chat_id, photo_path
+
+
+def _parse_set_my_profile_photo_args(text: str) -> str | None:
+    """Parse ``/setmyprofilephoto`` args into a local ``photo_path``."""
+    parts = (text or "").split(maxsplit=1)
+    if len(parts) != 2:
+        return None
+
+    photo_path = parts[1].strip()
+    if not photo_path:
+        return None
+
+    return photo_path
 
 
 def _parse_set_chat_description_args(text: str):
