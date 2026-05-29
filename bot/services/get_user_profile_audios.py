@@ -3,7 +3,10 @@ from typing import Any, Optional
 
 import structlog
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import UserProfileAudios
+try:
+    from aiogram.types import UserProfileAudios
+except ImportError:  # aiogram 3.3.0 predates Bot API 9.4.
+    UserProfileAudios = Any
 
 logger = structlog.get_logger()
 
