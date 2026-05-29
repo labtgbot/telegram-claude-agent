@@ -184,6 +184,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/messagedraft` – Stream an ephemeral message draft (a ~30-second preview shown above the input field) into this private chat (admin only).
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
 - `/businessconnection` – Fetch metadata for a connected Telegram business account by `business_connection_id` (admin only).
+- `/businessstarbalance` – Fetch the Telegram Stars balance of a connected business account by `business_connection_id` (admin only).
 - `/readbusinessmessage` – Mark one connected business-account message as read by `business_connection_id` and `message_id` (admin only).
 - `/setbusinessaccountname` – Set the first and optional last name of a connected business account by `business_connection_id` (admin only).
 - `/setbusinessaccountbio` – Set or clear the bio of a connected business account by `business_connection_id` (admin only).
@@ -1351,6 +1352,28 @@ guarded like the sensitive business commands:
   not written to structured logs;
 - Telegram errors, such as an expired or unknown `business_connection_id`, are
   reported back without retrying or changing connection state.
+
+### Get business account Star balance
+
+The restricted `/businessstarbalance` command calls Telegram Bot API
+`getBusinessAccountStarBalance` to fetch a `StarAmount` object for a live
+`business_connection_id`. Because the pinned `aiogram==3.3.0` does not expose a
+typed wrapper for this Bot API 10.0 method, the command uses an isolated raw Bot
+API helper (`bot/services/get_business_account_star_balance.py`) over `httpx`.
+
+Usage: `/businessstarbalance <business_connection_id>`
+
+- `business_connection_id` must come from a live business connection update or
+  another trusted operator source;
+- Telegram requires the current `can_view_gifts_and_stars` business right and
+  enforces connection ownership, expired connection and permission errors;
+- the command is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and
+  does **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`;
+- structured logs contain the connection id and response shape, but not the
+  returned Stars amount.
+
+The command does not call `free-claude-code` and is read-only. Transfers from
+the business account balance require a separate explicit flow.
 
 ### Read a business message
 
