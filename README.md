@@ -209,6 +209,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/setbusinessaccountgiftsettings` – Change incoming gift settings of a connected business account by `business_connection_id` (admin only).
 - `/deletebusinessmessages` – Delete connected business-account messages by `business_connection_id` and `message_ids` (admin only, requires confirmation).
 - `/deletemessage` – Delete one message by `chat_id` and `message_id` where Telegram allows the bot to delete it (admin only, requires confirmation).
+- `/deleteallreactions` – Delete all reactions from one message by `chat_id` and `message_id` (admin only).
 - `/managedbottoken` – Fetch the live token of a managed bot by its Telegram user id (admin only).
 - `/managedbotaccess` – Fetch access settings for a managed bot by its Telegram user id (admin only).
 - `/setmanagedbotaccess` – Update access settings for a managed bot by its Telegram user id (admin only, requires confirmation).
