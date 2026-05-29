@@ -143,6 +143,11 @@ from bot.services.get_custom_emoji_stickers import (
     format_custom_emoji_stickers,
     perform_get_custom_emoji_stickers,
 )
+from bot.services.upload_sticker_file import (
+    UploadStickerFileError,
+    format_upload_sticker_file_result,
+    perform_upload_sticker_file,
+)
 from bot.services.copy_message import perform_copy_message
 from bot.services.copy_messages import perform_copy_messages
 from bot.services.forward_message import perform_forward_message
@@ -2339,6 +2344,18 @@ CUSTOM_EMOJI_STICKERS_USAGE = (
     "[custom_emoji_id...]</code>"
 )
 
+UPLOAD_STICKER_FILE_USAGE = (
+    "<b>uploadstickerfile usage</b>\n"
+    "Uploads a local sticker file through <code>uploadStickerFile</code> and "
+    "returns a reusable Telegram file id for sticker set lifecycle operations. "
+    "The file must be accessible on the bot host and match the selected "
+    "<code>sticker_format</code>: <code>static</code>, <code>animated</code> "
+    "or <code>video</code>. This command is deny-by-default and only works "
+    "from <code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/uploadstickerfile &lt;user_id&gt; "
+    "&lt;sticker_format&gt; &lt;sticker_path&gt;</code>"
+)
+
 CREATE_FORUM_TOPIC_USAGE = (
     "<b>createforumtopic usage</b>\n"
     "Creates a forum topic in a supergroup through "
@@ -2734,6 +2751,7 @@ async def cmd_help(message: Message):
         "/forumtopiciconstickers - Fetch available forum topic icon stickers (admin only)\n"
         "/customemojistickers - Fetch custom emoji sticker metadata by id (admin only)\n"
         "/getstickerset - Fetch sticker set metadata by name (admin only)\n"
+        "/uploadstickerfile - Upload a sticker file and return its file id (admin only)\n"
         "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
         "/editgeneralforumtopic - Edit the General forum topic in a supergroup (admin only)\n"
@@ -6487,6 +6505,40 @@ async def cmd_custom_emoji_stickers(message: Message):
         return
 
     await message.answer(format_custom_emoji_stickers(stickers), parse_mode="HTML")
+
+
+@router.message(Command("uploadstickerfile"))
+async def cmd_upload_sticker_file(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_upload_sticker_file_args(message.text or "")
+    if parsed is None:
+        await message.answer(UPLOAD_STICKER_FILE_USAGE, parse_mode="HTML")
+        return
+
+    user_id, sticker_format, sticker_path = parsed
+    try:
+        file = await perform_upload_sticker_file(
+            message.bot,
+            user_id=user_id,
+            sticker_format=sticker_format,
+            sticker_path=sticker_path,
+        )
+    except UploadStickerFileError as exc:
+        await message.answer(f"Could not upload the sticker file: {exc}")
+        return
+
+    await message.answer(
+        format_upload_sticker_file_result(
+            user_id=user_id,
+            sticker_path=sticker_path,
+            sticker_format=sticker_format,
+            file=file,
+        ),
+        parse_mode="HTML",
+    )
 
 
 @router.message(Command("editforumtopic"))
@@ -11020,6 +11072,27 @@ def _parse_custom_emoji_stickers_args(text: str):
     if len(parts) < 2:
         return None
     return [item.strip() for item in parts[1:] if item.strip()]
+
+
+def _parse_upload_sticker_file_args(text: str):
+    """Parse ``/uploadstickerfile`` args into user id, format and local path."""
+    parts = (text or "").split(maxsplit=3)
+    if len(parts) != 4:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+
+    if user_id <= 0:
+        return None
+
+    sticker_format = parts[2].strip()
+    sticker_path = parts[3].strip()
+    if not sticker_format or not sticker_path:
+        return None
+    return user_id, sticker_format, sticker_path
 
 
 def _parse_approve_chat_join_request_args(text: str):
