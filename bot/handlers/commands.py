@@ -220,6 +220,10 @@ from bot.services.answer_web_app_query import (
     AnswerWebAppQueryError,
     perform_answer_web_app_query,
 )
+from bot.services.save_prepared_inline_message import (
+    SavePreparedInlineMessageError,
+    perform_save_prepared_inline_message,
+)
 from bot.services.post_story import (
     POST_STORY_ACTIVE_PERIODS,
     POST_STORY_CAPTION_LIMIT,
@@ -745,6 +749,18 @@ ANSWER_WEB_APP_QUERY_USAGE = (
     "Usage: <code>/answerwebappquery &lt;web_app_query_id&gt; &lt;result_json&gt;</code>\n"
     "The result JSON must be one InlineQueryResult object, for example an "
     "article result with input_message_content."
+)
+
+SAVE_PREPARED_INLINE_MESSAGE_USAGE = (
+    "<b>savepreparedinline usage</b>\n"
+    "Saves one InlineQueryResult as a prepared inline message for a Telegram "
+    "user. The user must allow the bot to message them and can later send the "
+    "prepared message through Telegram's inline-mode flow.\n"
+    "Usage: <code>/savepreparedinline &lt;user_id&gt; &lt;result_json&gt; "
+    "[allow_user_chats=true|false] [allow_bot_chats=true|false] "
+    "[allow_group_chats=true|false] [allow_channel_chats=true|false]</code>\n"
+    "The result JSON must be one InlineQueryResult object. Optional allow_* "
+    "flags restrict which chat types Telegram may offer for sending it."
 )
 
 LOCATION_MIN_LATITUDE = -90.0
@@ -2352,6 +2368,7 @@ async def cmd_help(message: Message):
         "/voice - Send a voice message into this chat as a playable audio clip (admin only)\n"
         "/paidmedia - Send a paid photo into this chat priced in Telegram Stars (admin only)\n"
         "/answerwebappquery - Answer a Web App query with an inline result (admin only)\n"
+        "/savepreparedinline - Save a prepared inline message for a user (admin only)\n"
         "/location - Send a point on the map into this chat as a location (admin only)\n"
         "/venue - Send a venue (named place with title and address) into this chat (admin only)\n"
         "/poll - Send a native poll (question with answer options) into this chat (admin only)\n"
@@ -3097,6 +3114,38 @@ async def cmd_answer_web_app_query(message: Message):
         )
     else:
         await message.answer("Answered Web App query.")
+
+
+@router.message(Command("savepreparedinline"))
+async def cmd_save_prepared_inline_message(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_save_prepared_inline_message_args(message.text or "")
+    if parsed is None:
+        await message.answer(SAVE_PREPARED_INLINE_MESSAGE_USAGE, parse_mode="HTML")
+        return
+
+    user_id, result, options = parsed
+    try:
+        prepared_message = await perform_save_prepared_inline_message(
+            message.bot,
+            user_id=user_id,
+            result=result,
+            **options,
+        )
+    except SavePreparedInlineMessageError as exc:
+        await message.answer(f"Could not save the prepared inline message: {exc}")
+        return
+
+    prepared_message_id = prepared_message.get("id")
+    if prepared_message_id:
+        await message.answer(
+            f"Saved prepared inline message: {prepared_message_id}."
+        )
+    else:
+        await message.answer("Saved prepared inline message.")
 
 
 @router.message(Command("location"))
@@ -6909,6 +6958,51 @@ def _parse_answer_web_app_query_args(text: str):
         return None
 
     return web_app_query_id, result
+
+
+def _parse_save_prepared_inline_message_args(text: str):
+    """Parse ``/savepreparedinline`` args into user id, result JSON and flags."""
+    parts = (text or "").split(maxsplit=3)
+    if len(parts) < 3:
+        return None
+
+    try:
+        user_id = int(parts[1])
+    except ValueError:
+        return None
+    if user_id <= 0:
+        return None
+
+    json_and_flags = parts[2] if len(parts) == 3 else f"{parts[2]} {parts[3]}"
+    decoder = json.JSONDecoder()
+    try:
+        result, end_index = decoder.raw_decode(json_and_flags)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(result, dict) or not result:
+        return None
+
+    options = {}
+    flags_text = json_and_flags[end_index:].strip()
+    allowed_flags = {
+        "allow_user_chats",
+        "allow_bot_chats",
+        "allow_group_chats",
+        "allow_channel_chats",
+    }
+    for token in flags_text.split():
+        if "=" not in token:
+            return None
+        name, value = token.split("=", 1)
+        if name not in allowed_flags:
+            return None
+        normalized_value = value.lower()
+        if normalized_value not in {"true", "false"}:
+            return None
+        options[name] = normalized_value == "true"
+
+    return user_id, result, options
 
 
 def _parse_location_args(text: str):
