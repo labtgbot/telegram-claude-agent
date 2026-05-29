@@ -17,7 +17,7 @@ from bot.services.get_my_name import audit_configured_bot_name
 from bot.services.get_my_description import audit_configured_bot_description
 from bot.services.set_my_description import sync_configured_bot_description
 from bot.services.set_my_name import sync_configured_bot_name
-from bot.utils.storage import storage
+from bot.services.set_my_short_description import sync_configured_bot_short_description
 
 # Logging configuration
 structlog.configure(
@@ -56,6 +56,11 @@ async def on_startup():
     await audit_configured_bot_name(
         bot,
         language_code=settings.telegram_bot_name_language_code,
+    )
+    await sync_configured_bot_short_description(
+        bot,
+        short_description=settings.telegram_bot_short_description,
+        language_code=settings.telegram_bot_short_description_language_code,
     )
     await sync_configured_bot_description(
         bot,

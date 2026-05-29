@@ -1,4 +1,3 @@
-import os
 from bot.config import Settings
 
 def test_chat_ids_parsing_from_string(monkeypatch):
@@ -54,3 +53,13 @@ def test_bot_description_settings(monkeypatch):
     settings = Settings()
     assert settings.telegram_bot_description == "Claude agent for Telegram"
     assert settings.telegram_bot_description_language_code == "ru"
+
+def test_bot_short_description_settings(monkeypatch):
+    monkeypatch.setenv("FREE_CLAUDE_BASE_URL", "http://localhost:8082")
+    monkeypatch.setenv("FREE_CLAUDE_AUTH_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:ABC")
+    monkeypatch.setenv("TELEGRAM_BOT_SHORT_DESCRIPTION", "Claude agent")
+    monkeypatch.setenv("TELEGRAM_BOT_SHORT_DESCRIPTION_LANGUAGE_CODE", "ru")
+    settings = Settings()
+    assert settings.telegram_bot_short_description == "Claude agent"
+    assert settings.telegram_bot_short_description_language_code == "ru"

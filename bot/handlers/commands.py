@@ -63,6 +63,12 @@ from bot.services.set_my_description import (
     format_set_my_description_result,
     perform_set_my_description,
 )
+from bot.services.set_my_short_description import (
+    SET_MY_SHORT_DESCRIPTION_LIMIT,
+    SetMyShortDescriptionValidationError,
+    format_set_my_short_description_result,
+    perform_set_my_short_description,
+)
 from bot.services.get_my_name import (
     format_get_my_name_result,
     perform_get_my_name,
@@ -1048,6 +1054,23 @@ SET_MY_DESCRIPTION_USAGE = (
     "Usage: <code>/setmydescription &lt;description&gt; [language=&lt;code&gt;]</code> "
     "or <code>/setmydescription --clear [language=&lt;code&gt;]</code>\n"
     f"The description is limited to {SET_MY_DESCRIPTION_LIMIT} characters."
+)
+
+SET_MY_SHORT_DESCRIPTION_USAGE = (
+    "<b>setmyshortdescription usage</b>\n"
+    "Sets the bot short description shown in Telegram clients via "
+    "<code>setMyShortDescription</code>. Use configuration "
+    "<code>TELEGRAM_BOT_SHORT_DESCRIPTION</code> and optional "
+    "<code>TELEGRAM_BOT_SHORT_DESCRIPTION_LANGUAGE_CODE</code> for startup "
+    "sync. Passing an empty short description clears the selected short "
+    "description. This command changes the bot's public profile, is "
+    "deny-by-default and only works from "
+    "<code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setmyshortdescription &lt;short_description&gt; "
+    "[language=&lt;code&gt;]</code> or "
+    "<code>/setmyshortdescription --clear [language=&lt;code&gt;]</code>\n"
+    f"The short description is limited to {SET_MY_SHORT_DESCRIPTION_LIMIT} "
+    "characters."
 )
 
 GET_MY_NAME_USAGE = (
@@ -3242,6 +3265,40 @@ async def cmd_set_my_description(message: Message):
     await message.answer(
         format_set_my_description_result(
             description=description,
+            language_code=language_code,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setmyshortdescription"))
+async def cmd_set_my_short_description(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_my_short_description_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_MY_SHORT_DESCRIPTION_USAGE, parse_mode="HTML")
+        return
+
+    short_description, language_code = parsed
+    try:
+        await perform_set_my_short_description(
+            message.bot,
+            short_description=short_description,
+            language_code=language_code,
+        )
+    except SetMyShortDescriptionValidationError as exc:
+        await message.answer(f"Could not set bot short description: {exc}")
+        return
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not set bot short description: {exc}")
+        return
+
+    await message.answer(
+        format_set_my_short_description_result(
+            short_description=short_description,
             language_code=language_code,
         ),
         parse_mode="HTML",
@@ -6286,6 +6343,31 @@ def _parse_set_my_description_args(text: str):
         return "", language_code
 
     if len(raw) > SET_MY_DESCRIPTION_LIMIT:
+        return None
+
+    return raw, language_code
+
+
+def _parse_set_my_short_description_args(text: str):
+    """Parse ``/setmyshortdescription`` args into short description and language."""
+    parts = (text or "").split(maxsplit=1)
+    if len(parts) != 2:
+        return None
+
+    raw = parts[1].strip()
+    if not raw:
+        return "", None
+
+    language_code = None
+    language_match = re.search(r"\s+language=([A-Za-z0-9_-]+)\s*$", raw)
+    if language_match:
+        language_code = language_match.group(1)
+        raw = raw[: language_match.start()].strip()
+
+    if raw == "--clear":
+        return "", language_code
+
+    if len(raw) > SET_MY_SHORT_DESCRIPTION_LIMIT:
         return None
 
     return raw, language_code
