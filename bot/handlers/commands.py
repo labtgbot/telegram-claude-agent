@@ -183,6 +183,11 @@ from bot.services.set_sticker_keywords import (
     format_set_sticker_keywords_result,
     perform_set_sticker_keywords,
 )
+from bot.services.set_sticker_set_title import (
+    SetStickerSetTitleError,
+    format_set_sticker_set_title_result,
+    perform_set_sticker_set_title,
+)
 from bot.services.delete_sticker_from_set import (
     DeleteStickerFromSetError,
     format_delete_sticker_from_set_result,
@@ -2497,6 +2502,17 @@ SET_STICKER_KEYWORDS_USAGE = (
     "&lt;keyword[,keyword...]|-&gt;</code>"
 )
 
+SET_STICKER_SET_TITLE_USAGE = (
+    "<b>setstickersettitle usage</b>\n"
+    "Changes the title of a sticker set through "
+    "<code>setStickerSetTitle</code>. Use <code>/getstickerset</code> first "
+    "when you need to inspect the current name and title. The bot can only "
+    "update sticker sets created by the bot. This command is deny-by-default "
+    "and only works from <code>TELEGRAM_ADMIN_CHAT_IDS</code>.\n"
+    "Usage: <code>/setstickersettitle &lt;sticker_set_name&gt; "
+    "&lt;title&gt;</code>"
+)
+
 DELETE_STICKER_FROM_SET_USAGE = (
     "<b>deletestickerfromset usage</b>\n"
     "Deletes one sticker from its current sticker set through "
@@ -2909,6 +2925,7 @@ async def cmd_help(message: Message):
         "/setstickerposition - Move a sticker inside its sticker set (admin only)\n"
         "/setstickeremojis - Replace a sticker emoji list (admin only)\n"
         "/setstickermaskposition - Change or clear a mask sticker position (admin only)\n"
+        "/setstickersettitle - Change a sticker set title (admin only)\n"
         "/deletestickerfromset - Delete a sticker from its sticker set (admin only)\n"
         "/createforumtopic - Create a forum topic in a supergroup (admin only)\n"
         "/editforumtopic - Edit a forum topic in a supergroup (admin only)\n"
@@ -6935,6 +6952,37 @@ async def cmd_set_sticker_keywords(message: Message):
         format_set_sticker_keywords_result(
             sticker=sticker,
             keywords=keywords,
+        ),
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("setstickersettitle"))
+async def cmd_set_sticker_set_title(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_set_sticker_set_title_args(message.text or "")
+    if parsed is None:
+        await message.answer(SET_STICKER_SET_TITLE_USAGE, parse_mode="HTML")
+        return
+
+    name, title = parsed
+    try:
+        await perform_set_sticker_set_title(
+            message.bot,
+            name=name,
+            title=title,
+        )
+    except SetStickerSetTitleError as exc:
+        await message.answer(f"Could not set the sticker set title: {exc}")
+        return
+
+    await message.answer(
+        format_set_sticker_set_title_result(
+            name=name,
+            title=title,
         ),
         parse_mode="HTML",
     )
@@ -11668,6 +11716,19 @@ def _parse_set_sticker_keywords_args(text: str):
     if not keywords:
         return None
     return sticker, keywords
+
+
+def _parse_set_sticker_set_title_args(text: str):
+    """Parse ``/setstickersettitle`` args into sticker set name and title."""
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) != 3:
+        return None
+
+    name = parts[1].strip()
+    title = parts[2].strip()
+    if not name or any(char.isspace() for char in name) or not title:
+        return None
+    return name, title
 
 
 def _parse_delete_sticker_from_set_args(text: str):
