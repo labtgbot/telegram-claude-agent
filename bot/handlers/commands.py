@@ -510,6 +510,10 @@ from bot.services.set_message_reaction import (
     REACTION_EMOJI,
     perform_set_message_reaction,
 )
+from bot.services.delete_message_reaction import (
+    format_delete_message_reaction_result,
+    perform_delete_message_reaction,
+)
 from bot.services.set_chat_administrator_custom_title import (
     format_set_chat_administrator_custom_title_result,
     perform_set_chat_administrator_custom_title,
@@ -1692,6 +1696,16 @@ REACT_USAGE = (
     "Non-premium bots can set at most one reaction per message."
 )
 
+DELETE_MESSAGE_REACTION_USAGE = (
+    "<b>deletereaction usage</b>\n"
+    "Deletes one user's reaction from a message via the Telegram "
+    "<code>deleteMessageReaction</code> method. The bot must be able to access "
+    "the target chat and message, and Telegram may reject the request when the "
+    "reaction is already absent or the bot does not have enough rights.\n"
+    "Usage: <code>/deletereaction &lt;chat_id&gt; &lt;message_id&gt; "
+    "&lt;user_id&gt;</code>"
+)
+
 SET_EMOJI_STATUS_USAGE = (
     "<b>setemojistatus usage</b>\n"
     "Sets or removes the emoji status of a Telegram user who previously granted "
@@ -2705,6 +2719,7 @@ async def cmd_help(message: Message):
         "/setchatadministratortitle - Set a chat administrator custom title (admin only)\n"
         "/setchatmembertag - Set or clear a chat member tag (admin only)\n"
         "/react - Set or remove a reaction on a message in this chat (admin only)\n"
+        "/deletereaction - Delete a user's reaction from a message (admin only)\n"
         "/setemojistatus - Set or remove the emoji status of a user (admin only)\n"
         "/clear - Clear conversation history\n"
         "\nYou can send:\n"
@@ -7128,6 +7143,40 @@ async def cmd_react(message: Message):
         await message.answer(f"Removed reactions from message {message_id}.")
 
 
+@router.message(Command("deletereaction"))
+async def cmd_delete_message_reaction(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_delete_message_reaction_args(message.text or "")
+    if parsed is None:
+        await message.answer(DELETE_MESSAGE_REACTION_USAGE, parse_mode="HTML")
+        return
+
+    chat_id, message_id, user_id = parsed
+
+    try:
+        await perform_delete_message_reaction(
+            message.bot,
+            chat_id=chat_id,
+            message_id=message_id,
+            user_id=user_id,
+        )
+    except TelegramAPIError as exc:
+        await message.answer(f"Could not delete the message reaction: {exc}")
+        return
+
+    await message.answer(
+        format_delete_message_reaction_result(
+            chat_id=chat_id,
+            message_id=message_id,
+            user_id=user_id,
+        ),
+        parse_mode="HTML",
+    )
+
+
 @router.message(Command("setemojistatus"))
 async def cmd_set_emoji_status(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -9301,6 +9350,25 @@ def _parse_react_args(text: str):
     emoji = rest[0] if rest else None
 
     return message_id, emoji, is_big
+
+
+def _parse_delete_message_reaction_args(text: str) -> tuple[int, int, int] | None:
+    """Parse ``/deletereaction`` args into ``(chat_id, message_id, user_id)``."""
+    parts = (text or "").split()
+    if len(parts) != 4:
+        return None
+
+    try:
+        chat_id = int(parts[1])
+        message_id = int(parts[2])
+        user_id = int(parts[3])
+    except ValueError:
+        return None
+
+    if message_id < 1 or user_id < 1:
+        return None
+
+    return chat_id, message_id, user_id
 
 
 def _parse_media_group_args(text: str):
