@@ -190,6 +190,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/replacemanagedbottoken` – Rotate the live token of a managed bot by its Telegram user id (admin only, requires confirmation).
 - `/availablegifts` – Fetch the current Telegram gift catalog for billing/rewards review (admin only, requires confirmation).
 - `/sendgift` – Send a Telegram gift to a user or channel with explicit Stars-spending confirmation (admin only).
+- `/giftpremium` – Gift Telegram Premium to a user with explicit Stars-spending confirmation (admin only).
 - `/mediagroup` – Send 2-10 media items into this chat as a single album (media group) via URLs or file_ids (admin only).
 - `/banchatmember <chat_id> <user_id> [until_date_unix] [revoke=true|false]` – Ban a user from a group, supergroup, or channel where the bot has `can_restrict_members` (admin only).
 - `/banchatsenderchat <chat_id> <sender_chat_id>` – Ban a channel chat from sending messages as itself into a supergroup or channel where the bot has `can_restrict_members` (admin only).
@@ -1527,6 +1528,41 @@ The command is guarded like the other spending/admin surfaces:
   gifts depend on Telegram-side bot permissions and Stars balance;
 - structured logs include the gift id, receiver type, upgrade flag and text
   presence, not the message text or unrelated user data;
+- Telegram transport, permission, balance and rate-limit errors are reported
+  back to the admin chat.
+
+### Gift Premium subscription
+
+The restricted `/giftpremium` command calls Telegram Bot API
+`giftPremiumSubscription` to gift Telegram Premium to a user. The method
+requires `user_id`, `month_count` and the exact `star_count` price to withdraw
+from the bot's Stars balance, accepts optional gift text, and returns `True` on
+success. Because the pinned `aiogram==3.3.0` does not expose this Bot API 10.0
+method, the implementation uses an isolated raw Bot API helper
+(`bot/services/gift_premium_subscription.py`) over `httpx`.
+
+Usage: `/giftpremium <user_id> <month_count> <star_count> confirm [text]`
+
+Operators must review Telegram's current Premium gift price and available Stars
+balance before running the command. `month_count` is locally limited to
+Telegram's documented `3..12` month range, `star_count` must be positive, and
+optional `text` is capped at 128 characters before sending. The command is not
+connected to `free-claude-code`; it is a separate admin billing/rewards action.
+Premium gifting cannot be rolled back by this bot, so rollback is operational:
+stop using the command, reconcile Stars out of band, and review the structured
+audit event.
+
+The command is guarded like the other spending/admin surfaces:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- it requires the literal `confirm` keyword in the same command that spends
+  Stars;
+- no special update subscription is required because the scenario starts from a
+  normal admin message; Telegram validates the target user and Stars balance;
+- structured logs include `user_id`, `month_count`, `star_count` and text
+  presence, not the gift text or unrelated chat data;
 - Telegram transport, permission, balance and rate-limit errors are reported
   back to the admin chat.
 
