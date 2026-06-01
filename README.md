@@ -103,7 +103,7 @@ LOG_LEVEL=INFO
 - `TELEGRAM_BOT_DESCRIPTION_LANGUAGE_CODE` – optional language code for a localized `setMyDescription` update. Leave empty to update the default bot description.
 - `TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS` – optional preset to apply with Telegram `setMyDefaultAdministratorRights` on startup. Supported values are `moderator`, `manager`, `channel`, and `clear`; leave unset to skip sync.
 - `TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS_FOR_CHANNELS` – optional target flag for `setMyDefaultAdministratorRights`: `true` for channels, `false` for groups and supergroups, empty for Telegram default targeting.
-- `API_SECRET_TOKEN` – secret token for verifying webhook requests (highly recommended for webhook mode).
+- `API_SECRET_TOKEN` – secret token for verifying webhook requests. **Required** when `TELEGRAM_WEBHOOK_URL` is set: the bot refuses to start in webhook mode without it. Must be 1–256 characters from `A-Z`, `a-z`, `0-9`, `_` and `-`, and at least 16 characters long. The `/webhook` endpoint rejects any request whose `X-Telegram-Bot-Api-Secret-Token` header does not match (including a missing header or an unconfigured token) with HTTP 403.
 - `RATE_LIMIT_REQUESTS_PER_MINUTE` – maximum requests per user per minute.
 - `LOG_LEVEL` – logging level (default `INFO`).
 
@@ -4118,7 +4118,7 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 
 ## Security Considerations
 
-- Always set `API_SECRET_TOKEN` when using webhook mode to verify that updates are genuinely from Telegram.
+- Always set `API_SECRET_TOKEN` when using webhook mode to verify that updates are genuinely from Telegram. The bot enforces this: it fails to start if `TELEGRAM_WEBHOOK_URL` is configured without a valid `API_SECRET_TOKEN`, and the `/webhook` endpoint returns HTTP 403 for any request with a missing or mismatched secret token.
 - Use HTTPS for your webhook URL.
 - Keep your `FREE_CLAUDE_AUTH_TOKEN` and `TELEGRAM_BOT_TOKEN` secret; do not commit them to version control.
 - The `TELEGRAM_ALLOWED_CHAT_IDS` setting can restrict operation to specific chats.

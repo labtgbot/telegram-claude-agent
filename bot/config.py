@@ -1,6 +1,15 @@
+import re
+
 from pydantic_settings import BaseSettings
-from pydantic import ConfigDict
+from pydantic import ConfigDict, field_validator, model_validator
 from typing import List, Optional
+
+# Telegram's allowed alphabet for the webhook secret token: 1-256 characters
+# from A-Z, a-z, 0-9, underscore and hyphen.
+# https://core.telegram.org/bots/api#setwebhook
+_SECRET_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{1,256}$")
+# Minimum length we recommend (and enforce) for a usable secret token.
+_SECRET_TOKEN_MIN_LENGTH = 16
 
 
 def _parse_id_list(raw: str) -> List[int]:
@@ -38,6 +47,39 @@ class Settings(BaseSettings):
     rate_limit_requests_per_minute: int = 60
 
     log_level: str = "INFO"
+
+    @field_validator("api_secret_token")
+    @classmethod
+    def _validate_api_secret_token(cls, value: Optional[str]) -> Optional[str]:
+        # Allow the token to stay unset (polling deployments do not need it),
+        # but if it is provided it must satisfy Telegram's constraints so that
+        # ``set_webhook`` does not silently reject it.
+        if value is None or value == "":
+            return value
+        if not _SECRET_TOKEN_RE.match(value):
+            raise ValueError(
+                "API_SECRET_TOKEN must be 1-256 characters long and contain "
+                "only A-Z, a-z, 0-9, underscore (_) and hyphen (-)."
+            )
+        if len(value) < _SECRET_TOKEN_MIN_LENGTH:
+            raise ValueError(
+                "API_SECRET_TOKEN must be at least "
+                f"{_SECRET_TOKEN_MIN_LENGTH} characters long for security."
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _require_secret_token_in_webhook_mode(self) -> "Settings":
+        # Fail fast: a configured webhook URL turns ``/webhook`` into a public
+        # endpoint, so a secret token is mandatory to authenticate Telegram.
+        if self.telegram_webhook_url and not self.api_secret_token:
+            raise ValueError(
+                "API_SECRET_TOKEN is required when TELEGRAM_WEBHOOK_URL is set: "
+                "the webhook endpoint must verify Telegram's secret token to "
+                "reject forged updates. Set a strong random API_SECRET_TOKEN "
+                f"(at least {_SECRET_TOKEN_MIN_LENGTH} characters)."
+            )
+        return self
 
     @property
     def allowed_chat_ids(self) -> List[int]:
