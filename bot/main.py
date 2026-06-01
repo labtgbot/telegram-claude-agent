@@ -122,10 +122,14 @@ async def on_shutdown():
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
-    if settings.api_secret_token:
-        header_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-        if header_token != settings.api_secret_token:
-            raise HTTPException(status_code=403, detail="Invalid secret token")
+    # The secret token is mandatory: without it the endpoint cannot prove that
+    # an update genuinely originates from Telegram, so reject every request
+    # instead of silently feeding unauthenticated updates into the dispatcher.
+    if not settings.api_secret_token:
+        raise HTTPException(status_code=403, detail="Webhook secret token not configured")
+    header_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+    if header_token != settings.api_secret_token:
+        raise HTTPException(status_code=403, detail="Invalid secret token")
     try:
         update_data = await request.json()
     except Exception:

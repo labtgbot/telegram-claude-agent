@@ -1,4 +1,14 @@
+import pytest
+
 from bot.config import Settings
+
+
+def _base_env(monkeypatch):
+    monkeypatch.setenv("FREE_CLAUDE_BASE_URL", "http://localhost:8082")
+    monkeypatch.setenv("FREE_CLAUDE_AUTH_TOKEN", "token")
+    monkeypatch.setenv("FREE_CLAUDE_DEFAULT_MODEL", "claude-3-haiku-20240307")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:ABC")
+
 
 def test_chat_ids_parsing_from_string(monkeypatch):
     monkeypatch.setenv("FREE_CLAUDE_BASE_URL", "http://localhost:8082")
@@ -73,3 +83,56 @@ def test_bot_default_administrator_rights_settings(monkeypatch):
     settings = Settings()
     assert settings.telegram_bot_default_administrator_rights == "moderator"
     assert settings.telegram_bot_default_administrator_rights_for_channels is False
+
+
+def test_webhook_mode_requires_secret_token(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_URL", "https://example.com/webhook")
+    monkeypatch.delenv("API_SECRET_TOKEN", raising=False)
+    with pytest.raises(ValueError, match="API_SECRET_TOKEN is required"):
+        Settings()
+
+
+def test_webhook_mode_rejects_empty_secret_token(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_URL", "https://example.com/webhook")
+    monkeypatch.setenv("API_SECRET_TOKEN", "")
+    with pytest.raises(ValueError, match="API_SECRET_TOKEN is required"):
+        Settings()
+
+
+def test_webhook_mode_accepts_valid_secret_token(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_URL", "https://example.com/webhook")
+    monkeypatch.setenv("API_SECRET_TOKEN", "a-Strong_Secret_123456")
+    settings = Settings()
+    assert settings.api_secret_token == "a-Strong_Secret_123456"
+
+
+def test_polling_mode_allows_missing_secret_token(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.delenv("TELEGRAM_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("API_SECRET_TOKEN", raising=False)
+    settings = Settings()
+    assert settings.api_secret_token is None
+
+
+def test_secret_token_rejects_invalid_characters(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("API_SECRET_TOKEN", "invalid token with spaces!")
+    with pytest.raises(ValueError, match="A-Z, a-z, 0-9"):
+        Settings()
+
+
+def test_secret_token_rejects_too_short(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("API_SECRET_TOKEN", "short")
+    with pytest.raises(ValueError, match="at least"):
+        Settings()
+
+
+def test_secret_token_too_long_rejected(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("API_SECRET_TOKEN", "a" * 257)
+    with pytest.raises(ValueError, match="1-256 characters"):
+        Settings()
