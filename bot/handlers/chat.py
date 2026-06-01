@@ -179,7 +179,8 @@ async def handle_streaming(message: Message, client: ClaudeProxyClient, messages
         await sent_msg.edit_text(f"❌ Error: {exc}")
         raise
 
-    rendered = md_to_html(full_text)
+    reply_text = full_text or "Claude returned no text response."
+    rendered = md_to_html(reply_text)
     chunks = _split_for_telegram(rendered)
     try:
         await sent_msg.edit_text(chunks[0], parse_mode="HTML")
@@ -191,7 +192,7 @@ async def handle_streaming(message: Message, client: ClaudeProxyClient, messages
         except Exception:
             await message.answer(extra)
 
-    return full_text
+    return reply_text
 
 
 def _should_use_message_draft(message: Message) -> bool:

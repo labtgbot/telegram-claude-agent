@@ -361,3 +361,37 @@ async def test_handle_streaming_with_draft_handles_empty_stream(monkeypatch):
     reply = await chat_handler.handle_streaming_with_draft(message, client, [])
 
     assert reply == "Claude returned no text response."
+
+
+def _edit_stream_message(chat_id: int = 42, message_id: int = 7):
+    sent_msg = SimpleNamespace(edit_text=AsyncMock())
+    return SimpleNamespace(
+        bot=object(),
+        chat=SimpleNamespace(id=chat_id, type="private"),
+        message_id=message_id,
+        answer=AsyncMock(return_value=sent_msg),
+    ), sent_msg
+
+
+async def test_handle_streaming_persists_and_renders_text():
+    client = _FakeStreamClient([_text_delta("Hello "), _text_delta("world")])
+    message, sent_msg = _edit_stream_message()
+
+    reply = await chat_handler.handle_streaming(message, client, [])
+
+    assert reply == "Hello world"
+    final_edit = sent_msg.edit_text.await_args_list[-1]
+    assert "Hello world" in final_edit.args[0]
+
+
+async def test_handle_streaming_falls_back_on_empty_stream():
+    client = _FakeStreamClient([])
+    message, sent_msg = _edit_stream_message()
+
+    reply = await chat_handler.handle_streaming(message, client, [])
+
+    # The empty stream must yield the fallback rather than leave the "…" placeholder.
+    assert reply == "Claude returned no text response."
+    final_edit = sent_msg.edit_text.await_args_list[-1]
+    assert "Claude returned no text response." in final_edit.args[0]
+    assert final_edit.args[0] != "…"
