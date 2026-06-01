@@ -99,19 +99,110 @@ def md_to_html(text: str) -> str:
     return rendered
 
 
+# Matches a single HTML tag or character/named entity. Everything else is plain
+# text. ``md_to_html`` only ever emits ``<b>``, ``<i>``, ``<code>`` and
+# ``<pre><code>`` plus entities from :func:`html.escape`, but the pattern is
+# generic enough to keep any well-formed Telegram HTML intact.
+_HTML_TOKEN_RE = re.compile(
+    r"</?[a-zA-Z][a-zA-Z0-9]*[^>]*>"  # opening, closing or void tag
+    r"|&(?:#x?[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);"  # numeric or named entity
+)
+
+
+def _tokenize_html(text: str) -> list[dict]:
+    """Break ``text`` into atomic tokens that must never be split internally.
+
+    Tags and HTML entities become single tokens; every other character becomes
+    its own text token so a chunk boundary can fall between any two characters
+    without ever landing inside a tag (``<b>``) or an entity (``&amp;``).
+    """
+    tokens: list[dict] = []
+    pos = 0
+    for match in _HTML_TOKEN_RE.finditer(text):
+        for ch in text[pos : match.start()]:
+            tokens.append({"type": "text", "s": ch})
+        token = match.group(0)
+        if token.startswith("&"):
+            tokens.append({"type": "text", "s": token})
+        elif token.startswith("</"):
+            name = token[2:].rstrip(">").strip().lower()
+            tokens.append({"type": "close", "s": token, "name": name})
+        elif token.endswith("/>"):
+            # Void tag (e.g. ``<br/>``): does not open a scope.
+            tokens.append({"type": "text", "s": token})
+        else:
+            name = re.match(r"<([a-zA-Z][a-zA-Z0-9]*)", token).group(1).lower()
+            tokens.append(
+                {"type": "open", "s": token, "name": name, "close": f"</{name}>"}
+            )
+        pos = match.end()
+    for ch in text[pos:]:
+        tokens.append({"type": "text", "s": ch})
+    return tokens
+
+
 def _split_for_telegram(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
+    """Split ``text`` into chunks no longer than ``limit``, keeping HTML valid.
+
+    The input is already-rendered Telegram HTML, so a naive length-based cut can
+    land inside a tag or entity, or leave a ``<pre><code>`` block (or ``<b>``
+    span) unbalanced across chunks. This splitter is HTML-aware: it never breaks
+    inside a tag or entity, closes every still-open tag at the end of a chunk and
+    reopens it at the start of the next one, and prefers to cut on a newline for
+    readability.
+    """
     if not text:
         return [""]
-    parts: list[str] = []
-    remaining = text
-    while len(remaining) > limit:
-        cut = remaining.rfind("\n", 0, limit)
-        if cut <= 0:
-            cut = limit
-        parts.append(remaining[:cut])
-        remaining = remaining[cut:].lstrip("\n")
-    parts.append(remaining)
-    return parts
+    if len(text) <= limit:
+        return [text]
+
+    tokens = _tokenize_html(text)
+    chunks: list[str] = []
+    open_stack: list[dict] = []  # tags carried open across the current boundary
+    i = 0
+    n = len(tokens)
+
+    while i < n:
+        parts = [tag["s"] for tag in open_stack]  # reopen carried-over tags
+        cur_len = sum(len(p) for p in parts)
+        local_stack = list(open_stack)
+        # Best newline break seen so far: (token_index, parts_len, stack_copy).
+        last_break: tuple[int, int, list[dict]] | None = None
+        progressed = False
+
+        while i < n:
+            tok = tokens[i]
+            s = tok["s"]
+            if tok["type"] == "open":
+                stack_after = local_stack + [tok]
+            elif tok["type"] == "close" and local_stack:
+                stack_after = local_stack[:-1]
+            else:
+                stack_after = local_stack
+            close_len = sum(len(t["close"]) for t in stack_after)
+
+            if progressed and cur_len + len(s) + close_len > limit:
+                break
+
+            parts.append(s)
+            cur_len += len(s)
+            local_stack = stack_after
+            i += 1
+            progressed = True
+            if tok["type"] == "text" and s.endswith("\n"):
+                last_break = (i, len(parts), list(local_stack))
+
+        if i < n and last_break is not None and last_break[1] > len(open_stack):
+            # Prefer the newline break: rewind to it and replay the tail later.
+            i, keep, local_stack = last_break
+            parts = parts[:keep]
+
+        for tag in reversed(local_stack):
+            parts.append(tag["close"])
+        chunks.append("".join(parts))
+        open_stack = local_stack
+
+    return chunks
 
 
 async def send_reply_safely(message: Message, text: str, parse_mode: str | None = "HTML"):
