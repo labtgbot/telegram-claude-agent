@@ -243,13 +243,15 @@ async def send_final_reply(
     await send_reply_safely(message, text, parse_mode=parse_mode)
 
 
-async def handle_streaming(message: Message, client: ClaudeProxyClient, messages: list) -> str:
+async def handle_streaming(
+    message: Message, client: ClaudeProxyClient, messages: list, model: str
+) -> str:
     sent_msg = await message.answer("…")
     full_text = ""
     try:
         stream = await client.send_message(
             messages=messages,
-            model=settings.free_claude_default_model,
+            model=model,
             stream=True,
         )
         async for chunk in stream:
@@ -317,7 +319,7 @@ async def _send_draft_preview(message: Message, draft_id: int, text: str) -> Non
 
 
 async def handle_streaming_with_draft(
-    message: Message, client: ClaudeProxyClient, messages: list
+    message: Message, client: ClaudeProxyClient, messages: list, model: str
 ) -> str:
     """Stream the reply as ephemeral draft previews, then persist the final text.
 
@@ -343,7 +345,7 @@ async def handle_streaming_with_draft(
     last_update = time.monotonic()
     stream = await client.send_message(
         messages=messages,
-        model=settings.free_claude_default_model,
+        model=model,
         stream=True,
     )
     async for chunk in stream:
@@ -460,6 +462,8 @@ async def handle_chat_message(message: Message):
 
     messages.append({"role": "user", "content": content_blocks})
 
+    model = storage.get_setting(user_id, "model", settings.free_claude_default_model)
+
     client = ClaudeProxyClient(
         settings.free_claude_base_url,
         settings.free_claude_auth_token,
@@ -469,13 +473,13 @@ async def handle_chat_message(message: Message):
         use_draft_stream = _should_use_message_draft(message)
         async with _typing_indicator(message):
             if settings.free_claude_streaming_enabled and use_draft_stream:
-                reply_text = await handle_streaming_with_draft(message, client, messages)
+                reply_text = await handle_streaming_with_draft(message, client, messages, model)
             elif settings.free_claude_streaming_enabled:
-                reply_text = await handle_streaming(message, client, messages)
+                reply_text = await handle_streaming(message, client, messages, model)
             else:
                 response = await client.send_message(
                     messages=messages,
-                    model=settings.free_claude_default_model,
+                    model=model,
                 )
                 reply_text = ""
                 for block in response.get("content", []):

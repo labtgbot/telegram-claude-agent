@@ -284,8 +284,11 @@ async def test_cmd_message_draft_reports_send_errors(monkeypatch):
 class _FakeStreamClient:
     def __init__(self, chunks):
         self._chunks = chunks
+        self.model = None
 
     async def send_message(self, *, messages, model, stream):
+        self.model = model
+
         async def _gen():
             for chunk in self._chunks:
                 yield chunk
@@ -325,9 +328,11 @@ async def test_handle_streaming_with_draft_shows_placeholder_and_persists(monkey
     client = _FakeStreamClient([_text_delta("Hello "), _text_delta("world")])
     message = _stream_message()
 
-    reply = await chat_handler.handle_streaming_with_draft(message, client, [])
+    reply = await chat_handler.handle_streaming_with_draft(message, client, [], "test-model")
 
     assert reply == "Hello world"
+    # The caller-resolved model is forwarded to the proxy (issue #348).
+    assert client.model == "test-model"
     # The first draft preview is the empty "Thinking…" placeholder with a non-zero id.
     first_call = draft.await_args_list[0]
     assert first_call.kwargs["text"] == ""
@@ -344,7 +349,7 @@ async def test_handle_streaming_with_draft_swallows_draft_errors(monkeypatch):
     message = _stream_message()
 
     # A failure to show the ephemeral preview must not break the response.
-    reply = await chat_handler.handle_streaming_with_draft(message, client, [])
+    reply = await chat_handler.handle_streaming_with_draft(message, client, [], "test-model")
 
     assert reply == "hi"
     persisted = [call.args[0] for call in message.answer.await_args_list]
@@ -358,7 +363,7 @@ async def test_handle_streaming_with_draft_handles_empty_stream(monkeypatch):
     client = _FakeStreamClient([])
     message = _stream_message()
 
-    reply = await chat_handler.handle_streaming_with_draft(message, client, [])
+    reply = await chat_handler.handle_streaming_with_draft(message, client, [], "test-model")
 
     assert reply == "Claude returned no text response."
 
@@ -377,9 +382,11 @@ async def test_handle_streaming_persists_and_renders_text():
     client = _FakeStreamClient([_text_delta("Hello "), _text_delta("world")])
     message, sent_msg = _edit_stream_message()
 
-    reply = await chat_handler.handle_streaming(message, client, [])
+    reply = await chat_handler.handle_streaming(message, client, [], "test-model")
 
     assert reply == "Hello world"
+    # The caller-resolved model is forwarded to the proxy (issue #348).
+    assert client.model == "test-model"
     final_edit = sent_msg.edit_text.await_args_list[-1]
     assert "Hello world" in final_edit.args[0]
 
@@ -388,7 +395,7 @@ async def test_handle_streaming_falls_back_on_empty_stream():
     client = _FakeStreamClient([])
     message, sent_msg = _edit_stream_message()
 
-    reply = await chat_handler.handle_streaming(message, client, [])
+    reply = await chat_handler.handle_streaming(message, client, [], "test-model")
 
     # The empty stream must yield the fallback rather than leave the "…" placeholder.
     assert reply == "Claude returned no text response."
