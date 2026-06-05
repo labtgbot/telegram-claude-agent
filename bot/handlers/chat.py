@@ -1,7 +1,7 @@
 import base64
 import re
 import time
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
 from html import escape as html_escape
 
 import structlog
@@ -254,20 +254,23 @@ async def handle_streaming(
             model=model,
             stream=True,
         )
-        async for chunk in stream:
-            if chunk.get("type") != "content_block_delta":
-                continue
-            delta = chunk.get("delta", {})
-            if delta.get("type") != "text_delta":
-                continue
-            text = delta.get("text", "")
-            if not text:
-                continue
-            full_text += text
-            try:
-                await sent_msg.edit_text(full_text[:TELEGRAM_MESSAGE_LIMIT])
-            except Exception:
-                pass
+        # ``aclosing`` guarantees the generator's ``finally`` runs (closing the
+        # underlying HTTP response) even if we break early or raise here. See #351.
+        async with aclosing(stream) as events:
+            async for chunk in events:
+                if chunk.get("type") != "content_block_delta":
+                    continue
+                delta = chunk.get("delta", {})
+                if delta.get("type") != "text_delta":
+                    continue
+                text = delta.get("text", "")
+                if not text:
+                    continue
+                full_text += text
+                try:
+                    await sent_msg.edit_text(full_text[:TELEGRAM_MESSAGE_LIMIT])
+                except Exception:
+                    pass
     except Exception as exc:
         await sent_msg.edit_text(f"❌ Error: {exc}")
         raise
@@ -348,20 +351,23 @@ async def handle_streaming_with_draft(
         model=model,
         stream=True,
     )
-    async for chunk in stream:
-        if chunk.get("type") != "content_block_delta":
-            continue
-        delta = chunk.get("delta", {})
-        if delta.get("type") != "text_delta":
-            continue
-        text = delta.get("text", "")
-        if not text:
-            continue
-        full_text += text
-        now = time.monotonic()
-        if now - last_update >= DRAFT_UPDATE_INTERVAL_SECONDS:
-            last_update = now
-            await _send_draft_preview(message, draft_id, full_text)
+    # ``aclosing`` guarantees the generator's ``finally`` runs (closing the
+    # underlying HTTP response) even if we break early or raise here. See #351.
+    async with aclosing(stream) as events:
+        async for chunk in events:
+            if chunk.get("type") != "content_block_delta":
+                continue
+            delta = chunk.get("delta", {})
+            if delta.get("type") != "text_delta":
+                continue
+            text = delta.get("text", "")
+            if not text:
+                continue
+            full_text += text
+            now = time.monotonic()
+            if now - last_update >= DRAFT_UPDATE_INTERVAL_SECONDS:
+                last_update = now
+                await _send_draft_preview(message, draft_id, full_text)
 
     reply_text = full_text or "Claude returned no text response."
     await send_final_reply(message, md_to_html(reply_text))

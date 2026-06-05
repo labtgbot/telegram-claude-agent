@@ -81,18 +81,25 @@ class ClaudeProxyClient:
             return resp.json()
 
     async def _stream_response(self, response: httpx.Response) -> AsyncIterator[Dict[str, Any]]:
-        async for line in response.aiter_lines():
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith("data: "):
-                data = line[6:]
-                if data == "[DONE]":
-                    break
-                try:
-                    event = json.loads(data)
-                except json.JSONDecodeError:
+        try:
+            async for line in response.aiter_lines():
+                line = line.strip()
+                if not line:
                     continue
-                if event.get("type") == "message_stop":
-                    break
-                yield event
+                if line.startswith("data: "):
+                    data = line[6:]
+                    if data == "[DONE]":
+                        break
+                    try:
+                        event = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    if event.get("type") == "message_stop":
+                        break
+                    yield event
+        finally:
+            # Always release the underlying HTTP connection, even when the
+            # consumer breaks early or raises mid-stream. Otherwise the response
+            # stream (and its connection) would leak on a reused/long-lived
+            # client. See issue #351.
+            await response.aclose()
