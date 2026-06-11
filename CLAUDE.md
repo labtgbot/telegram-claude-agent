@@ -100,6 +100,7 @@ No formal linting setup yet. Consider adding Ruff or Black for consistency.
 | `TELEGRAM_GUEST_MODE_ENABLED`          | Enable guest mode in groups (true/false)       | No       |
 | `TELEGRAM_ALLOWED_CHAT_IDS`            | Comma-separated whitelist of chat IDs           | No       |
 | `TELEGRAM_ADMIN_CHAT_IDS`              | Comma-separated admin chat IDs for /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /animation, /voice, /paidmedia, /userprofilephotos, /userprofileaudios, /react & /setemojistatus | No |
+| `TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES`    | Max incoming media bytes to download into memory | No       |
 | `API_SECRET_TOKEN`                     | Webhook verification secret                     | Yes      |
 | `RATE_LIMIT_REQUESTS_PER_MINUTE`       | Rate limit (default 60)                         | No       |
 | `LOG_LEVEL`                            | Logging level (default INFO)                    | No       |

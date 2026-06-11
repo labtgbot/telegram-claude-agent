@@ -1,6 +1,6 @@
 import pytest
 
-from bot.config import Settings
+from bot.config import DEFAULT_TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES, Settings
 
 
 def _base_env(monkeypatch):
@@ -43,6 +43,26 @@ def test_boolean_parsing(monkeypatch):
     settings = Settings()
     assert settings.free_claude_streaming_enabled is False
     assert settings.telegram_guest_mode_enabled is False
+
+
+def test_media_download_limit_default(monkeypatch):
+    _base_env(monkeypatch)
+    settings = Settings()
+    assert settings.telegram_media_download_max_bytes == DEFAULT_TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES
+
+
+def test_media_download_limit_from_env(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES", "12345")
+    settings = Settings()
+    assert settings.telegram_media_download_max_bytes == 12345
+
+
+def test_media_download_limit_rejects_non_positive_value(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES", "0")
+    with pytest.raises(ValueError, match="at least 1 byte"):
+        Settings()
 
 def test_bot_name_settings(monkeypatch):
     monkeypatch.setenv("FREE_CLAUDE_BASE_URL", "http://localhost:8082")
