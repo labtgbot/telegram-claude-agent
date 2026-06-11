@@ -84,7 +84,16 @@ pytest tests/integration
 ```
 
 ### Linting/Formatting
-No formal linting setup yet. Consider adding Ruff or Black for consistency.
+```bash
+pip install -r requirements-dev.txt
+ruff check .
+pytest --cov=bot --cov-report=term-missing
+pip-audit --requirement requirements.txt --progress-spinner off
+docker build --tag telegram-claude-agent:ci .
+```
+
+The same checks run in `.github/workflows/ci.yml` for pull requests and pushes
+to `main`.
 
 ## Environment Variables Reference
 

@@ -125,6 +125,19 @@ uvicorn bot.main:app --reload --port 8000
 
 The bot will start polling by default if no webhook URL is set.
 
+### Local checks
+
+```bash
+pip install -r requirements-dev.txt
+ruff check .
+pytest --cov=bot --cov-report=term-missing
+pip-audit --requirement requirements.txt --progress-spinner off
+docker build --tag telegram-claude-agent:ci .
+```
+
+Pull requests run the same lint, test, dependency audit, and Docker build checks
+through `.github/workflows/ci.yml`.
+
 ### Production
 
 #### Using Docker
