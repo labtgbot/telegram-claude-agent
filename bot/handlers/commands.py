@@ -3351,7 +3351,7 @@ async def cmd_settings(message: Message):
 
 @router.message(Command("webhook"))
 async def cmd_webhook_info(message: Message):
-    if not _is_diagnostics_allowed(message.chat.id):
+    if not _is_admin_or_allowed_chat(message.chat.id):
         await message.answer("Webhook diagnostics are restricted.")
         return
 
@@ -3366,7 +3366,7 @@ async def cmd_webhook_info(message: Message):
 
 @router.message(Command("deletewebhook"))
 async def cmd_delete_webhook(message: Message):
-    if not _is_operational_command_allowed(message.chat.id):
+    if not _is_admin_or_allowed_chat(message.chat.id):
         await message.answer("Webhook lifecycle operations are restricted.")
         return
 
@@ -8707,16 +8707,7 @@ async def cmd_clear(message: Message):
     await message.answer("Conversation history cleared.", reply_markup=keyboard)
 
 
-def _is_diagnostics_allowed(chat_id: int) -> bool:
-    admin_chat_ids = settings.admin_chat_ids
-    if admin_chat_ids:
-        return chat_id in admin_chat_ids
-
-    allowed_chat_ids = settings.allowed_chat_ids
-    return bool(allowed_chat_ids and chat_id in allowed_chat_ids)
-
-
-def _is_operational_command_allowed(chat_id: int) -> bool:
+def _is_admin_or_allowed_chat(chat_id: int) -> bool:
     admin_chat_ids = settings.admin_chat_ids
     if admin_chat_ids:
         return chat_id in admin_chat_ids
