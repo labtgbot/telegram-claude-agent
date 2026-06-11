@@ -108,7 +108,7 @@ No formal linting setup yet. Consider adding Ruff or Black for consistency.
 ## Docker Notes
 
 - **Bot service**: Builds from Dockerfile, exposes port 8000
-- **free-claude-code dependency**: Uses ghcr.io/labtgbot/free-claude-code:latest
+- **free-claude-code dependency**: Requires `FREE_CLAUDE_CODE_IMAGE` to point to a pinned tag or digest; no `latest` fallback is provided
 - The docker-compose setup includes both services for local development
 
 ### Useful Docker Commands
