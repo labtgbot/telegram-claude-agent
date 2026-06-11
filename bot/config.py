@@ -1,8 +1,9 @@
 import re
-
-from pydantic_settings import BaseSettings
-from pydantic import ConfigDict, field_validator, model_validator
 from typing import List, Optional
+
+from pydantic import AnyHttpUrl, ConfigDict, TypeAdapter, ValidationError, ValidationInfo
+from pydantic import field_validator, model_validator
+from pydantic_settings import BaseSettings
 
 # Telegram's allowed alphabet for the webhook secret token: 1-256 characters
 # from A-Z, a-z, 0-9, underscore and hyphen.
@@ -11,13 +12,32 @@ _SECRET_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{1,256}$")
 # Minimum length we recommend (and enforce) for a usable secret token.
 _SECRET_TOKEN_MIN_LENGTH = 16
 DEFAULT_TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES = 8 * 1024 * 1024
+_HTTP_URL_ADAPTER = TypeAdapter(AnyHttpUrl)
+_CHAT_ID_ENV_NAMES = {
+    "telegram_allowed_chat_ids": "TELEGRAM_ALLOWED_CHAT_IDS",
+    "telegram_admin_chat_ids": "TELEGRAM_ADMIN_CHAT_IDS",
+}
 
 
-def _parse_id_list(raw: str) -> List[int]:
+def _parse_id_list(raw: str, source_name: str = "chat id list") -> List[int]:
     raw = raw.strip()
     if not raw:
         return []
-    return [int(x.strip()) for x in raw.split(',') if x.strip()]
+
+    ids = []
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            ids.append(int(token))
+        except ValueError as exc:
+            raise ValueError(
+                f"{source_name} must be a comma-separated list of integer chat IDs; "
+                f"invalid token: {token!r}."
+            ) from exc
+    return ids
+
 
 class Settings(BaseSettings):
     model_config = ConfigDict(env_file=".env", case_sensitive=False)
@@ -49,6 +69,24 @@ class Settings(BaseSettings):
     rate_limit_requests_per_minute: int = 60
 
     log_level: str = "INFO"
+
+    @field_validator("free_claude_base_url")
+    @classmethod
+    def _validate_free_claude_base_url(cls, value: str) -> str:
+        try:
+            _HTTP_URL_ADAPTER.validate_python(value)
+        except ValidationError as exc:
+            raise ValueError(
+                "FREE_CLAUDE_BASE_URL must be an http(s) URL with a host."
+            ) from exc
+        return value
+
+    @field_validator("telegram_allowed_chat_ids", "telegram_admin_chat_ids")
+    @classmethod
+    def _validate_chat_id_list(cls, value: str, info: ValidationInfo) -> str:
+        source_name = _CHAT_ID_ENV_NAMES.get(info.field_name or "", "chat id list")
+        _parse_id_list(value, source_name)
+        return value
 
     @field_validator("api_secret_token")
     @classmethod
@@ -92,11 +130,11 @@ class Settings(BaseSettings):
 
     @property
     def allowed_chat_ids(self) -> List[int]:
-        return _parse_id_list(self.telegram_allowed_chat_ids)
+        return _parse_id_list(self.telegram_allowed_chat_ids, "TELEGRAM_ALLOWED_CHAT_IDS")
 
     @property
     def admin_chat_ids(self) -> List[int]:
-        return _parse_id_list(self.telegram_admin_chat_ids)
+        return _parse_id_list(self.telegram_admin_chat_ids, "TELEGRAM_ADMIN_CHAT_IDS")
 
 # Global settings instance
 settings = Settings()
