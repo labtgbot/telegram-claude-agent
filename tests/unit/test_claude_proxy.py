@@ -1,8 +1,7 @@
-import json
 from contextlib import aclosing
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
-from bot.services.claude_proxy import ClaudeProxyClient, ClaudeProxyError
+from bot.services.claude_proxy import ClaudeProxyClient
 
 @pytest.mark.asyncio
 async def test_list_models_anthropic_format():

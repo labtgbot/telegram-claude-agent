@@ -45,7 +45,7 @@ Findings reuse the repository's existing `priority:P1`–`priority:P4` labels (P
 ### Security
 - **Unauthenticated webhook ([#347](https://github.com/labtgbot/telegram-claude-agent/issues/347)).** `bot/main.py:123-135` only checks the Telegram secret token when `api_secret_token` is truthy, and `bot/config.py:37` makes it optional. A deployment that omits it exposes an open `/webhook` that feeds forged updates into the dispatcher.
 - **Error-message disclosure ([#356](https://github.com/labtgbot/telegram-claude-agent/issues/356)).** Handlers echo raw exception text (`f"❌ Error: {exc}"`) to users, which can include the internal proxy URL.
-- **Supply chain ([#359](https://github.com/labtgbot/telegram-claude-agent/issues/359)).** `python-multipart==0.0.6` predates the ReDoS fix (CVE-2024-24762); `PyPDF2` is end-of-life; test deps are unpinned.
+- **Supply chain ([#359](https://github.com/labtgbot/telegram-claude-agent/issues/359)).** Addressed by pinning runtime/test/transitive dependencies, replacing EOL `PyPDF2` with `pypdf`, and bumping vulnerable multipart/media/web dependencies.
 
 ### Correctness
 - **Model selection is a no-op ([#348](https://github.com/labtgbot/telegram-claude-agent/issues/348)).** `/model` and the inline buttons persist a per-user model that the chat pipeline never reads — every request uses `settings.free_claude_default_model`.

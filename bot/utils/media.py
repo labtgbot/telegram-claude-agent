@@ -49,7 +49,7 @@ def _extract_sync(mime_type: str, data: bytes) -> str:
     try:
         if normalized == "application/pdf":
             import io
-            from PyPDF2 import PdfReader
+            from pypdf import PdfReader
 
             reader = PdfReader(io.BytesIO(data))
             text = ""

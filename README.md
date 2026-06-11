@@ -28,7 +28,7 @@ database.
 - **Server**: FastAPI + uvicorn
 - **Config**: pydantic-settings
 - **Logging**: structlog (JSON)
-- **Media**: Pillow, PyPDF2, python-docx, (optional) openai-whisper
+- **Media**: Pillow, pypdf, python-docx, (optional) openai-whisper
 
 ## Prerequisites
 

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from html import escape
 from typing import Any, Optional
 
