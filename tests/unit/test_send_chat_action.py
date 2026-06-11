@@ -3,7 +3,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import (
+    TelegramBadRequest,
+    TelegramForbiddenError,
+    TelegramNetworkError,
+)
 from aiogram.methods import SendChatAction
 
 from bot.handlers import chat as chat_handler
@@ -89,7 +93,7 @@ async def test_keep_chat_action_shows_and_cancels():
     assert kwargs["action"] == "typing"
 
 
-async def test_keep_chat_action_swallows_telegram_errors():
+async def test_keep_chat_action_stops_after_permanent_telegram_errors():
     error = TelegramBadRequest(
         method=SendChatAction(chat_id=42, action="typing"),
         message="Bad Request: chat not found",
@@ -100,7 +104,22 @@ async def test_keep_chat_action_swallows_telegram_errors():
     async with keep_chat_action(bot, chat_id=42, refresh_seconds=0.01):
         await asyncio.sleep(0.05)
 
-    assert bot.send_chat_action.await_count >= 1
+    assert bot.send_chat_action.await_count == 1
+
+
+async def test_keep_chat_action_retries_transient_telegram_errors():
+    error = TelegramNetworkError(
+        method=SendChatAction(chat_id=42, action="typing"),
+        message="Network error",
+    )
+    bot = SimpleNamespace(send_chat_action=AsyncMock(side_effect=error))
+
+    # A transient failure to display the indicator must not break the block and
+    # should keep retrying while the request is still running.
+    async with keep_chat_action(bot, chat_id=42, refresh_seconds=0.01):
+        await asyncio.sleep(0.05)
+
+    assert bot.send_chat_action.await_count > 1
 
 
 def _message(text: str = "/chataction", chat_id: int = 42):

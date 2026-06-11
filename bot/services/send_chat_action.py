@@ -3,7 +3,12 @@ import contextlib
 from typing import Any, AsyncIterator, Optional
 
 import structlog
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import (
+    TelegramAPIError,
+    TelegramNetworkError,
+    TelegramRetryAfter,
+    TelegramServerError,
+)
 
 logger = structlog.get_logger()
 
@@ -28,6 +33,12 @@ CHAT_ACTIONS = (
 # Telegram clears a chat action after about five seconds, so refresh it a little
 # sooner to keep the indicator visible while a long-running request is handled.
 CHAT_ACTION_REFRESH_SECONDS = 4.5
+
+_RETRYABLE_CHAT_ACTION_ERRORS: tuple[type[TelegramAPIError], ...] = (
+    TelegramNetworkError,
+    TelegramRetryAfter,
+    TelegramServerError,
+)
 
 
 class SendChatActionError(ValueError):
@@ -99,6 +110,10 @@ async def perform_send_chat_action(
     return result
 
 
+def _is_retryable_chat_action_error(exc: TelegramAPIError) -> bool:
+    return isinstance(exc, _RETRYABLE_CHAT_ACTION_ERRORS)
+
+
 @contextlib.asynccontextmanager
 async def keep_chat_action(
     bot: Any,
@@ -117,8 +132,9 @@ async def keep_chat_action(
     while Claude/proxy processes a request. Telegram API errors raised while
     refreshing are logged (in :func:`perform_send_chat_action`) and swallowed so
     a transient failure to display the indicator never breaks the request being
-    handled. The background refresh task is always cancelled when the block
-    exits.
+    handled. Permanent Telegram errors stop the refresher because the same call
+    cannot succeed on the next interval. The background refresh task is always
+    cancelled when the block exits.
     """
 
     async def _runner() -> None:
@@ -131,10 +147,11 @@ async def keep_chat_action(
                     message_thread_id=message_thread_id,
                     business_connection_id=business_connection_id,
                 )
-            except TelegramAPIError:
-                # Already logged by perform_send_chat_action; keep retrying so a
-                # single transient failure does not stop the indicator.
-                pass
+            except TelegramAPIError as exc:
+                # Already logged by perform_send_chat_action. Keep retrying only
+                # for temporary Telegram/API transport failures.
+                if not _is_retryable_chat_action_error(exc):
+                    break
             await asyncio.sleep(refresh_seconds)
 
     task = asyncio.create_task(_runner())
