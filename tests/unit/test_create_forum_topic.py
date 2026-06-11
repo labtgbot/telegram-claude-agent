@@ -261,4 +261,4 @@ async def test_cmd_create_forum_topic_reports_errors(monkeypatch):
 
     await commands.cmd_create_forum_topic(message)
 
-    message.answer.assert_awaited_once_with("Could not create forum topic: Bad Request")
+    message.answer.assert_awaited_once_with("Could not create forum topic. Please try again later.")

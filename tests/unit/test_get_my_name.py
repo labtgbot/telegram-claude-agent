@@ -153,7 +153,8 @@ async def test_cmd_get_my_name_reports_telegram_errors(monkeypatch):
 
     args, _ = message.answer.await_args
     assert "Could not get bot name" in args[0]
-    assert "language code is invalid" in args[0]
+    assert "language code is invalid" not in args[0]
+    assert "Please try again later" in args[0]
 
 
 def test_parse_get_my_name_args_defaults():

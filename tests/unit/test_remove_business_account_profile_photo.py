@@ -294,4 +294,5 @@ async def test_cmd_remove_business_account_profile_photo_reports_errors(monkeypa
 
     args, _ = message.answer.await_args
     assert "Could not remove the business account profile photo" in args[0]
-    assert "can_edit_profile_photo" in args[0]
+    assert "can_edit_profile_photo" not in args[0]
+    assert "Please try again later" in args[0]

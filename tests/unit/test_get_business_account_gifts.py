@@ -310,6 +310,5 @@ async def test_cmd_business_gifts_reports_errors(monkeypatch):
     await commands.cmd_business_gifts(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not fetch the business account gifts: "
-        "Forbidden: bot lacks can_view_gifts_and_stars right"
+        "Could not fetch the business account gifts. Please try again later."
     )

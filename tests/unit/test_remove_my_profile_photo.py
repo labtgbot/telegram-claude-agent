@@ -172,7 +172,8 @@ async def test_cmd_remove_my_profile_photo_reports_telegram_errors(monkeypatch):
 
     args, _ = message.answer.await_args
     assert "Could not remove the bot profile photo" in args[0]
-    assert "profile photo cannot be removed" in args[0]
+    assert "profile photo cannot be removed" not in args[0]
+    assert "Please try again later" in args[0]
 
 
 def test_parse_remove_my_profile_photo_confirm():

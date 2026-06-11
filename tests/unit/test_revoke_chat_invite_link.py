@@ -304,7 +304,8 @@ async def test_cmd_revoke_chat_invite_link_reports_service_error(monkeypatch):
 
     args, _kwargs = message.answer.await_args
     assert "Could not revoke the chat invite link" in args[0]
-    assert "invite link not found" in args[0]
+    assert "invite link not found" not in args[0]
+    assert "Please try again later" in args[0]
 
 
 def test_parse_revoke_chat_invite_link_args():

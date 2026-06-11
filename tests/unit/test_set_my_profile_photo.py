@@ -214,7 +214,8 @@ async def test_cmd_set_my_profile_photo_reports_telegram_errors(monkeypatch):
 
     args, _ = message.answer.await_args
     assert "Could not set the bot profile photo" in args[0]
-    assert "PHOTO_INVALID_DIMENSIONS" in args[0]
+    assert "PHOTO_INVALID_DIMENSIONS" not in args[0]
+    assert "Please try again later" in args[0]
 
 
 def test_parse_set_my_profile_photo_args_required_path():

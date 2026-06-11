@@ -22,6 +22,7 @@ from bot.services.send_message_draft import (
 )
 from bot.utils.media import extract_document_text, transcribe_voice
 from bot.utils.storage import storage
+from bot.utils.user_errors import format_user_error
 
 logger = structlog.get_logger()
 
@@ -34,6 +35,9 @@ TELEGRAM_MESSAGE_LIMIT = 4096
 # steady progress without flooding the ephemeral endpoint with tiny deltas.
 DRAFT_UPDATE_INTERVAL_SECONDS = 0.5
 IMAGE_HISTORY_PLACEHOLDER = "[image omitted from history]"
+CHAT_USER_ERROR_MESSAGE = format_user_error(
+    "❌ Error: Something went wrong while processing your message"
+)
 
 
 def _format_byte_size(size: int) -> str:
@@ -339,8 +343,8 @@ async def handle_streaming(
                     await sent_msg.edit_text(full_text[:TELEGRAM_MESSAGE_LIMIT])
                 except Exception:
                     pass
-    except Exception as exc:
-        await sent_msg.edit_text(f"❌ Error: {exc}")
+    except Exception:
+        await sent_msg.edit_text(CHAT_USER_ERROR_MESSAGE)
         raise
 
     reply_text = full_text or "Claude returned no text response."
@@ -580,6 +584,6 @@ async def handle_chat_message(message: Message):
 
     except Exception as exc:
         logger.exception("chat_handler_failed", error=str(exc))
-        await message.answer(f"❌ Error: {exc}")
+        await message.answer(CHAT_USER_ERROR_MESSAGE)
     finally:
         await client.close()

@@ -262,5 +262,5 @@ async def test_cmd_gift_premium_reports_errors(monkeypatch):
     await commands.cmd_gift_premium(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not gift Premium subscription: Bad Request"
+        "Could not gift Premium subscription. Please try again later."
     )

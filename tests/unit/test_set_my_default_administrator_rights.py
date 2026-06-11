@@ -220,7 +220,8 @@ async def test_cmd_set_my_default_administrator_rights_reports_telegram_errors(m
 
     args, _ = message.answer.await_args
     assert "Could not set default administrator rights" in args[0]
-    assert "RIGHTS_INVALID" in args[0]
+    assert "RIGHTS_INVALID" not in args[0]
+    assert "Please try again later" in args[0]
 
 
 def test_parse_set_my_default_administrator_rights_args_moderator():

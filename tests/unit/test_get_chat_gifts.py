@@ -295,5 +295,5 @@ async def test_cmd_chat_gifts_reports_errors(monkeypatch):
     await commands.cmd_chat_gifts(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not fetch the chat gifts: Forbidden: not enough rights"
+        "Could not fetch the chat gifts. Please try again later."
     )

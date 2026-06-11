@@ -284,5 +284,5 @@ async def test_cmd_refund_stars_reports_errors(monkeypatch):
 
     assert commands._REFUNDED_STAR_PAYMENT_KEYS == set()
     message.answer.assert_awaited_once_with(
-        "Could not refund the Stars payment: Bad Request"
+        "Could not refund the Stars payment. Please try again later."
     )

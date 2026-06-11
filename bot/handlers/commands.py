@@ -1,6 +1,7 @@
 import re
 import json
 
+import structlog
 from aiogram import Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
@@ -690,9 +691,11 @@ from bot.services.pin_chat_message import (
     perform_pin_chat_message,
 )
 from bot.utils.storage import storage
+from bot.utils.user_errors import format_user_error, log_user_error_context
 from bot.services.claude_proxy import ClaudeProxyClient
 
 router = Router()
+logger = structlog.get_logger()
 INVALID_COMMAND_ARGS = object()
 
 LOGOUT_CONFIRM_KEYWORD = "confirm"
@@ -703,6 +706,38 @@ CALLBACK_LOGOUT_CONFIRM = "admin:logout:confirm"
 CALLBACK_CLOSE_CONFIRM = "admin:close:confirm"
 CALLBACK_CANCEL = "action:cancel"
 TELEGRAM_CALLBACK_DATA_LIMIT = 64
+
+
+def _command_name(message: Message) -> str | None:
+    text = getattr(message, "text", None) or ""
+    return text.split(maxsplit=1)[0] if text else None
+
+
+async def _answer_operation_failed(message: Message, summary: str, exc: Exception) -> None:
+    log_user_error_context(
+        logger,
+        "command_handler_failed",
+        exc,
+        command=_command_name(message),
+        chat_id=getattr(message.chat, "id", None),
+        operation=summary,
+    )
+    await message.answer(format_user_error(summary))
+
+
+async def _answer_validation_failed(
+    message: Message, summary: str, exc: Exception
+) -> None:
+    logger.info(
+        "command_validation_failed",
+        error_type=type(exc).__name__,
+        error=str(exc),
+        command=_command_name(message),
+        chat_id=getattr(message.chat, "id", None),
+        operation=summary,
+    )
+    await message.answer(summary)
+
 
 LOGOUT_WARNING = (
     "<b>logOut confirmation required</b>\n"
@@ -3276,7 +3311,11 @@ async def cmd_model(message: Message):
                 **kwargs,
             )
         except Exception as e:
-            await message.answer(f"Current model: {current}\nCould not fetch model list: {str(e)}")
+            await _answer_operation_failed(
+                message,
+                f"Current model: {current}\nCould not fetch model list",
+                e,
+            )
         finally:
             await client.close()
     else:
@@ -3319,7 +3358,7 @@ async def cmd_webhook_info(message: Message):
     try:
         info = await fetch_webhook_info(message.bot)
     except TelegramAPIError as exc:
-        await message.answer(f"Could not fetch webhook diagnostics: {exc}")
+        await _answer_operation_failed(message, "Could not fetch webhook diagnostics", exc)
         return
 
     await message.answer(format_webhook_info(info), parse_mode="HTML")
@@ -3340,7 +3379,7 @@ async def cmd_delete_webhook(message: Message):
     try:
         await delete_webhook(message.bot, drop_pending_updates=drop_pending_updates)
     except TelegramAPIError as exc:
-        await message.answer(f"Could not delete webhook: {exc}")
+        await _answer_operation_failed(message, "Could not delete webhook", exc)
         return
 
     pending_updates_status = "dropped" if drop_pending_updates else "kept"
@@ -3372,7 +3411,7 @@ async def cmd_log_out(message: Message):
     try:
         await perform_log_out(message.bot)
     except TelegramAPIError as exc:
-        await message.answer(f"Could not log out from the cloud Bot API: {exc}")
+        await _answer_operation_failed(message, "Could not log out from the cloud Bot API", exc)
         return
 
     await message.answer(
@@ -3406,7 +3445,7 @@ async def cmd_close(message: Message):
     try:
         await perform_close(message.bot)
     except TelegramAPIError as exc:
-        await message.answer(f"Could not close the bot instance: {exc}")
+        await _answer_operation_failed(message, "Could not close the bot instance", exc)
         return
 
     await message.answer(
@@ -3438,7 +3477,7 @@ async def cmd_forward(message: Message):
             protect_content=protect_content,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not forward the message: {exc}")
+        await _answer_operation_failed(message, "Could not forward the message", exc)
         return
 
     protection = "protected" if protect_content else "shareable"
@@ -3470,7 +3509,7 @@ async def cmd_forwards(message: Message):
             protect_content=protect_content,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not forward the messages: {exc}")
+        await _answer_operation_failed(message, "Could not forward the messages", exc)
         return
 
     forwarded_count = len(result) if hasattr(result, "__len__") else len(message_ids)
@@ -3503,7 +3542,7 @@ async def cmd_copy(message: Message):
             protect_content=protect_content,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not copy the message: {exc}")
+        await _answer_operation_failed(message, "Could not copy the message", exc)
         return
 
     protection = "protected" if protect_content else "shareable"
@@ -3536,7 +3575,7 @@ async def cmd_copies(message: Message):
             remove_caption=remove_caption,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not copy the messages: {exc}")
+        await _answer_operation_failed(message, "Could not copy the messages", exc)
         return
 
     copied_count = len(result) if hasattr(result, "__len__") else len(message_ids)
@@ -3574,7 +3613,7 @@ async def cmd_photo(message: Message):
             caption=caption,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not send the photo: {exc}")
+        await _answer_operation_failed(message, "Could not send the photo", exc)
         return
 
     await message.answer(
@@ -3608,7 +3647,7 @@ async def cmd_audio(message: Message):
             caption=caption,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not send the audio: {exc}")
+        await _answer_operation_failed(message, "Could not send the audio", exc)
         return
 
     await message.answer(
@@ -3643,7 +3682,7 @@ async def cmd_live_photo(message: Message):
             caption=caption,
         )
     except SendLivePhotoError as exc:
-        await message.answer(f"Could not send the live photo: {exc}")
+        await _answer_operation_failed(message, "Could not send the live photo", exc)
         return
 
     await message.answer(
@@ -3677,7 +3716,7 @@ async def cmd_document(message: Message):
             caption=caption,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not send the document: {exc}")
+        await _answer_operation_failed(message, "Could not send the document", exc)
         return
 
     await message.answer(
@@ -3711,7 +3750,7 @@ async def cmd_video(message: Message):
             caption=caption,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not send the video: {exc}")
+        await _answer_operation_failed(message, "Could not send the video", exc)
         return
 
     await message.answer(
@@ -3736,7 +3775,7 @@ async def cmd_video_note(message: Message):
             video_note=video_note,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not send the video note: {exc}")
+        await _answer_operation_failed(message, "Could not send the video note", exc)
         return
 
     await message.answer("Sent video note.")
@@ -3768,7 +3807,7 @@ async def cmd_animation(message: Message):
             caption=caption,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not send the animation: {exc}")
+        await _answer_operation_failed(message, "Could not send the animation", exc)
         return
 
     await message.answer(
@@ -3797,7 +3836,7 @@ async def cmd_sticker(message: Message):
             emoji=emoji,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not send the sticker: {exc}")
+        await _answer_operation_failed(message, "Could not send the sticker", exc)
         return
 
     await message.answer(
@@ -3832,7 +3871,7 @@ async def cmd_voice(message: Message):
             caption=caption,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not send the voice message: {exc}")
+        await _answer_operation_failed(message, "Could not send the voice message", exc)
         return
 
     await message.answer(
@@ -3874,7 +3913,7 @@ async def cmd_paid_media(message: Message):
             caption=caption,
         )
     except SendPaidMediaError as exc:
-        await message.answer(f"Could not send the paid media: {exc}")
+        await _answer_operation_failed(message, "Could not send the paid media", exc)
         return
 
     await message.answer(
@@ -3916,7 +3955,7 @@ async def cmd_send_invoice(message: Message):
             prices=[{"label": title, "amount": star_count}],
         )
     except SendInvoiceError as exc:
-        await message.answer(f"Could not send the invoice: {exc}")
+        await _answer_operation_failed(message, "Could not send the invoice", exc)
         return
 
     await message.answer("Sent Telegram Stars invoice.")
@@ -3955,7 +3994,7 @@ async def cmd_create_invoice_link(message: Message):
             prices=[{"label": title, "amount": star_count}],
         )
     except CreateInvoiceLinkError as exc:
-        await message.answer(f"Could not create the invoice link: {exc}")
+        await _answer_operation_failed(message, "Could not create the invoice link", exc)
         return
 
     await message.answer(f"Created Telegram Stars invoice link:\n{invoice_link}")
@@ -3980,7 +4019,7 @@ async def cmd_answer_web_app_query(message: Message):
             result=result,
         )
     except AnswerWebAppQueryError as exc:
-        await message.answer(f"Could not answer the Web App query: {exc}")
+        await _answer_operation_failed(message, "Could not answer the Web App query", exc)
         return
 
     inline_message_id = sent_message.get("inline_message_id")
@@ -4012,7 +4051,7 @@ async def cmd_save_prepared_inline_message(message: Message):
             **options,
         )
     except SavePreparedInlineMessageError as exc:
-        await message.answer(f"Could not save the prepared inline message: {exc}")
+        await _answer_operation_failed(message, "Could not save the prepared inline message", exc)
         return
 
     prepared_message_id = prepared_message.get("id")
@@ -4043,7 +4082,7 @@ async def cmd_set_passport_data_errors(message: Message):
             errors=errors,
         )
     except SetPassportDataErrorsError as exc:
-        await message.answer(f"Could not set Passport data errors: {exc}")
+        await _answer_operation_failed(message, "Could not set Passport data errors", exc)
         return
 
     await message.answer(
@@ -4070,7 +4109,7 @@ async def cmd_save_prepared_keyboard_button(message: Message):
             prepared_message_id=prepared_message_id,
         )
     except SavePreparedKeyboardButtonError as exc:
-        await message.answer(f"Could not save the prepared keyboard button: {exc}")
+        await _answer_operation_failed(message, "Could not save the prepared keyboard button", exc)
         return
 
     await message.answer("Saved prepared keyboard button.")
@@ -4110,7 +4149,7 @@ async def cmd_location(message: Message):
             longitude=longitude,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not send the location: {exc}")
+        await _answer_operation_failed(message, "Could not send the location", exc)
         return
 
     await message.answer("Sent location.")
@@ -4151,7 +4190,7 @@ async def cmd_venue(message: Message):
             address=address,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not send the venue: {exc}")
+        await _answer_operation_failed(message, "Could not send the venue", exc)
         return
 
     await message.answer("Sent venue.")
@@ -4198,7 +4237,7 @@ async def cmd_poll(message: Message):
             options=options,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not send the poll: {exc}")
+        await _answer_operation_failed(message, "Could not send the poll", exc)
         return
 
     await message.answer(f"Sent poll with {len(options)} options.")
@@ -4222,10 +4261,14 @@ async def cmd_stop_poll(message: Message):
             message_id=message_id,
         )
     except StopPollValidationError as exc:
-        await message.answer(str(exc))
+        await _answer_validation_failed(
+            message,
+            "Invalid stopPoll request. Check the command usage and try again.",
+            exc,
+        )
         return
     except TelegramAPIError as exc:
-        await message.answer(f"Could not stop the poll: {exc}")
+        await _answer_operation_failed(message, "Could not stop the poll", exc)
         return
 
     await message.answer(
@@ -4253,7 +4296,7 @@ async def cmd_approve_suggested_post(message: Message):
             send_date=send_date,
         )
     except ApproveSuggestedPostError as exc:
-        await message.answer(f"Could not approve the suggested post: {exc}")
+        await _answer_operation_failed(message, "Could not approve the suggested post", exc)
         return
 
     await message.answer(
@@ -4286,7 +4329,7 @@ async def cmd_decline_suggested_post(message: Message):
             comment=comment,
         )
     except DeclineSuggestedPostError as exc:
-        await message.answer(f"Could not decline the suggested post: {exc}")
+        await _answer_operation_failed(message, "Could not decline the suggested post", exc)
         return
 
     await message.answer(
@@ -4320,7 +4363,7 @@ async def cmd_contact(message: Message):
             last_name=last_name,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not send the contact: {exc}")
+        await _answer_operation_failed(message, "Could not send the contact", exc)
         return
 
     await message.answer("Sent contact.")
@@ -4344,7 +4387,7 @@ async def cmd_dice(message: Message):
             emoji=emoji,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not send the dice: {exc}")
+        await _answer_operation_failed(message, "Could not send the dice", exc)
         return
 
     await message.answer("Sent dice.")
@@ -4369,7 +4412,7 @@ async def cmd_game(message: Message):
             game_short_name=game_short_name,
         )
     except (SendGameValidationError, TelegramAPIError) as exc:
-        await message.answer(f"Could not send the game: {exc}")
+        await _answer_operation_failed(message, "Could not send the game", exc)
         return
 
     await message.answer("Sent game.")
@@ -4389,7 +4432,7 @@ async def cmd_set_game_score(message: Message):
     try:
         await perform_set_game_score(message.bot, **parsed)
     except (SetGameScoreValidationError, TelegramAPIError) as exc:
-        await message.answer(f"Could not set the game score: {exc}")
+        await _answer_operation_failed(message, "Could not set the game score", exc)
         return
 
     await message.answer("Set game score.")
@@ -4409,7 +4452,7 @@ async def cmd_get_game_high_scores(message: Message):
     try:
         scores = await perform_get_game_high_scores(message.bot, **parsed)
     except (GetGameHighScoresValidationError, TelegramAPIError) as exc:
-        await message.answer(f"Could not fetch game high scores: {exc}")
+        await _answer_operation_failed(message, "Could not fetch game high scores", exc)
         return
 
     await message.answer(_format_game_high_scores(scores))
@@ -4437,7 +4480,7 @@ async def cmd_chat_action(message: Message):
         await message.answer(CHAT_ACTION_USAGE, parse_mode="HTML")
         return
     except TelegramAPIError as exc:
-        await message.answer(f"Could not show the chat action: {exc}")
+        await _answer_operation_failed(message, "Could not show the chat action", exc)
         return
 
     await message.answer(f"Showed the {action} chat action.")
@@ -4466,7 +4509,7 @@ async def cmd_message_draft(message: Message):
             text=text,
         )
     except SendMessageDraftError as exc:
-        await message.answer(f"Could not send the message draft: {exc}")
+        await _answer_operation_failed(message, "Could not send the message draft", exc)
         return
 
     await message.answer(
@@ -4521,7 +4564,7 @@ async def cmd_checklist(message: Message):
             checklist=checklist,
         )
     except SendChecklistError as exc:
-        await message.answer(f"Could not send the checklist: {exc}")
+        await _answer_operation_failed(message, "Could not send the checklist", exc)
         return
 
     await message.answer(f"Sent checklist with {len(tasks)} tasks.")
@@ -4576,7 +4619,7 @@ async def cmd_edit_message_checklist(message: Message):
             checklist=checklist,
         )
     except EditMessageChecklistError as exc:
-        await message.answer(f"Could not edit the checklist: {exc}")
+        await _answer_operation_failed(message, "Could not edit the checklist", exc)
         return
 
     result_message_id = result.get("message_id")
@@ -4614,7 +4657,7 @@ async def cmd_edit_message_caption(message: Message):
             **options,
         )
     except EditMessageCaptionError as exc:
-        await message.answer(f"Could not edit the message caption: {exc}")
+        await _answer_operation_failed(message, "Could not edit the message caption", exc)
         return
 
     if isinstance(result, dict):
@@ -4658,7 +4701,7 @@ async def cmd_edit_message_media(message: Message):
             **options,
         )
     except EditMessageMediaError as exc:
-        await message.answer(f"Could not edit the message media: {exc}")
+        await _answer_operation_failed(message, "Could not edit the message media", exc)
         return
 
     if isinstance(result, dict):
@@ -4693,7 +4736,7 @@ async def cmd_edit_message_reply_markup(message: Message):
             **target,
         )
     except EditMessageReplyMarkupError as exc:
-        await message.answer(f"Could not edit the message reply markup: {exc}")
+        await _answer_operation_failed(message, "Could not edit the message reply markup", exc)
         return
 
     if isinstance(result, dict):
@@ -4730,7 +4773,7 @@ async def cmd_edit_message_live_location(message: Message):
             **options,
         )
     except EditMessageLiveLocationError as exc:
-        await message.answer(f"Could not edit the live location: {exc}")
+        await _answer_operation_failed(message, "Could not edit the live location", exc)
         return
 
     if isinstance(result, dict):
@@ -4759,7 +4802,7 @@ async def cmd_stop_message_live_location(message: Message):
     try:
         result = await perform_stop_message_live_location(message.bot, **target)
     except StopMessageLiveLocationError as exc:
-        await message.answer(f"Could not stop the live location: {exc}")
+        await _answer_operation_failed(message, "Could not stop the live location", exc)
         return
 
     if isinstance(result, dict):
@@ -4807,7 +4850,7 @@ async def cmd_post_story(message: Message):
             caption=caption,
         )
     except PostStoryError as exc:
-        await message.answer(f"Could not post the story: {exc}")
+        await _answer_operation_failed(message, "Could not post the story", exc)
         return
 
     story_id = story.get("id")
@@ -4842,7 +4885,7 @@ async def cmd_repost_story(message: Message):
             active_period=active_period,
         )
     except RepostStoryError as exc:
-        await message.answer(f"Could not repost the story: {exc}")
+        await _answer_operation_failed(message, "Could not repost the story", exc)
         return
 
     story_id = story.get("id")
@@ -4881,7 +4924,7 @@ async def cmd_edit_story(message: Message):
             caption=caption,
         )
     except EditStoryError as exc:
-        await message.answer(f"Could not edit the story: {exc}")
+        await _answer_operation_failed(message, "Could not edit the story", exc)
         return
 
     result_story_id = story.get("id")
@@ -4912,7 +4955,7 @@ async def cmd_delete_story(message: Message):
             story_id=story_id,
         )
     except DeleteStoryError as exc:
-        await message.answer(f"Could not delete the story: {exc}")
+        await _answer_operation_failed(message, "Could not delete the story", exc)
         return
 
     await message.answer(f"Deleted story {story_id}.")
@@ -4935,7 +4978,7 @@ async def cmd_business_connection(message: Message):
             business_connection_id=business_connection_id,
         )
     except GetBusinessConnectionError as exc:
-        await message.answer(f"Could not fetch the business connection: {exc}")
+        await _answer_operation_failed(message, "Could not fetch the business connection", exc)
         return
 
     await message.answer(format_business_connection(connection), parse_mode="HTML")
@@ -4963,8 +5006,10 @@ async def cmd_business_star_balance(message: Message):
             business_connection_id=business_connection_id,
         )
     except GetBusinessAccountStarBalanceError as exc:
-        await message.answer(
-            f"Could not fetch the business account Star balance: {exc}"
+        await _answer_operation_failed(
+            message,
+            "Could not fetch the business account Star balance",
+            exc,
         )
         return
 
@@ -4993,7 +5038,7 @@ async def cmd_my_star_balance(message: Message):
     try:
         balance = await perform_get_my_star_balance(message.bot)
     except GetMyStarBalanceError as exc:
-        await message.answer(f"Could not fetch the bot Star balance: {exc}")
+        await _answer_operation_failed(message, "Could not fetch the bot Star balance", exc)
         return
 
     await message.answer(format_my_star_balance(balance), parse_mode="HTML")
@@ -5013,7 +5058,7 @@ async def cmd_star_transactions(message: Message):
     try:
         transactions = await perform_get_star_transactions(message.bot, **parsed)
     except GetStarTransactionsError as exc:
-        await message.answer(f"Could not fetch the bot Star transactions: {exc}")
+        await _answer_operation_failed(message, "Could not fetch the bot Star transactions", exc)
         return
 
     await message.answer(
@@ -5057,7 +5102,7 @@ async def cmd_refund_stars(message: Message):
             telegram_payment_charge_id=telegram_payment_charge_id,
         )
     except RefundStarPaymentError as exc:
-        await message.answer(f"Could not refund the Stars payment: {exc}")
+        await _answer_operation_failed(message, "Could not refund the Stars payment", exc)
         return
 
     _REFUNDED_STAR_PAYMENT_KEYS.add(idempotency_key)
@@ -5110,7 +5155,7 @@ async def cmd_edit_user_star_subscription(message: Message):
             is_canceled=is_canceled,
         )
     except EditUserStarSubscriptionError as exc:
-        await message.answer(f"Could not edit the Stars subscription: {exc}")
+        await _answer_operation_failed(message, "Could not edit the Stars subscription", exc)
         return
 
     _EDITED_USER_STAR_SUBSCRIPTION_KEYS.add(idempotency_key)
@@ -5143,9 +5188,7 @@ async def cmd_business_gifts(message: Message):
             **options,
         )
     except GetBusinessAccountGiftsError as exc:
-        await message.answer(
-            f"Could not fetch the business account gifts: {exc}"
-        )
+        await _answer_operation_failed(message, "Could not fetch the business account gifts", exc)
         return
 
     await message.answer(
@@ -5176,7 +5219,7 @@ async def cmd_user_gifts(message: Message):
             **options,
         )
     except GetUserGiftsError as exc:
-        await message.answer(f"Could not fetch the user gifts: {exc}")
+        await _answer_operation_failed(message, "Could not fetch the user gifts", exc)
         return
 
     await message.answer(
@@ -5204,7 +5247,7 @@ async def cmd_chat_gifts(message: Message):
             **options,
         )
     except GetChatGiftsError as exc:
-        await message.answer(f"Could not fetch the chat gifts: {exc}")
+        await _answer_operation_failed(message, "Could not fetch the chat gifts", exc)
         return
 
     await message.answer(
@@ -5242,8 +5285,10 @@ async def cmd_transfer_business_stars(message: Message):
             star_count=star_count,
         )
     except TransferBusinessAccountStarsError as exc:
-        await message.answer(
-            f"Could not transfer the business account Stars: {exc}"
+        await _answer_operation_failed(
+            message,
+            "Could not transfer the business account Stars",
+            exc,
         )
         return
 
@@ -5282,7 +5327,7 @@ async def cmd_convert_gift_stars(message: Message):
             owned_gift_id=owned_gift_id,
         )
     except ConvertGiftToStarsError as exc:
-        await message.answer(f"Could not convert the gift to Stars: {exc}")
+        await _answer_operation_failed(message, "Could not convert the gift to Stars", exc)
         return
 
     await message.answer(
@@ -5318,7 +5363,7 @@ async def cmd_upgrade_gift(message: Message):
             keep_original_details=keep_original_details,
         )
     except UpgradeGiftError as exc:
-        await message.answer(f"Could not upgrade the gift: {exc}")
+        await _answer_operation_failed(message, "Could not upgrade the gift", exc)
         return
 
     await message.answer(
@@ -5358,7 +5403,7 @@ async def cmd_transfer_gift(message: Message):
             star_count=star_count,
         )
     except TransferGiftError as exc:
-        await message.answer(f"Could not transfer the gift: {exc}")
+        await _answer_operation_failed(message, "Could not transfer the gift", exc)
         return
 
     await message.answer(
@@ -5391,7 +5436,7 @@ async def cmd_read_business_message(message: Message):
             message_id=message_id,
         )
     except ReadBusinessMessageError as exc:
-        await message.answer(f"Could not mark the business message as read: {exc}")
+        await _answer_operation_failed(message, "Could not mark the business message as read", exc)
         return
 
     await message.answer(
@@ -5419,7 +5464,7 @@ async def cmd_set_business_account_name(message: Message):
             last_name=last_name,
         )
     except SetBusinessAccountNameError as exc:
-        await message.answer(f"Could not set the business account name: {exc}")
+        await _answer_operation_failed(message, "Could not set the business account name", exc)
         return
 
     await message.answer(f"Set business account name for {business_connection_id}.")
@@ -5444,7 +5489,7 @@ async def cmd_set_business_account_username(message: Message):
             username=username,
         )
     except SetBusinessAccountUsernameError as exc:
-        await message.answer(f"Could not set the business account username: {exc}")
+        await _answer_operation_failed(message, "Could not set the business account username", exc)
         return
 
     await message.answer(f"Set business account username for {business_connection_id}.")
@@ -5469,7 +5514,7 @@ async def cmd_set_business_account_bio(message: Message):
             bio=bio,
         )
     except SetBusinessAccountBioError as exc:
-        await message.answer(f"Could not set the business account bio: {exc}")
+        await _answer_operation_failed(message, "Could not set the business account bio", exc)
         return
 
     action = "Cleared" if bio == "" else "Set"
@@ -5499,8 +5544,10 @@ async def cmd_set_business_account_profile_photo(message: Message):
             is_public=is_public,
         )
     except SetBusinessAccountProfilePhotoError as exc:
-        await message.answer(
-            f"Could not set the business account profile photo: {exc}"
+        await _answer_operation_failed(
+            message,
+            "Could not set the business account profile photo",
+            exc,
         )
         return
 
@@ -5536,8 +5583,10 @@ async def cmd_remove_business_account_profile_photo(message: Message):
             is_public=is_public,
         )
     except RemoveBusinessAccountProfilePhotoError as exc:
-        await message.answer(
-            f"Could not remove the business account profile photo: {exc}"
+        await _answer_operation_failed(
+            message,
+            "Could not remove the business account profile photo",
+            exc,
         )
         return
 
@@ -5573,8 +5622,10 @@ async def cmd_set_business_account_gift_settings(message: Message):
             accepted_gift_types=accepted_gift_types,
         )
     except SetBusinessAccountGiftSettingsError as exc:
-        await message.answer(
-            f"Could not set the business account gift settings: {exc}"
+        await _answer_operation_failed(
+            message,
+            "Could not set the business account gift settings",
+            exc,
         )
         return
 
@@ -5611,7 +5662,7 @@ async def cmd_delete_business_messages(message: Message):
             message_ids=message_ids,
         )
     except DeleteBusinessMessagesError as exc:
-        await message.answer(f"Could not delete the business messages: {exc}")
+        await _answer_operation_failed(message, "Could not delete the business messages", exc)
         return
 
     await message.answer(
@@ -5636,7 +5687,7 @@ async def cmd_managed_bot_token(message: Message):
             user_id=user_id,
         )
     except GetManagedBotTokenError as exc:
-        await message.answer(f"Could not fetch the managed bot token: {exc}")
+        await _answer_operation_failed(message, "Could not fetch the managed bot token", exc)
         return
 
     await message.answer(
@@ -5665,8 +5716,10 @@ async def cmd_managed_bot_access_settings(message: Message):
             user_id=user_id,
         )
     except GetManagedBotAccessSettingsError as exc:
-        await message.answer(
-            f"Could not fetch the managed bot access settings: {exc}"
+        await _answer_operation_failed(
+            message,
+            "Could not fetch the managed bot access settings",
+            exc,
         )
         return
 
@@ -5706,8 +5759,10 @@ async def cmd_set_managed_bot_access_settings(message: Message):
             added_user_ids=added_user_ids,
         )
     except SetManagedBotAccessSettingsError as exc:
-        await message.answer(
-            f"Could not set the managed bot access settings: {exc}"
+        await _answer_operation_failed(
+            message,
+            "Could not set the managed bot access settings",
+            exc,
         )
         return
 
@@ -5746,7 +5801,7 @@ async def cmd_replace_managed_bot_token(message: Message):
             user_id=user_id,
         )
     except ReplaceManagedBotTokenError as exc:
-        await message.answer(f"Could not replace the managed bot token: {exc}")
+        await _answer_operation_failed(message, "Could not replace the managed bot token", exc)
         return
 
     await message.answer(
@@ -5773,7 +5828,7 @@ async def cmd_available_gifts(message: Message):
     try:
         gifts = await perform_get_available_gifts(message.bot)
     except GetAvailableGiftsError as exc:
-        await message.answer(f"Could not fetch available gifts: {exc}")
+        await _answer_operation_failed(message, "Could not fetch available gifts", exc)
         return
 
     await message.answer(format_available_gifts(gifts), parse_mode="HTML")
@@ -5815,7 +5870,7 @@ async def cmd_send_gift(message: Message):
     try:
         await perform_send_gift(message.bot, **kwargs)
     except SendGiftError as exc:
-        await message.answer(f"Could not send gift: {exc}")
+        await _answer_operation_failed(message, "Could not send gift", exc)
         return
 
     await message.answer("Sent gift.")
@@ -5854,7 +5909,7 @@ async def cmd_gift_premium(message: Message):
             text_parse_mode="HTML" if text else None,
         )
     except GiftPremiumSubscriptionError as exc:
-        await message.answer(f"Could not gift Premium subscription: {exc}")
+        await _answer_operation_failed(message, "Could not gift Premium subscription", exc)
         return
 
     await message.answer("Gifted Premium subscription.")
@@ -5893,7 +5948,7 @@ async def cmd_verify_user(message: Message):
             custom_description=custom_description,
         )
     except VerifyUserError as exc:
-        await message.answer(f"Could not verify user: {exc}")
+        await _answer_operation_failed(message, "Could not verify user", exc)
         return
 
     await message.answer(f"Verified user {user_id}.")
@@ -5921,7 +5976,7 @@ async def cmd_remove_user_verification(message: Message):
             user_id=user_id,
         )
     except RemoveUserVerificationError as exc:
-        await message.answer(f"Could not remove user verification: {exc}")
+        await _answer_operation_failed(message, "Could not remove user verification", exc)
         return
 
     await message.answer(f"Removed verification from user {user_id}.")
@@ -5960,7 +6015,7 @@ async def cmd_verify_chat(message: Message):
             custom_description=custom_description,
         )
     except VerifyChatError as exc:
-        await message.answer(f"Could not verify chat: {exc}")
+        await _answer_operation_failed(message, "Could not verify chat", exc)
         return
 
     await message.answer(f"Verified chat {chat_id}.")
@@ -5988,7 +6043,7 @@ async def cmd_remove_chat_verification(message: Message):
             chat_id=chat_id,
         )
     except RemoveChatVerificationError as exc:
-        await message.answer(f"Could not remove chat verification: {exc}")
+        await _answer_operation_failed(message, "Could not remove chat verification", exc)
         return
 
     await message.answer(f"Removed verification from chat {chat_id}.")
@@ -6024,7 +6079,7 @@ async def cmd_user_profile_photos(message: Message):
             limit=limit,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not fetch user profile photos: {exc}")
+        await _answer_operation_failed(message, "Could not fetch user profile photos", exc)
         return
 
     await message.answer(
@@ -6062,7 +6117,7 @@ async def cmd_user_profile_audios(message: Message):
             limit=limit,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not fetch user profile audios: {exc}")
+        await _answer_operation_failed(message, "Could not fetch user profile audios", exc)
         return
 
     await message.answer(
@@ -6092,7 +6147,7 @@ async def cmd_ban_chat_member(message: Message):
             revoke_messages=revoke_messages,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not ban the user: {exc}")
+        await _answer_operation_failed(message, "Could not ban the user", exc)
         return
 
     await message.answer(
@@ -6121,7 +6176,7 @@ async def cmd_ban_chat_sender_chat(message: Message):
             sender_chat_id=sender_chat_id,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not ban the sender chat: {exc}")
+        await _answer_operation_failed(message, "Could not ban the sender chat", exc)
         return
 
     await message.answer(
@@ -6151,7 +6206,7 @@ async def cmd_unban_chat_member(message: Message):
             only_if_banned=only_if_banned,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not unban the user: {exc}")
+        await _answer_operation_failed(message, "Could not unban the user", exc)
         return
 
     await message.answer(
@@ -6180,7 +6235,7 @@ async def cmd_unban_chat_sender_chat(message: Message):
             sender_chat_id=sender_chat_id,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not unban the sender chat: {exc}")
+        await _answer_operation_failed(message, "Could not unban the sender chat", exc)
         return
 
     await message.answer(
@@ -6219,7 +6274,7 @@ async def cmd_restrict_chat_member(message: Message):
             use_independent_chat_permissions=use_independent_chat_permissions,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not restrict the user: {exc}")
+        await _answer_operation_failed(message, "Could not restrict the user", exc)
         return
 
     await message.answer(
@@ -6256,7 +6311,7 @@ async def cmd_set_chat_permissions(message: Message):
             use_independent_chat_permissions=use_independent_chat_permissions,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set chat permissions: {exc}")
+        await _answer_operation_failed(message, "Could not set chat permissions", exc)
         return
 
     await message.answer(
@@ -6290,7 +6345,7 @@ async def cmd_unpin_chat_message(message: Message):
             message_id=message_id,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not unpin the chat message: {exc}")
+        await _answer_operation_failed(message, "Could not unpin the chat message", exc)
         return
 
     await message.answer(
@@ -6322,7 +6377,7 @@ async def cmd_delete_message(message: Message):
             message_id=message_id,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not delete the message: {exc}")
+        await _answer_operation_failed(message, "Could not delete the message", exc)
         return
 
     await message.answer(
@@ -6354,7 +6409,7 @@ async def cmd_delete_messages(message: Message):
             message_ids=message_ids,
         )
     except DeleteMessagesError as exc:
-        await message.answer(f"Could not delete the messages: {exc}")
+        await _answer_operation_failed(message, "Could not delete the messages", exc)
         return
 
     await message.answer(
@@ -6377,7 +6432,7 @@ async def cmd_unpin_all_chat_messages(message: Message):
     try:
         await perform_unpin_all_chat_messages(message.bot, chat_id=chat_id)
     except TelegramAPIError as exc:
-        await message.answer(f"Could not unpin all chat messages: {exc}")
+        await _answer_operation_failed(message, "Could not unpin all chat messages", exc)
         return
 
     await message.answer(
@@ -6407,7 +6462,7 @@ async def cmd_pin_chat_message(message: Message):
             disable_notification=disable_notification,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not pin the chat message: {exc}")
+        await _answer_operation_failed(message, "Could not pin the chat message", exc)
         return
 
     await message.answer(
@@ -6434,7 +6489,7 @@ async def cmd_delete_chat_photo(message: Message):
     try:
         await perform_delete_chat_photo(message.bot, chat_id=chat_id)
     except TelegramAPIError as exc:
-        await message.answer(f"Could not delete the chat photo: {exc}")
+        await _answer_operation_failed(message, "Could not delete the chat photo", exc)
         return
 
     await message.answer(
@@ -6463,7 +6518,7 @@ async def cmd_set_chat_photo(message: Message):
             photo_path=photo_path,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set the chat photo: {exc}")
+        await _answer_operation_failed(message, "Could not set the chat photo", exc)
         return
 
     await message.answer(
@@ -6489,7 +6544,7 @@ async def cmd_set_my_profile_photo(message: Message):
             photo_path=photo_path,
         )
     except SetMyProfilePhotoError as exc:
-        await message.answer(f"Could not set the bot profile photo: {exc}")
+        await _answer_operation_failed(message, "Could not set the bot profile photo", exc)
         return
 
     await message.answer(
@@ -6511,7 +6566,7 @@ async def cmd_remove_my_profile_photo(message: Message):
     try:
         await perform_remove_my_profile_photo(message.bot)
     except RemoveMyProfilePhotoError as exc:
-        await message.answer(f"Could not remove the bot profile photo: {exc}")
+        await _answer_operation_failed(message, "Could not remove the bot profile photo", exc)
         return
 
     await message.answer(
@@ -6540,7 +6595,7 @@ async def cmd_set_chat_description(message: Message):
             description=description,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set the chat description: {exc}")
+        await _answer_operation_failed(message, "Could not set the chat description", exc)
         return
 
     await message.answer(
@@ -6572,7 +6627,7 @@ async def cmd_set_chat_title(message: Message):
             title=title,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set the chat title: {exc}")
+        await _answer_operation_failed(message, "Could not set the chat title", exc)
         return
 
     await message.answer(
@@ -6595,7 +6650,7 @@ async def cmd_set_my_commands(message: Message):
     try:
         await perform_set_my_commands(message.bot, commands=parsed)
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set bot commands: {exc}")
+        await _answer_operation_failed(message, "Could not set bot commands", exc)
         return
 
     await message.answer(
@@ -6624,7 +6679,7 @@ async def cmd_set_chat_menu_button(message: Message):
             menu_button=menu_button,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set the chat menu button: {exc}")
+        await _answer_operation_failed(message, "Could not set the chat menu button", exc)
         return
 
     await message.answer(
@@ -6650,7 +6705,7 @@ async def cmd_get_chat_menu_button(message: Message):
             chat_id=parsed,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not get the chat menu button: {exc}")
+        await _answer_operation_failed(message, "Could not get the chat menu button", exc)
         return
 
     await message.answer(
@@ -6678,10 +6733,10 @@ async def cmd_set_my_name(message: Message):
             language_code=language_code,
         )
     except SetMyNameValidationError as exc:
-        await message.answer(f"Could not set bot name: {exc}")
+        await _answer_operation_failed(message, "Could not set bot name", exc)
         return
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set bot name: {exc}")
+        await _answer_operation_failed(message, "Could not set bot name", exc)
         return
 
     await message.answer(
@@ -6709,10 +6764,10 @@ async def cmd_set_my_description(message: Message):
             language_code=language_code,
         )
     except SetMyDescriptionValidationError as exc:
-        await message.answer(f"Could not set bot description: {exc}")
+        await _answer_operation_failed(message, "Could not set bot description", exc)
         return
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set bot description: {exc}")
+        await _answer_operation_failed(message, "Could not set bot description", exc)
         return
 
     await message.answer(
@@ -6743,10 +6798,10 @@ async def cmd_set_my_short_description(message: Message):
             language_code=language_code,
         )
     except SetMyShortDescriptionValidationError as exc:
-        await message.answer(f"Could not set bot short description: {exc}")
+        await _answer_operation_failed(message, "Could not set bot short description", exc)
         return
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set bot short description: {exc}")
+        await _answer_operation_failed(message, "Could not set bot short description", exc)
         return
 
     await message.answer(
@@ -6780,7 +6835,7 @@ async def cmd_set_my_default_administrator_rights(message: Message):
             for_channels=for_channels,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set default administrator rights: {exc}")
+        await _answer_operation_failed(message, "Could not set default administrator rights", exc)
         return
 
     await message.answer(
@@ -6810,7 +6865,7 @@ async def cmd_get_my_name(message: Message):
             language_code=parsed,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not get bot name: {exc}")
+        await _answer_operation_failed(message, "Could not get bot name", exc)
         return
 
     await message.answer(
@@ -6836,7 +6891,7 @@ async def cmd_get_my_default_administrator_rights(message: Message):
             for_channels=parsed,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not get default administrator rights: {exc}")
+        await _answer_operation_failed(message, "Could not get default administrator rights", exc)
         return
 
     await message.answer(
@@ -6865,7 +6920,7 @@ async def cmd_get_my_description(message: Message):
             language_code=parsed,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not get bot description: {exc}")
+        await _answer_operation_failed(message, "Could not get bot description", exc)
         return
 
     await message.answer(
@@ -6891,7 +6946,7 @@ async def cmd_get_my_short_description(message: Message):
             language_code=parsed,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not get bot short description: {exc}")
+        await _answer_operation_failed(message, "Could not get bot short description", exc)
         return
 
     await message.answer(
@@ -6922,7 +6977,7 @@ async def cmd_delete_my_commands(message: Message):
             language_code=language_code,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not delete bot commands: {exc}")
+        await _answer_operation_failed(message, "Could not delete bot commands", exc)
         return
 
     await message.answer(
@@ -6950,7 +7005,7 @@ async def cmd_get_my_commands(message: Message):
             language_code=language_code,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not get bot commands: {exc}")
+        await _answer_operation_failed(message, "Could not get bot commands", exc)
         return
 
     await message.answer(
@@ -6983,7 +7038,7 @@ async def cmd_set_chat_sticker_set(message: Message):
             sticker_set_name=sticker_set_name,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set the chat sticker set: {exc}")
+        await _answer_operation_failed(message, "Could not set the chat sticker set", exc)
         return
 
     await message.answer(
@@ -7009,7 +7064,7 @@ async def cmd_delete_chat_sticker_set(message: Message):
     try:
         await perform_delete_chat_sticker_set(message.bot, chat_id=chat_id)
     except TelegramAPIError as exc:
-        await message.answer(f"Could not delete the chat sticker set: {exc}")
+        await _answer_operation_failed(message, "Could not delete the chat sticker set", exc)
         return
 
     await message.answer(
@@ -7039,7 +7094,7 @@ async def cmd_promote_chat_member(message: Message):
             rights=rights,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not promote the user: {exc}")
+        await _answer_operation_failed(message, "Could not promote the user", exc)
         return
 
     await message.answer(
@@ -7070,7 +7125,7 @@ async def cmd_export_chat_invite_link(message: Message):
             chat_id=chat_id,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not export the chat invite link: {exc}")
+        await _answer_operation_failed(message, "Could not export the chat invite link", exc)
         return
 
     await message.answer(
@@ -7099,7 +7154,7 @@ async def cmd_get_chat(message: Message):
             chat_id=chat_id,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not get chat information: {exc}")
+        await _answer_operation_failed(message, "Could not get chat information", exc)
         return
 
     await message.answer(
@@ -7125,7 +7180,7 @@ async def cmd_get_chat_member_count(message: Message):
             chat_id=chat_id,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not get chat member count: {exc}")
+        await _answer_operation_failed(message, "Could not get chat member count", exc)
         return
 
     await message.answer(
@@ -7153,7 +7208,7 @@ async def cmd_get_chat_member(message: Message):
             user_id=user_id,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not get chat member: {exc}")
+        await _answer_operation_failed(message, "Could not get chat member", exc)
         return
 
     await message.answer(
@@ -7179,7 +7234,7 @@ async def cmd_get_chat_administrators(message: Message):
             chat_id=chat_id,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not get chat administrators: {exc}")
+        await _answer_operation_failed(message, "Could not get chat administrators", exc)
         return
 
     await message.answer(
@@ -7201,7 +7256,7 @@ async def cmd_forum_topic_icon_stickers(message: Message):
     try:
         stickers = await perform_get_forum_topic_icon_stickers(message.bot)
     except GetForumTopicIconStickersError as exc:
-        await message.answer(f"Could not get forum topic icon stickers: {exc}")
+        await _answer_operation_failed(message, "Could not get forum topic icon stickers", exc)
         return
 
     await message.answer(
@@ -7224,7 +7279,7 @@ async def cmd_get_sticker_set(message: Message):
     try:
         sticker_set = await perform_get_sticker_set(message.bot, name=name)
     except GetStickerSetError as exc:
-        await message.answer(f"Could not get the sticker set: {exc}")
+        await _answer_operation_failed(message, "Could not get the sticker set", exc)
         return
 
     await message.answer(format_sticker_set(sticker_set), parse_mode="HTML")
@@ -7247,10 +7302,14 @@ async def cmd_custom_emoji_stickers(message: Message):
             custom_emoji_ids=custom_emoji_ids,
         )
     except GetCustomEmojiStickersValidationError as exc:
-        await message.answer(str(exc))
+        await _answer_validation_failed(
+            message,
+            "Custom emoji sticker requests must include 1 to 200 non-empty ids.",
+            exc,
+        )
         return
     except GetCustomEmojiStickersError as exc:
-        await message.answer(f"Could not get custom emoji stickers: {exc}")
+        await _answer_operation_failed(message, "Could not get custom emoji stickers", exc)
         return
 
     await message.answer(format_custom_emoji_stickers(stickers), parse_mode="HTML")
@@ -7276,7 +7335,7 @@ async def cmd_upload_sticker_file(message: Message):
             sticker_path=sticker_path,
         )
     except UploadStickerFileError as exc:
-        await message.answer(f"Could not upload the sticker file: {exc}")
+        await _answer_operation_failed(message, "Could not upload the sticker file", exc)
         return
 
     await message.answer(
@@ -7314,7 +7373,7 @@ async def cmd_create_new_sticker_set(message: Message):
             emoji_list=emoji_list,
         )
     except CreateNewStickerSetError as exc:
-        await message.answer(f"Could not create the sticker set: {exc}")
+        await _answer_operation_failed(message, "Could not create the sticker set", exc)
         return
 
     await message.answer(
@@ -7353,7 +7412,7 @@ async def cmd_add_sticker_to_set(message: Message):
             emoji_list=emoji_list,
         )
     except AddStickerToSetError as exc:
-        await message.answer(f"Could not add the sticker to the set: {exc}")
+        await _answer_operation_failed(message, "Could not add the sticker to the set", exc)
         return
 
     await message.answer(
@@ -7391,7 +7450,7 @@ async def cmd_replace_sticker_in_set(message: Message):
             emoji_list=emoji_list,
         )
     except ReplaceStickerInSetError as exc:
-        await message.answer(f"Could not replace the sticker in the set: {exc}")
+        await _answer_operation_failed(message, "Could not replace the sticker in the set", exc)
         return
 
     await message.answer(
@@ -7426,7 +7485,7 @@ async def cmd_set_sticker_position_in_set(message: Message):
             position=position,
         )
     except SetStickerPositionInSetError as exc:
-        await message.answer(f"Could not set the sticker position: {exc}")
+        await _answer_operation_failed(message, "Could not set the sticker position", exc)
         return
 
     await message.answer(
@@ -7457,7 +7516,7 @@ async def cmd_set_sticker_emoji_list(message: Message):
             emoji_list=emoji_list,
         )
     except SetStickerEmojiListError as exc:
-        await message.answer(f"Could not set the sticker emoji list: {exc}")
+        await _answer_operation_failed(message, "Could not set the sticker emoji list", exc)
         return
 
     await message.answer(
@@ -7488,7 +7547,7 @@ async def cmd_set_sticker_mask_position(message: Message):
             mask_position=mask_position,
         )
     except SetStickerMaskPositionError as exc:
-        await message.answer(f"Could not set the sticker mask position: {exc}")
+        await _answer_operation_failed(message, "Could not set the sticker mask position", exc)
         return
 
     await message.answer(
@@ -7519,7 +7578,7 @@ async def cmd_set_sticker_keywords(message: Message):
             keywords=keywords,
         )
     except SetStickerKeywordsError as exc:
-        await message.answer(f"Could not set the sticker keywords: {exc}")
+        await _answer_operation_failed(message, "Could not set the sticker keywords", exc)
         return
 
     await message.answer(
@@ -7550,7 +7609,7 @@ async def cmd_set_sticker_set_title(message: Message):
             title=title,
         )
     except SetStickerSetTitleError as exc:
-        await message.answer(f"Could not set the sticker set title: {exc}")
+        await _answer_operation_failed(message, "Could not set the sticker set title", exc)
         return
 
     await message.answer(
@@ -7583,7 +7642,7 @@ async def cmd_set_sticker_set_thumbnail(message: Message):
             thumbnail=thumbnail,
         )
     except SetStickerSetThumbnailError as exc:
-        await message.answer(f"Could not set the sticker set thumbnail: {exc}")
+        await _answer_operation_failed(message, "Could not set the sticker set thumbnail", exc)
         return
 
     await message.answer(
@@ -7619,8 +7678,10 @@ async def cmd_set_custom_emoji_sticker_set_thumbnail(message: Message):
             custom_emoji_id=custom_emoji_id,
         )
     except SetCustomEmojiStickerSetThumbnailError as exc:
-        await message.answer(
-            f"Could not set the custom emoji sticker set thumbnail: {exc}"
+        await _answer_operation_failed(
+            message,
+            "Could not set the custom emoji sticker set thumbnail",
+            exc,
         )
         return
 
@@ -7647,7 +7708,7 @@ async def cmd_delete_sticker_from_set(message: Message):
     try:
         await perform_delete_sticker_from_set(message.bot, sticker=sticker)
     except DeleteStickerFromSetError as exc:
-        await message.answer(f"Could not delete the sticker from its set: {exc}")
+        await _answer_operation_failed(message, "Could not delete the sticker from its set", exc)
         return
 
     await message.answer(
@@ -7670,7 +7731,7 @@ async def cmd_delete_sticker_set(message: Message):
     try:
         await perform_delete_sticker_set(message.bot, name=name)
     except DeleteStickerSetError as exc:
-        await message.answer(f"Could not delete the sticker set: {exc}")
+        await _answer_operation_failed(message, "Could not delete the sticker set", exc)
         return
 
     await message.answer(
@@ -7701,7 +7762,7 @@ async def cmd_edit_forum_topic(message: Message):
             icon_custom_emoji_id=icon_custom_emoji_id,
         )
     except EditForumTopicError as exc:
-        await message.answer(f"Could not edit forum topic: {exc}")
+        await _answer_operation_failed(message, "Could not edit forum topic", exc)
         return
 
     await message.answer(
@@ -7735,7 +7796,7 @@ async def cmd_edit_general_forum_topic(message: Message):
             name=name,
         )
     except EditGeneralForumTopicError as exc:
-        await message.answer(f"Could not edit General forum topic: {exc}")
+        await _answer_operation_failed(message, "Could not edit General forum topic", exc)
         return
 
     await message.answer(
@@ -7769,7 +7830,7 @@ async def cmd_create_forum_topic(message: Message):
             icon_custom_emoji_id=icon_custom_emoji_id,
         )
     except CreateForumTopicError as exc:
-        await message.answer(f"Could not create forum topic: {exc}")
+        await _answer_operation_failed(message, "Could not create forum topic", exc)
         return
 
     await message.answer(
@@ -7804,7 +7865,7 @@ async def cmd_close_forum_topic(message: Message):
             message_thread_id=message_thread_id,
         )
     except CloseForumTopicError as exc:
-        await message.answer(f"Could not close forum topic: {exc}")
+        await _answer_operation_failed(message, "Could not close forum topic", exc)
         return
 
     await message.answer(
@@ -7833,7 +7894,7 @@ async def cmd_close_general_forum_topic(message: Message):
             chat_id=chat_id,
         )
     except CloseGeneralForumTopicError as exc:
-        await message.answer(f"Could not close General forum topic: {exc}")
+        await _answer_operation_failed(message, "Could not close General forum topic", exc)
         return
 
     await message.answer(
@@ -7862,7 +7923,7 @@ async def cmd_reopen_forum_topic(message: Message):
             message_thread_id=message_thread_id,
         )
     except ReopenForumTopicError as exc:
-        await message.answer(f"Could not reopen forum topic: {exc}")
+        await _answer_operation_failed(message, "Could not reopen forum topic", exc)
         return
 
     await message.answer(
@@ -7891,7 +7952,7 @@ async def cmd_reopen_general_forum_topic(message: Message):
             chat_id=chat_id,
         )
     except ReopenGeneralForumTopicError as exc:
-        await message.answer(f"Could not reopen General forum topic: {exc}")
+        await _answer_operation_failed(message, "Could not reopen General forum topic", exc)
         return
 
     await message.answer(
@@ -7917,7 +7978,7 @@ async def cmd_hide_general_forum_topic(message: Message):
             chat_id=chat_id,
         )
     except HideGeneralForumTopicError as exc:
-        await message.answer(f"Could not hide General forum topic: {exc}")
+        await _answer_operation_failed(message, "Could not hide General forum topic", exc)
         return
 
     await message.answer(
@@ -7943,7 +8004,7 @@ async def cmd_unhide_general_forum_topic(message: Message):
             chat_id=chat_id,
         )
     except UnhideGeneralForumTopicError as exc:
-        await message.answer(f"Could not unhide General forum topic: {exc}")
+        await _answer_operation_failed(message, "Could not unhide General forum topic", exc)
         return
 
     await message.answer(
@@ -7972,7 +8033,7 @@ async def cmd_delete_forum_topic(message: Message):
             message_thread_id=message_thread_id,
         )
     except DeleteForumTopicError as exc:
-        await message.answer(f"Could not delete forum topic: {exc}")
+        await _answer_operation_failed(message, "Could not delete forum topic", exc)
         return
 
     await message.answer(
@@ -8004,7 +8065,7 @@ async def cmd_unpin_all_forum_topic_messages(message: Message):
             message_thread_id=message_thread_id,
         )
     except UnpinAllForumTopicMessagesError as exc:
-        await message.answer(f"Could not unpin all forum topic messages: {exc}")
+        await _answer_operation_failed(message, "Could not unpin all forum topic messages", exc)
         return
 
     await message.answer(
@@ -8036,8 +8097,10 @@ async def cmd_unpin_all_general_forum_topic_messages(message: Message):
             chat_id=chat_id,
         )
     except UnpinAllGeneralForumTopicMessagesError as exc:
-        await message.answer(
-            f"Could not unpin all General forum topic messages: {exc}"
+        await _answer_operation_failed(
+            message,
+            "Could not unpin all General forum topic messages",
+            exc,
         )
         return
 
@@ -8070,7 +8133,7 @@ async def cmd_get_user_personal_chat_messages(message: Message):
             limit=limit,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not get user personal chat messages: {exc}")
+        await _answer_operation_failed(message, "Could not get user personal chat messages", exc)
         return
 
     await message.answer(
@@ -8106,7 +8169,7 @@ async def cmd_get_user_chat_boosts(message: Message):
             user_id=user_id,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not get user chat boosts: {exc}")
+        await _answer_operation_failed(message, "Could not get user chat boosts", exc)
         return
 
     await message.answer(
@@ -8138,7 +8201,7 @@ async def cmd_leave_chat(message: Message):
     try:
         await perform_leave_chat(message.bot, chat_id=chat_id)
     except TelegramAPIError as exc:
-        await message.answer(f"Could not leave the chat: {exc}")
+        await _answer_operation_failed(message, "Could not leave the chat", exc)
         return
 
     await message.answer(
@@ -8166,7 +8229,7 @@ async def cmd_approve_chat_join_request(message: Message):
             user_id=user_id,
         )
     except (TelegramAPIError, ApproveChatJoinRequestError) as exc:
-        await message.answer(f"Could not approve the chat join request: {exc}")
+        await _answer_operation_failed(message, "Could not approve the chat join request", exc)
         return
 
     await message.answer(
@@ -8194,7 +8257,7 @@ async def cmd_decline_chat_join_request(message: Message):
             user_id=user_id,
         )
     except (TelegramAPIError, DeclineChatJoinRequestError) as exc:
-        await message.answer(f"Could not decline the chat join request: {exc}")
+        await _answer_operation_failed(message, "Could not decline the chat join request", exc)
         return
 
     await message.answer(
@@ -8222,7 +8285,7 @@ async def cmd_create_chat_invite_link(message: Message):
             **options,
         )
     except (TelegramAPIError, CreateChatInviteLinkError) as exc:
-        await message.answer(f"Could not create the chat invite link: {exc}")
+        await _answer_operation_failed(message, "Could not create the chat invite link", exc)
         return
 
     await message.answer(
@@ -8251,7 +8314,7 @@ async def cmd_edit_chat_invite_link(message: Message):
             **options,
         )
     except (TelegramAPIError, EditChatInviteLinkError) as exc:
-        await message.answer(f"Could not edit the chat invite link: {exc}")
+        await _answer_operation_failed(message, "Could not edit the chat invite link", exc)
         return
 
     await message.answer(
@@ -8279,7 +8342,7 @@ async def cmd_revoke_chat_invite_link(message: Message):
             invite_link=invite_link,
         )
     except (TelegramAPIError, RevokeChatInviteLinkError) as exc:
-        await message.answer(f"Could not revoke the chat invite link: {exc}")
+        await _answer_operation_failed(message, "Could not revoke the chat invite link", exc)
         return
 
     await message.answer(
@@ -8311,8 +8374,10 @@ async def cmd_create_chat_subscription_invite_link(message: Message):
             **options,
         )
     except (TelegramAPIError, CreateChatSubscriptionInviteLinkError) as exc:
-        await message.answer(
-            f"Could not create the chat subscription invite link: {exc}"
+        await _answer_operation_failed(
+            message,
+            "Could not create the chat subscription invite link",
+            exc,
         )
         return
 
@@ -8348,7 +8413,11 @@ async def cmd_edit_chat_subscription_invite_link(message: Message):
             name=name,
         )
     except (TelegramAPIError, EditChatSubscriptionInviteLinkError) as exc:
-        await message.answer(f"Could not edit the chat subscription invite link: {exc}")
+        await _answer_operation_failed(
+            message,
+            "Could not edit the chat subscription invite link",
+            exc,
+        )
         return
 
     await message.answer(
@@ -8381,7 +8450,7 @@ async def cmd_set_chat_administrator_custom_title(message: Message):
             custom_title=custom_title,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set the administrator custom title: {exc}")
+        await _answer_operation_failed(message, "Could not set the administrator custom title", exc)
         return
 
     await message.answer(
@@ -8415,7 +8484,7 @@ async def cmd_set_chat_member_tag(message: Message):
             tag=tag,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set the member tag: {exc}")
+        await _answer_operation_failed(message, "Could not set the member tag", exc)
         return
 
     await message.answer(
@@ -8464,7 +8533,7 @@ async def cmd_react(message: Message):
             is_big=is_big if is_big else None,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set the reaction: {exc}")
+        await _answer_operation_failed(message, "Could not set the reaction", exc)
         return
 
     if emoji is not None:
@@ -8494,7 +8563,7 @@ async def cmd_delete_message_reaction(message: Message):
             user_id=user_id,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not delete the message reaction: {exc}")
+        await _answer_operation_failed(message, "Could not delete the message reaction", exc)
         return
 
     await message.answer(
@@ -8527,7 +8596,7 @@ async def cmd_delete_all_message_reactions(message: Message):
             message_id=message_id,
         )
     except DeleteAllMessageReactionsError as exc:
-        await message.answer(f"Could not delete all message reactions: {exc}")
+        await _answer_operation_failed(message, "Could not delete all message reactions", exc)
         return
 
     await message.answer(
@@ -8559,7 +8628,7 @@ async def cmd_set_emoji_status(message: Message):
             emoji_status_custom_emoji_id=custom_emoji_id,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not set the emoji status: {exc}")
+        await _answer_operation_failed(message, "Could not set the emoji status", exc)
         return
 
     if custom_emoji_id:
@@ -8613,7 +8682,7 @@ async def cmd_media_group(message: Message):
             media=media,
         )
     except TelegramAPIError as exc:
-        await message.answer(f"Could not send the media group: {exc}")
+        await _answer_operation_failed(message, "Could not send the media group", exc)
         return
 
     await message.answer(

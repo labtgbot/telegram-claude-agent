@@ -175,7 +175,8 @@ async def test_cmd_pin_chat_message_reports_telegram_errors(monkeypatch):
 
     args, _ = message.answer.await_args
     assert "Could not pin the chat message" in args[0]
-    assert "CHAT_ADMIN_REQUIRED" in args[0]
+    assert "CHAT_ADMIN_REQUIRED" not in args[0]
+    assert "Please try again later" in args[0]
 
 
 def test_parse_pin_chat_message_args_required_only():

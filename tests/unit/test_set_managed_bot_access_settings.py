@@ -361,6 +361,5 @@ async def test_cmd_set_managed_bot_access_settings_reports_set_errors(
     await commands.cmd_set_managed_bot_access_settings(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not set the managed bot access settings: "
-        "Forbidden: managed bot access is unavailable"
+        "Could not set the managed bot access settings. Please try again later."
     )

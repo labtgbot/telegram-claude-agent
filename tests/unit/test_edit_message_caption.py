@@ -277,4 +277,5 @@ async def test_cmd_edit_message_caption_reports_service_errors(monkeypatch):
 
     args, _ = message.answer.await_args
     assert "Could not edit the message caption" in args[0]
-    assert "can't be edited" in args[0]
+    assert "can't be edited" not in args[0]
+    assert "Please try again later" in args[0]

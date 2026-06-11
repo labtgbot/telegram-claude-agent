@@ -258,6 +258,5 @@ async def test_cmd_business_star_balance_reports_errors(monkeypatch):
     await commands.cmd_business_star_balance(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not fetch the business account Star balance: "
-        "Forbidden: bot lacks can_view_gifts_and_stars right"
+        "Could not fetch the business account Star balance. Please try again later."
     )

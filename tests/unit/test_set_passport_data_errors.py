@@ -248,5 +248,5 @@ async def test_cmd_set_passport_data_errors_reports_service_error(monkeypatch):
     await commands.cmd_set_passport_data_errors(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not set Passport data errors: telegram rejected"
+        "Could not set Passport data errors. Please try again later."
     )

@@ -8,6 +8,7 @@ from bot.services.answer_callback_query import perform_answer_callback_query
 from bot.services.close import perform_close
 from bot.services.log_out import perform_log_out
 from bot.utils.storage import storage
+from bot.utils.user_errors import format_user_error, log_user_error_context
 
 router = Router()
 logger = structlog.get_logger()
@@ -39,6 +40,22 @@ async def _ack(query: CallbackQuery, text: str | None = None, *, show_alert: boo
 def _is_admin_action_allowed(chat_id: int) -> bool:
     admin_chat_ids = settings.admin_chat_ids
     return bool(admin_chat_ids and chat_id in admin_chat_ids)
+
+
+async def _answer_operation_failed(
+    query: CallbackQuery, summary: str, exc: Exception
+) -> None:
+    log_user_error_context(
+        logger,
+        "callback_handler_failed",
+        exc,
+        callback_query_id=query.id,
+        data=query.data,
+        chat_id=getattr(query.message.chat, "id", None) if query.message else None,
+        operation=summary,
+    )
+    if query.message:
+        await query.message.answer(format_user_error(summary))
 
 
 @router.callback_query(F.data == CALLBACK_SETTINGS_REFRESH)
@@ -84,7 +101,7 @@ async def handle_logout_confirm_callback(query: CallbackQuery):
         await perform_log_out(query.bot)
     except TelegramAPIError as exc:
         await _ack(query, "Could not log out from the cloud Bot API.", show_alert=True)
-        await query.message.answer(f"Could not log out from the cloud Bot API: {exc}")
+        await _answer_operation_failed(query, "Could not log out from the cloud Bot API", exc)
         return
 
     await _ack(query, "Logged out.")
@@ -105,7 +122,7 @@ async def handle_close_confirm_callback(query: CallbackQuery):
         await perform_close(query.bot)
     except TelegramAPIError as exc:
         await _ack(query, "Could not close the bot instance.", show_alert=True)
-        await query.message.answer(f"Could not close the bot instance: {exc}")
+        await _answer_operation_failed(query, "Could not close the bot instance", exc)
         return
 
     await _ack(query, "Bot instance closed.")

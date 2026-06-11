@@ -167,7 +167,8 @@ async def test_cmd_set_my_name_reports_telegram_errors(monkeypatch):
 
     args, _ = message.answer.await_args
     assert "Could not set bot name" in args[0]
-    assert "BOT_NAME_INVALID" in args[0]
+    assert "BOT_NAME_INVALID" not in args[0]
+    assert "Please try again later" in args[0]
 
 
 def test_parse_set_my_name_args_required_only():

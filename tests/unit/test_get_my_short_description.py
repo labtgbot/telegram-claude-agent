@@ -161,7 +161,8 @@ async def test_cmd_get_my_short_description_reports_telegram_errors(monkeypatch)
 
     args, _ = message.answer.await_args
     assert "Could not get bot short description" in args[0]
-    assert "language code is invalid" in args[0]
+    assert "language code is invalid" not in args[0]
+    assert "Please try again later" in args[0]
 
 
 def test_parse_get_my_short_description_args_defaults():

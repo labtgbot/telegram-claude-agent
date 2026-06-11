@@ -290,4 +290,4 @@ async def test_cmd_edit_message_media_reports_service_errors(monkeypatch):
 
     await commands.cmd_edit_message_media(message)
 
-    message.answer.assert_awaited_once_with("Could not edit the message media: boom")
+    message.answer.assert_awaited_once_with("Could not edit the message media. Please try again later.")

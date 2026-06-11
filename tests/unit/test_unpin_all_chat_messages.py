@@ -120,7 +120,8 @@ async def test_cmd_unpin_all_chat_messages_reports_telegram_errors(monkeypatch):
 
     args, _ = message.answer.await_args
     assert "Could not unpin all chat messages" in args[0]
-    assert "CHAT_ADMIN_REQUIRED" in args[0]
+    assert "CHAT_ADMIN_REQUIRED" not in args[0]
+    assert "Please try again later" in args[0]
 
 
 def test_parse_unpin_all_chat_messages_args():

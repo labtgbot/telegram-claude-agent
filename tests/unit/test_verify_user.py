@@ -209,4 +209,4 @@ async def test_cmd_verify_user_reports_errors(monkeypatch):
 
     await commands.cmd_verify_user(message)
 
-    message.answer.assert_awaited_once_with("Could not verify user: Bad Request")
+    message.answer.assert_awaited_once_with("Could not verify user. Please try again later.")

@@ -271,5 +271,5 @@ async def test_cmd_convert_gift_stars_reports_errors(monkeypatch):
     await commands.cmd_convert_gift_stars(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not convert the gift to Stars: Bad Request"
+        "Could not convert the gift to Stars. Please try again later."
     )

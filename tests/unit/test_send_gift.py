@@ -233,4 +233,4 @@ async def test_cmd_send_gift_reports_errors(monkeypatch):
 
     await commands.cmd_send_gift(message)
 
-    message.answer.assert_awaited_once_with("Could not send gift: Bad Request")
+    message.answer.assert_awaited_once_with("Could not send gift. Please try again later.")

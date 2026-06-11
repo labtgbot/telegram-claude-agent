@@ -354,5 +354,5 @@ async def test_cmd_transfer_gift_reports_errors(monkeypatch):
     await commands.cmd_transfer_gift(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not transfer the gift: Bad Request"
+        "Could not transfer the gift. Please try again later."
     )
