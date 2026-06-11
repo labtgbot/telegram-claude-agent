@@ -130,10 +130,13 @@ The bot will start polling by default if no webhook URL is set.
 #### Using Docker
 
 ```bash
+export FREE_CLAUDE_CODE_IMAGE=registry.example.com/free-claude-code@sha256:<digest>
 docker-compose up -d
 ```
 
-See `docker-compose.yml` for a reference setup including free-claude-code.
+See `docker-compose.yml` for a reference setup including free-claude-code. Set
+`FREE_CLAUDE_CODE_IMAGE` to a versioned tag or digest from the registry you use;
+the compose file intentionally has no `latest` fallback.
 
 #### Using systemd (example)
 

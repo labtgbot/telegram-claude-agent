@@ -1,0 +1,45 @@
+# VCS
+.git
+.gitignore
+
+# Python caches and build outputs
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Local secrets and environment overrides
+.env
+.env.local
+.env.*.local
+
+# Tests, docs and local development artifacts
+tests/
+docs/
+experiments/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+
+# IDE and logs
+.vscode/
+.idea/
+*.swp
+*.swo
+*.log
+logs/
+
+# Docker local state
+.docker/
