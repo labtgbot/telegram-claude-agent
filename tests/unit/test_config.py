@@ -34,6 +34,33 @@ def test_chat_ids_not_set(monkeypatch):
     settings = Settings()
     assert settings.allowed_chat_ids == []
 
+def test_allowed_chat_ids_reject_malformed_token(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", "123, abc, -456")
+    with pytest.raises(ValueError, match="TELEGRAM_ALLOWED_CHAT_IDS.*abc"):
+        Settings()
+
+
+def test_admin_chat_ids_reject_malformed_token(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_IDS", "42, nope")
+    with pytest.raises(ValueError, match="TELEGRAM_ADMIN_CHAT_IDS.*nope"):
+        Settings()
+
+
+def test_free_claude_base_url_rejects_scheme_relative_url(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("FREE_CLAUDE_BASE_URL", "//evil")
+    with pytest.raises(ValueError, match="FREE_CLAUDE_BASE_URL.*http"):
+        Settings()
+
+
+def test_free_claude_base_url_rejects_non_http_scheme(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("FREE_CLAUDE_BASE_URL", "ftp://example.com")
+    with pytest.raises(ValueError, match="FREE_CLAUDE_BASE_URL.*http"):
+        Settings()
+
 def test_boolean_parsing(monkeypatch):
     monkeypatch.setenv("FREE_CLAUDE_BASE_URL", "http://localhost:8082")
     monkeypatch.setenv("FREE_CLAUDE_AUTH_TOKEN", "token")
