@@ -1,4 +1,5 @@
 import base64
+from copy import deepcopy
 import re
 import time
 from contextlib import aclosing, asynccontextmanager
@@ -32,6 +33,7 @@ TELEGRAM_MESSAGE_LIMIT = 4096
 # that reuse the same draft_id, so refresh the preview at most this often to show
 # steady progress without flooding the ephemeral endpoint with tiny deltas.
 DRAFT_UPDATE_INTERVAL_SECONDS = 0.5
+IMAGE_HISTORY_PLACEHOLDER = "[image omitted from history]"
 
 
 @asynccontextmanager
@@ -52,6 +54,16 @@ async def _typing_indicator(message: Message):
 
 def text_to_content_blocks(text: str) -> list:
     return [{"type": "text", "text": text}]
+
+
+def _content_blocks_for_history(content_blocks: list) -> list:
+    history_blocks = []
+    for block in content_blocks:
+        if isinstance(block, dict) and block.get("type") == "image":
+            history_blocks.append({"type": "text", "text": IMAGE_HISTORY_PLACEHOLDER})
+        else:
+            history_blocks.append(deepcopy(block))
+    return history_blocks
 
 
 def _strip_bot_mention(text: str, bot_username: str) -> str:
@@ -496,7 +508,9 @@ async def handle_chat_message(message: Message):
                 await send_final_reply(message, md_to_html(reply_text))
 
         if use_history and reply_text:
-            storage.add_message(chat.id, user_id, "user", content_blocks)
+            storage.add_message(
+                chat.id, user_id, "user", _content_blocks_for_history(content_blocks)
+            )
             storage.add_message(
                 chat.id, user_id, "assistant", [{"type": "text", "text": reply_text}]
             )
