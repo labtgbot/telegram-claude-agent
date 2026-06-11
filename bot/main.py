@@ -1,13 +1,15 @@
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
 import structlog
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import Update
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from bot.config import settings
 from bot.handlers.commands import router as commands_router
@@ -100,8 +102,21 @@ class PollingSupervisorState:
             "retry_delay_seconds": self.retry_delay_seconds,
         }
 
-app = FastAPI(title="Telegram Claude Agent")
-bot = Bot(token=settings.telegram_bot_token, parse_mode=ParseMode.HTML)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await on_startup()
+    try:
+        yield
+    finally:
+        await on_shutdown()
+
+
+app = FastAPI(title="Telegram Claude Agent", lifespan=lifespan)
+bot = Bot(
+    token=settings.telegram_bot_token,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+)
 dp = Dispatcher()
 
 # Register middlewares
@@ -173,7 +188,7 @@ async def _run_supervised_polling(
         logger.info("polling_supervisor_cancelled")
         raise
 
-@app.on_event("startup")
+
 async def on_startup():
     global polling_task
     # Ensure bot username is cached
@@ -229,7 +244,7 @@ async def on_startup():
         polling_state.mark_running()
         polling_task = asyncio.create_task(_run_supervised_polling(dp, bot))
 
-@app.on_event("shutdown")
+
 async def on_shutdown():
     global polling_task
     if polling_task:
