@@ -23,7 +23,7 @@ database.
 
 ## Tech Stack
 
-- **Bot framework**: aiogram 3.3.0 (asynchronous Telegram Bot API framework)
+- **Bot framework**: aiogram 3.28.2 (asynchronous Telegram Bot API framework)
 - **HTTP client**: httpx with streaming support
 - **Server**: FastAPI + uvicorn
 - **Config**: pydantic-settings
