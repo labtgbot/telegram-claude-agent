@@ -4,7 +4,16 @@
 **Scope:** Full review of the application logic, as requested in [#345](https://github.com/labtgbot/telegram-claude-agent/issues/345).
 **Tracking epic:** [#365](https://github.com/labtgbot/telegram-claude-agent/issues/365) · **Milestone:** *Code Audit & Hardening*
 
-This document records the methodology, scope, and findings of a full-logic audit of the bot. Every finding is filed as a standalone GitHub issue with `kind:*`, `area:*`, `priority:*`, and `stage:*` labels so the team can implement the fixes step by step. This PR adds **only documentation** — no behaviour changes — so each fix can be reviewed and shipped independently from its own issue.
+This document records the methodology, scope, findings, and completion status of a full-logic audit of the bot. Every finding was filed as a standalone GitHub issue with `kind:*`, `area:*`, `priority:*`, and `stage:*` labels so the team could implement the fixes step by step. The original audit PR added **only documentation** — no behaviour changes — so each fix could be reviewed and shipped independently from its own issue.
+
+## Completion status
+
+Verified on 2026-06-11: all standalone findings tracked by this epic are closed.
+
+- **P1:** [#347](https://github.com/labtgbot/telegram-claude-agent/issues/347), [#348](https://github.com/labtgbot/telegram-claude-agent/issues/348)
+- **P2:** [#349](https://github.com/labtgbot/telegram-claude-agent/issues/349), [#350](https://github.com/labtgbot/telegram-claude-agent/issues/350), [#351](https://github.com/labtgbot/telegram-claude-agent/issues/351), [#352](https://github.com/labtgbot/telegram-claude-agent/issues/352), [#354](https://github.com/labtgbot/telegram-claude-agent/issues/354), [#359](https://github.com/labtgbot/telegram-claude-agent/issues/359), [#360](https://github.com/labtgbot/telegram-claude-agent/issues/360)
+- **P3:** [#353](https://github.com/labtgbot/telegram-claude-agent/issues/353), [#355](https://github.com/labtgbot/telegram-claude-agent/issues/355), [#356](https://github.com/labtgbot/telegram-claude-agent/issues/356), [#357](https://github.com/labtgbot/telegram-claude-agent/issues/357), [#358](https://github.com/labtgbot/telegram-claude-agent/issues/358)
+- **P4:** [#361](https://github.com/labtgbot/telegram-claude-agent/issues/361), [#362](https://github.com/labtgbot/telegram-claude-agent/issues/362), [#363](https://github.com/labtgbot/telegram-claude-agent/issues/363), [#364](https://github.com/labtgbot/telegram-claude-agent/issues/364)
 
 ## Methodology
 
@@ -65,6 +74,6 @@ Findings reuse the repository's existing `priority:P1`–`priority:P4` labels (P
 4. **P3:** #353, #355, #356, #357, #358.
 5. **P4 cleanup:** #361, #362, #363, #364.
 
-## What this PR contains
+## What this completion update contains
 
-Only this document. The audit is intentionally non-destructive: it produces a verified backlog (issues #347–#365) rather than touching application code, so each fix lands through its own focused, testable change.
+This update records that the verified backlog has been completed through focused, testable issue-level changes (#347–#364). It does not touch application code.
