@@ -301,4 +301,4 @@ async def test_cmd_upgrade_gift_reports_errors(monkeypatch):
 
     await commands.cmd_upgrade_gift(message)
 
-    message.answer.assert_awaited_once_with("Could not upgrade the gift: Bad Request")
+    message.answer.assert_awaited_once_with("Could not upgrade the gift. Please try again later.")

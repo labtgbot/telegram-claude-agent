@@ -207,5 +207,5 @@ async def test_cmd_available_gifts_reports_errors(monkeypatch):
     await commands.cmd_available_gifts(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not fetch available gifts: Too Many Requests"
+        "Could not fetch available gifts. Please try again later."
     )

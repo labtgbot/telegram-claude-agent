@@ -154,4 +154,5 @@ async def test_cmd_delete_message_reaction_reports_telegram_errors(monkeypatch):
 
     args, _ = message.answer.await_args
     assert "Could not delete the message reaction" in args[0]
-    assert "reaction not found" in args[0]
+    assert "reaction not found" not in args[0]
+    assert "Please try again later" in args[0]

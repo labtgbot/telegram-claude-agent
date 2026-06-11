@@ -156,7 +156,8 @@ async def test_cmd_set_chat_menu_button_reports_telegram_errors(monkeypatch):
 
     args, _ = message.answer.await_args
     assert "Could not set the chat menu button" in args[0]
-    assert "chat not found" in args[0]
+    assert "chat not found" not in args[0]
+    assert "Please try again later" in args[0]
 
 
 def test_parse_set_chat_menu_button_args_default_button():

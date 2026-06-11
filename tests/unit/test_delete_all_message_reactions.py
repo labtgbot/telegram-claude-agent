@@ -241,4 +241,5 @@ async def test_cmd_delete_all_message_reactions_reports_telegram_errors(monkeypa
 
     args, _ = message.answer.await_args
     assert "Could not delete all message reactions" in args[0]
-    assert "message not found" in args[0]
+    assert "message not found" not in args[0]
+    assert "Please try again later" in args[0]

@@ -262,5 +262,5 @@ async def test_cmd_star_transactions_reports_errors(monkeypatch):
     await commands.cmd_star_transactions(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not fetch the bot Star transactions: Too Many Requests"
+        "Could not fetch the bot Star transactions. Please try again later."
     )

@@ -120,7 +120,8 @@ async def test_cmd_delete_chat_sticker_set_reports_telegram_errors(monkeypatch):
 
     args, _ = message.answer.await_args
     assert "Could not delete the chat sticker set" in args[0]
-    assert "CHAT_ADMIN_REQUIRED" in args[0]
+    assert "CHAT_ADMIN_REQUIRED" not in args[0]
+    assert "Please try again later" in args[0]
 
 
 def test_parse_delete_chat_sticker_set_args_required_only():

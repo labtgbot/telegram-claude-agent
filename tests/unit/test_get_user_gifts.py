@@ -285,5 +285,5 @@ async def test_cmd_user_gifts_reports_errors(monkeypatch):
     await commands.cmd_user_gifts(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not fetch the user gifts: Forbidden: user unavailable"
+        "Could not fetch the user gifts. Please try again later."
     )

@@ -213,4 +213,4 @@ async def test_cmd_verify_chat_reports_errors(monkeypatch):
 
     await commands.cmd_verify_chat(message)
 
-    message.answer.assert_awaited_once_with("Could not verify chat: Bad Request")
+    message.answer.assert_awaited_once_with("Could not verify chat. Please try again later.")

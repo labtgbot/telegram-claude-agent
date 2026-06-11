@@ -315,5 +315,5 @@ async def test_cmd_edit_user_star_subscription_reports_service_error(monkeypatch
     await commands.cmd_edit_user_star_subscription(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not edit the Stars subscription: Bad Request"
+        "Could not edit the Stars subscription. Please try again later."
     )

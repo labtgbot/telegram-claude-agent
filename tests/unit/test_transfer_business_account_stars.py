@@ -283,5 +283,5 @@ async def test_cmd_transfer_business_stars_reports_service_error(monkeypatch):
     await commands.cmd_transfer_business_stars(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not transfer the business account Stars: Forbidden"
+        "Could not transfer the business account Stars. Please try again later."
     )

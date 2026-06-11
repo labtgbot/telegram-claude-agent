@@ -208,4 +208,4 @@ async def test_cmd_delete_story_reports_service_error(monkeypatch):
 
     await commands.cmd_delete_story(message)
 
-    message.answer.assert_awaited_once_with("Could not delete the story: story not found")
+    message.answer.assert_awaited_once_with("Could not delete the story. Please try again later.")

@@ -210,5 +210,5 @@ async def test_cmd_my_star_balance_reports_errors(monkeypatch):
     await commands.cmd_my_star_balance(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not fetch the bot Star balance: Too Many Requests"
+        "Could not fetch the bot Star balance. Please try again later."
     )

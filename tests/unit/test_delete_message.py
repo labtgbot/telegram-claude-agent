@@ -160,4 +160,5 @@ async def test_cmd_delete_message_reports_telegram_errors(monkeypatch):
 
     args, _ = message.answer.await_args
     assert "Could not delete the message" in args[0]
-    assert "message can't be deleted" in args[0]
+    assert "message can't be deleted" not in args[0]
+    assert "Please try again later" in args[0]

@@ -140,4 +140,5 @@ async def test_cmd_set_chat_photo_reports_telegram_errors(monkeypatch):
 
     args, _ = message.answer.await_args
     assert "Could not set the chat photo" in args[0]
-    assert "CHAT_ADMIN_REQUIRED" in args[0]
+    assert "CHAT_ADMIN_REQUIRED" not in args[0]
+    assert "Please try again later" in args[0]

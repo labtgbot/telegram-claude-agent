@@ -291,6 +291,5 @@ async def test_cmd_managed_bot_access_settings_reports_fetch_errors(monkeypatch)
     await commands.cmd_managed_bot_access_settings(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not fetch the managed bot access settings: "
-        "Forbidden: managed bot access is unavailable"
+        "Could not fetch the managed bot access settings. Please try again later."
     )

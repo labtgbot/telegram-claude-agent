@@ -213,5 +213,5 @@ async def test_cmd_remove_chat_verification_reports_errors(monkeypatch):
     await commands.cmd_remove_chat_verification(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not remove chat verification: Bad Request"
+        "Could not remove chat verification. Please try again later."
     )

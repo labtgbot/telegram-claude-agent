@@ -203,5 +203,5 @@ async def test_cmd_remove_user_verification_reports_errors(monkeypatch):
     await commands.cmd_remove_user_verification(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not remove user verification: Bad Request"
+        "Could not remove user verification. Please try again later."
     )

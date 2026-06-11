@@ -185,7 +185,8 @@ async def test_cmd_set_my_description_reports_telegram_errors(monkeypatch):
 
     args, _ = message.answer.await_args
     assert "Could not set bot description" in args[0]
-    assert "DESCRIPTION_INVALID" in args[0]
+    assert "DESCRIPTION_INVALID" not in args[0]
+    assert "Please try again later" in args[0]
 
 
 def test_parse_set_my_description_args_required_only():

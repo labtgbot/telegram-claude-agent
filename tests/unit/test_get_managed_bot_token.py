@@ -226,6 +226,5 @@ async def test_cmd_managed_bot_token_reports_fetch_errors(monkeypatch):
     await commands.cmd_managed_bot_token(message)
 
     message.answer.assert_awaited_once_with(
-        "Could not fetch the managed bot token: "
-        "Forbidden: managed bot token is unavailable"
+        "Could not fetch the managed bot token. Please try again later."
     )

@@ -256,7 +256,9 @@ async def test_cmd_custom_emoji_stickers_reports_validation_errors(monkeypatch):
 
     await commands.cmd_custom_emoji_stickers(message)
 
-    message.answer.assert_awaited_once_with("At most 200 ids")
+    message.answer.assert_awaited_once_with(
+        "Custom emoji sticker requests must include 1 to 200 non-empty ids."
+    )
 
 
 async def test_cmd_custom_emoji_stickers_reports_telegram_errors(monkeypatch):
