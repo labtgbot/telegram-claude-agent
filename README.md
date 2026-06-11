@@ -16,6 +16,11 @@ A professional Telegram bot agent that integrates with [free-claude-code](https:
 - Optional Redis caching (not implemented, but architecture ready)
 - Easy deployment with Docker and docker-compose
 
+Conversation history, user settings, and rate-limit windows are kept in memory.
+Idle storage entries are evicted automatically after 24 hours by default, but
+durable persistence still requires an external backend such as Redis or a
+database.
+
 ## Tech Stack
 
 - **Bot framework**: aiogram 3.3.0 (asynchronous Telegram Bot API framework)
@@ -4093,7 +4098,7 @@ telegram-claude-agent/
 │   │   ├── send_message_draft.py # Telegram sendMessageDraft raw Bot API helper
 │   │   └── send_media_group.py # Telegram sendMediaGroup outbound helper
 │   └── utils/
-│       ├── storage.py          # In-memory conversation storage
+│       ├── storage.py          # In-memory conversation storage with idle eviction
 │       └── media.py            # Transcription, document extraction
 ├── tests/
 │   ├── unit/

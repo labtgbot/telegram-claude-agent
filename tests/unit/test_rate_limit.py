@@ -1,7 +1,7 @@
-import time
 from unittest.mock import AsyncMock, MagicMock
-from bot.middlewares.rate_limit import RateLimitMiddleware
+
 from aiogram import types
+from bot.middlewares.rate_limit import RateLimitMiddleware
 
 
 async def _make_message(user_id: int) -> types.Message:
@@ -48,3 +48,28 @@ async def test_resets_after_window():
     result = await middleware(handler, msg, {})
     assert result == "ok"
     assert handler.call_count == 2
+
+
+async def test_cleanup_expired_removes_idle_user_entries():
+    now = 1_000.0
+
+    def clock():
+        return now
+
+    middleware = RateLimitMiddleware(
+        requests_per_minute=5,
+        window_seconds=60,
+        cleanup_interval_seconds=999,
+        clock=clock,
+    )
+    handler = AsyncMock(return_value="ok")
+    msg = await _make_message(4)
+
+    await middleware(handler, msg, {})
+    assert 4 in middleware.user_timestamps
+
+    now += 61
+    removed = middleware.cleanup_expired()
+
+    assert removed == 1
+    assert middleware.user_timestamps == {}

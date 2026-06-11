@@ -134,7 +134,7 @@ docker-compose up -d
 
 ## Known Issues & Gotchas
 
-1. **In-memory storage**: Conversation history is lost on restart. For persistence, Redis or database integration is needed.
+1. **In-memory storage**: Conversation history and user settings are lost on restart. Idle entries are evicted from memory after 24 hours by default, but Redis or database integration is still needed for durable persistence and multi-replica deployments.
 2. **Voice transcription**: Requires `openai-whisper` (optional) and may need ffmpeg. Can be slow for longer audio.
 3. **Webhook mode**: Requires a publicly accessible HTTPS URL. Use a reverse proxy (nginx, Traefik) in production.
 4. **free-claude-code**: Ensure the proxy instance is running before starting the bot. The default port is 8082.

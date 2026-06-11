@@ -21,6 +21,7 @@ def test_clear_history():
     storage.add_message(chat_id, user_id, "user", "Test")
     storage.clear_history(chat_id, user_id)
     assert len(storage.get_history(chat_id, user_id)) == 0
+    assert (chat_id, user_id) not in storage.histories
 
 
 def test_max_history_trims_oldest():
@@ -55,3 +56,32 @@ def test_user_settings():
     storage.set_setting(user_id, "model", "claude-3-opus")
     assert storage.get_setting(user_id, "model") == "claude-3-opus"
     assert storage.get_setting(user_id, "missing", default="default") == "default"
+
+
+def test_get_history_does_not_create_empty_entries():
+    storage = MemoryStorage()
+
+    assert storage.get_history(999, 42) == []
+    assert storage.histories == {}
+
+
+def test_cleanup_expired_removes_idle_history_and_settings():
+    now = 1_000.0
+
+    def clock():
+        return now
+
+    storage = MemoryStorage(ttl_seconds=10, cleanup_interval_seconds=999, clock=clock)
+    storage.add_message(100, 1, "user", "old")
+    storage.set_setting(1, "model", "claude-3-opus")
+    storage.add_message(200, 2, "user", "old too")
+
+    assert len(storage.histories) == 2
+    assert len(storage.user_settings) == 1
+
+    now += 11
+    removed = storage.cleanup_expired()
+
+    assert removed == 3
+    assert storage.histories == {}
+    assert storage.user_settings == {}

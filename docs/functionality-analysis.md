@@ -3499,7 +3499,8 @@ logging. Фактическая детализация логов зависит
 
 Плюсы текущего решения: простота и отсутствие внешней инфраструктуры.
 Минусы: нет persistence, нет горизонтального масштабирования с общей историей,
-нет TTL и нет защиты от роста `user_settings`.
+idle eviction через 24 часа работает только в памяти процесса и не заменяет
+durable storage.
 
 ## Деплой
 
@@ -3643,8 +3644,8 @@ python -m pytest -v
    сообщения.
 7. Голосовые сообщения зависят от optional whisper/ffmpeg, но runtime не
    сообщает администратору о неполной установке до первого voice request.
-8. In-memory storage подходит для MVP, но не для restart-safe или multi-replica
-   deployment.
+8. In-memory storage с idle eviction подходит для MVP, но не для restart-safe
+   или multi-replica deployment.
 9. Нет тестов обработчиков команд `/model`, `/settings`, `/clear` с моками
    Telegram message objects.
 10. Нет теста webhook secret validation и `/health`.
