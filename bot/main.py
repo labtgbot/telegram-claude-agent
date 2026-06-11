@@ -1,4 +1,7 @@
 import asyncio
+from dataclasses import dataclass
+from typing import Awaitable, Callable
+
 import structlog
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -37,6 +40,65 @@ structlog.configure(
         structlog.processors.JSONRenderer(),
     ]
 )
+logger = structlog.get_logger()
+
+POLLING_RETRY_BASE_DELAY_SECONDS = 1
+POLLING_RETRY_MAX_DELAY_SECONDS = 60
+SleepCallable = Callable[[float], Awaitable[None]]
+
+
+@dataclass
+class PollingSupervisorState:
+    mode: str = "polling"
+    status: str = "not_started"
+    consecutive_failures: int = 0
+    last_error: str | None = None
+    retry_delay_seconds: float | None = None
+
+    @property
+    def ready(self) -> bool:
+        if self.mode == "webhook":
+            return True
+        return self.status == "running"
+
+    def reset(self) -> None:
+        self.mode = "polling"
+        self.status = "not_started"
+        self.consecutive_failures = 0
+        self.last_error = None
+        self.retry_delay_seconds = None
+
+    def mark_webhook(self) -> None:
+        self.mode = "webhook"
+        self.status = "disabled"
+        self.consecutive_failures = 0
+        self.last_error = None
+        self.retry_delay_seconds = None
+
+    def mark_running(self) -> None:
+        self.mode = "polling"
+        self.status = "running"
+        self.retry_delay_seconds = None
+
+    def mark_degraded(self, error: str, *, retry_delay_seconds: float) -> None:
+        self.mode = "polling"
+        self.status = "degraded"
+        self.consecutive_failures += 1
+        self.last_error = error
+        self.retry_delay_seconds = retry_delay_seconds
+
+    def mark_stopped(self) -> None:
+        self.status = "stopped"
+        self.retry_delay_seconds = None
+
+    def snapshot(self) -> dict:
+        return {
+            "mode": self.mode,
+            "status": self.status,
+            "consecutive_failures": self.consecutive_failures,
+            "last_error": self.last_error,
+            "retry_delay_seconds": self.retry_delay_seconds,
+        }
 
 app = FastAPI(title="Telegram Claude Agent")
 bot = Bot(token=settings.telegram_bot_token, parse_mode=ParseMode.HTML)
@@ -53,12 +115,69 @@ dp.include_router(chat_router)
 dp.include_router(inline_router)
 
 polling_task = None
+polling_state = PollingSupervisorState()
+
+
+def _exception_message(exc: Exception) -> str:
+    return str(exc) or exc.__class__.__name__
+
+
+async def _ensure_bot_identity_cached(telegram_bot: Bot):
+    try:
+        return await telegram_bot.get_me()
+    except Exception as exc:
+        logger.error(
+            "telegram_bot_startup_validation_failed",
+            error=_exception_message(exc),
+        )
+        raise RuntimeError("Failed to validate Telegram bot token during startup") from exc
+
+
+async def _run_supervised_polling(
+    dispatcher: Dispatcher,
+    telegram_bot: Bot,
+    *,
+    sleep: SleepCallable = asyncio.sleep,
+    base_delay_seconds: float = POLLING_RETRY_BASE_DELAY_SECONDS,
+    max_delay_seconds: float = POLLING_RETRY_MAX_DELAY_SECONDS,
+) -> None:
+    retry_delay_seconds = base_delay_seconds
+    try:
+        while True:
+            polling_state.mark_running()
+            try:
+                logger.info("polling_started")
+                await dispatcher.start_polling(telegram_bot, skip_updates=True)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                error = _exception_message(exc)
+                polling_state.mark_degraded(error, retry_delay_seconds=retry_delay_seconds)
+                logger.exception(
+                    "polling_failed",
+                    error=error,
+                    retry_delay_seconds=retry_delay_seconds,
+                )
+            else:
+                error = "start_polling returned unexpectedly"
+                polling_state.mark_degraded(error, retry_delay_seconds=retry_delay_seconds)
+                logger.error(
+                    "polling_stopped_unexpectedly",
+                    retry_delay_seconds=retry_delay_seconds,
+                )
+
+            await sleep(retry_delay_seconds)
+            retry_delay_seconds = min(retry_delay_seconds * 2, max_delay_seconds)
+    except asyncio.CancelledError:
+        polling_state.mark_stopped()
+        logger.info("polling_supervisor_cancelled")
+        raise
 
 @app.on_event("startup")
 async def on_startup():
     global polling_task
     # Ensure bot username is cached
-    await bot.get_me()
+    await _ensure_bot_identity_cached(bot)
     await sync_configured_bot_name(
         bot,
         name=settings.telegram_bot_name,
@@ -105,9 +224,10 @@ async def on_startup():
             url=settings.telegram_webhook_url,
             secret_token=settings.api_secret_token,
         )
+        polling_state.mark_webhook()
     else:
-        # Start polling in background task
-        polling_task = asyncio.create_task(dp.start_polling(bot, skip_updates=True))
+        polling_state.mark_running()
+        polling_task = asyncio.create_task(_run_supervised_polling(dp, bot))
 
 @app.on_event("shutdown")
 async def on_shutdown():
@@ -118,6 +238,7 @@ async def on_shutdown():
             await polling_task
         except asyncio.CancelledError:
             pass
+        polling_task = None
     await bot.session.close()
 
 @app.post("/webhook")
@@ -140,4 +261,11 @@ async def telegram_webhook(request: Request):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    ready = polling_state.ready
+    return JSONResponse(
+        {
+            "status": "ok" if ready else "degraded",
+            "polling": polling_state.snapshot(),
+        },
+        status_code=200 if ready else 503,
+    )
