@@ -72,6 +72,7 @@ TELEGRAM_ALLOWED_CHAT_IDS=  # optional whitelist
 TELEGRAM_ADMIN_CHAT_IDS=  # optional admin webhook command allowlist
 TELEGRAM_CHAT_ACTION_ENABLED=true  # show "typing…" while a request is handled
 TELEGRAM_MESSAGE_DRAFT_ENABLED=false  # stream replies via ephemeral drafts (private chats only)
+TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES=8388608  # reject incoming media above 8 MiB before download
 TELEGRAM_BOT_NAME=  # optional startup sync for the bot display name
 TELEGRAM_BOT_NAME_LANGUAGE_CODE=  # optional IETF language code for localized bot name
 TELEGRAM_BOT_SHORT_DESCRIPTION=  # optional startup sync for the bot profile short description
@@ -100,6 +101,7 @@ LOG_LEVEL=INFO
 - `TELEGRAM_ADMIN_CHAT_IDS` – optional comma-separated list of chat IDs allowed to run admin commands. Diagnostics like `/webhook` and lifecycle commands like `/deletewebhook` fall back to `TELEGRAM_ALLOWED_CHAT_IDS` when empty; destructive commands like `/logout` require this list and do not fall back. If both lists are empty, admin commands are disabled.
 - `TELEGRAM_CHAT_ACTION_ENABLED` – whether to show a `typing…` chat action while Claude/proxy handles a request (`true`/`false`, default `true`). Set to `false` to keep the chat silent during processing.
 - `TELEGRAM_MESSAGE_DRAFT_ENABLED` – whether to stream replies through ephemeral `sendMessageDraft` previews instead of repeatedly editing a message while Claude generates the answer (`true`/`false`, default `false`). Telegram limits the method to private chats, so other chats keep edit-based streaming.
+- `TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES` – maximum incoming photo, voice, or document size the chat handler will download into memory. Files above the limit are rejected with a user-visible message before download when Telegram provides `file_size` metadata. Default: `8388608` bytes (8 MiB).
 - `TELEGRAM_BOT_NAME` – optional bot display name to apply with Telegram `setMyName` on startup. Leave unset to skip profile sync; an empty string clears the selected name.
 - `TELEGRAM_BOT_NAME_LANGUAGE_CODE` – optional language code for a localized `setMyName` update. Leave empty to update the default bot name.
 - `TELEGRAM_BOT_SHORT_DESCRIPTION` – optional bot profile short description to apply with Telegram `setMyShortDescription` on startup. Leave unset to skip profile sync; an empty string clears the selected short description.

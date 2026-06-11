@@ -36,6 +36,62 @@ DRAFT_UPDATE_INTERVAL_SECONDS = 0.5
 IMAGE_HISTORY_PLACEHOLDER = "[image omitted from history]"
 
 
+def _format_byte_size(size: int) -> str:
+    if size == 1:
+        return "1 byte"
+    if size < 1024:
+        return f"{size} bytes"
+
+    value = float(size)
+    for unit in ("KiB", "MiB", "GiB", "TiB"):
+        value /= 1024
+        if value < 1024:
+            if value.is_integer():
+                return f"{int(value)} {unit}"
+            return f"{value:.1f} {unit}"
+    return f"{value:.1f} PiB"
+
+
+def _known_file_size(media) -> int | None:
+    file_size = getattr(media, "file_size", None)
+    if isinstance(file_size, int) and not isinstance(file_size, bool) and file_size >= 0:
+        return file_size
+    return None
+
+
+async def _reject_oversized_media(message: Message, file_size: int | None) -> bool:
+    if file_size is None or file_size <= settings.telegram_media_download_max_bytes:
+        return False
+
+    max_size = _format_byte_size(settings.telegram_media_download_max_bytes)
+    await message.answer(f"❌ Media file is too large. Maximum allowed size is {max_size}.")
+    logger.info(
+        "media_download_rejected_oversize",
+        file_size=file_size,
+        max_bytes=settings.telegram_media_download_max_bytes,
+        chat_id=getattr(message.chat, "id", None),
+        user_id=getattr(message.from_user, "id", None),
+    )
+    return True
+
+
+async def _download_media_bytes(
+    message: Message, file_id: str, file_size: int | None
+) -> bytes | None:
+    if await _reject_oversized_media(message, file_size):
+        return None
+
+    file = await message.bot.get_file(file_id)
+    if await _reject_oversized_media(message, _known_file_size(file)):
+        return None
+
+    data = await message.bot.download_file(file.file_path)
+    media_bytes = data.read() if hasattr(data, "read") else data
+    if await _reject_oversized_media(message, len(media_bytes)):
+        return None
+    return media_bytes
+
+
 @asynccontextmanager
 async def _typing_indicator(message: Message):
     """Show a "typing…" chat action while Claude/proxy handles the request.
@@ -430,9 +486,12 @@ async def handle_chat_message(message: Message):
 
     elif message.photo:
         photo = message.photo[-1]
-        file = await message.bot.get_file(photo.file_id)
-        data = await message.bot.download_file(file.file_path)
-        b64 = base64.b64encode(data.read() if hasattr(data, "read") else data).decode("utf-8")
+        image_bytes = await _download_media_bytes(
+            message, photo.file_id, _known_file_size(photo)
+        )
+        if image_bytes is None:
+            return
+        b64 = base64.b64encode(image_bytes).decode("utf-8")
         content_blocks = [
             {
                 "type": "image",
@@ -450,9 +509,11 @@ async def handle_chat_message(message: Message):
             content_blocks.append({"type": "text", "text": caption})
 
     elif message.voice:
-        file = await message.bot.get_file(message.voice.file_id)
-        data = await message.bot.download_file(file.file_path)
-        audio_bytes = data.read() if hasattr(data, "read") else data
+        audio_bytes = await _download_media_bytes(
+            message, message.voice.file_id, _known_file_size(message.voice)
+        )
+        if audio_bytes is None:
+            return
         transcribed = await transcribe_voice(audio_bytes)
         if not transcribed:
             await message.answer("❌ Could not transcribe voice message.")
@@ -461,9 +522,11 @@ async def handle_chat_message(message: Message):
 
     elif message.document:
         doc = message.document
-        file = await message.bot.get_file(doc.file_id)
-        data = await message.bot.download_file(file.file_path)
-        doc_bytes = data.read() if hasattr(data, "read") else data
+        doc_bytes = await _download_media_bytes(
+            message, doc.file_id, _known_file_size(doc)
+        )
+        if doc_bytes is None:
+            return
         extracted = await extract_document_text(doc.mime_type, doc_bytes)
         if not extracted:
             await message.answer(

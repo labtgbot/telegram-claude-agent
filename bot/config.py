@@ -10,6 +10,7 @@ from typing import List, Optional
 _SECRET_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{1,256}$")
 # Minimum length we recommend (and enforce) for a usable secret token.
 _SECRET_TOKEN_MIN_LENGTH = 16
+DEFAULT_TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES = 8 * 1024 * 1024
 
 
 def _parse_id_list(raw: str) -> List[int]:
@@ -34,6 +35,7 @@ class Settings(BaseSettings):
     telegram_admin_chat_ids: str = ""
     telegram_chat_action_enabled: bool = True
     telegram_message_draft_enabled: bool = False
+    telegram_media_download_max_bytes: int = DEFAULT_TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES
     telegram_bot_name: Optional[str] = None
     telegram_bot_name_language_code: Optional[str] = None
     telegram_bot_short_description: Optional[str] = None
@@ -66,6 +68,13 @@ class Settings(BaseSettings):
                 "API_SECRET_TOKEN must be at least "
                 f"{_SECRET_TOKEN_MIN_LENGTH} characters long for security."
             )
+        return value
+
+    @field_validator("telegram_media_download_max_bytes")
+    @classmethod
+    def _validate_telegram_media_download_max_bytes(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES must be at least 1 byte.")
         return value
 
     @model_validator(mode="after")
