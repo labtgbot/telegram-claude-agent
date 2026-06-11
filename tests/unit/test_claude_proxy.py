@@ -55,6 +55,28 @@ async def test_send_message_non_streaming():
         assert "Authorization" in kwargs["headers"]
         assert kwargs["headers"]["Authorization"] == "Bearer token"
 
+
+@pytest.mark.asyncio
+async def test_count_tokens_uses_messages_api_payload():
+    client = ClaudeProxyClient("http://localhost:8082", "token")
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json.return_value = {"input_tokens": 7}
+
+    with patch.object(client._client, 'post', new_callable=AsyncMock) as mock_post:
+        mock_post.return_value = mock_response
+        token_count = await client.count_tokens("Hi", model="claude-3-opus")
+
+        assert token_count == 7
+        args, kwargs = mock_post.call_args
+        assert args[0] == "http://localhost:8082/v1/messages/count_tokens"
+        assert kwargs["json"] == {
+            "model": "claude-3-opus",
+            "messages": [{"role": "user", "content": "Hi"}],
+        }
+        assert kwargs["headers"]["Authorization"] == "Bearer token"
+
+
 @pytest.mark.asyncio
 async def test_send_message_streaming():
     client = ClaudeProxyClient("http://localhost:8082", "token")

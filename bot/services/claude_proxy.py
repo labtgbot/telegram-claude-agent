@@ -33,10 +33,11 @@ class ClaudeProxyClient:
             return [m["id"] for m in data["data"]]
         return []
 
-    async def count_tokens(self, text: str, model: Optional[str] = None) -> int:
-        payload = {"prompt": text}
-        if model:
-            payload["model"] = model
+    async def count_tokens(self, text: str, model: str) -> int:
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": text}],
+        }
         resp = await self._client.post(
             f"{self.base_url}/v1/messages/count_tokens",
             json=payload,
@@ -44,7 +45,7 @@ class ClaudeProxyClient:
         )
         resp.raise_for_status()
         data = resp.json()
-        return data.get("input_tokens", data.get("usage", {}).get("input_tokens", 0))
+        return data["input_tokens"]
 
     async def send_message(
         self,
