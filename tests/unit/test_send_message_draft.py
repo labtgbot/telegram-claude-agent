@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
@@ -389,6 +389,46 @@ async def test_handle_streaming_persists_and_renders_text():
     assert client.model == "test-model"
     final_edit = sent_msg.edit_text.await_args_list[-1]
     assert "Hello world" in final_edit.args[0]
+
+
+async def test_handle_streaming_throttles_frequent_edit_previews_and_flushes(monkeypatch):
+    monkeypatch.setattr(chat_handler.time, "monotonic", lambda: 0.0)
+    client = _FakeStreamClient([_text_delta("**"), _text_delta("bold"), _text_delta("**")])
+    message, sent_msg = _edit_stream_message()
+
+    reply = await chat_handler.handle_streaming(message, client, [], "test-model")
+
+    assert reply == "**bold**"
+    edit_calls = sent_msg.edit_text.await_args_list
+    assert len(edit_calls) == 2
+    assert edit_calls[0].args[0] == "**bold**"
+    assert edit_calls[0].kwargs == {}
+    assert edit_calls[1].args[0] == "<b>bold</b>"
+    assert edit_calls[1].kwargs["parse_mode"] == "HTML"
+
+
+async def test_handle_streaming_logs_repeated_preview_edit_failures_once(monkeypatch):
+    times = [0.0, 1.0, 2.0]
+
+    def monotonic():
+        if times:
+            return times.pop(0)
+        return 2.0
+
+    monkeypatch.setattr(chat_handler.time, "monotonic", monotonic)
+    fake_logger = SimpleNamespace(warning=Mock(), debug=Mock())
+    monkeypatch.setattr(chat_handler, "logger", fake_logger)
+    client = _FakeStreamClient([_text_delta("a"), _text_delta("b")])
+    message, sent_msg = _edit_stream_message()
+    sent_msg.edit_text = AsyncMock(
+        side_effect=[RuntimeError("rate limited"), RuntimeError("rate limited"), None, None]
+    )
+
+    reply = await chat_handler.handle_streaming(message, client, [], "test-model")
+
+    assert reply == "ab"
+    fake_logger.warning.assert_called_once()
+    fake_logger.debug.assert_called_once()
 
 
 async def test_handle_streaming_falls_back_on_empty_stream():
