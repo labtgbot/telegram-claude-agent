@@ -91,6 +91,33 @@ def test_media_download_limit_rejects_non_positive_value(monkeypatch):
     with pytest.raises(ValueError, match="at least 1 byte"):
         Settings()
 
+
+@pytest.mark.parametrize("log_level", ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
+def test_log_level_accepts_supported_values(monkeypatch, log_level):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("LOG_LEVEL", log_level)
+
+    settings = Settings()
+
+    assert settings.log_level == log_level
+
+
+def test_log_level_normalizes_known_value(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("LOG_LEVEL", "debug")
+
+    settings = Settings()
+
+    assert settings.log_level == "DEBUG"
+
+
+def test_log_level_rejects_unknown_value(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("LOG_LEVEL", "verbose")
+
+    with pytest.raises(ValueError, match="LOG_LEVEL.*DEBUG.*CRITICAL"):
+        Settings()
+
 def test_bot_name_settings(monkeypatch):
     monkeypatch.setenv("FREE_CLAUDE_BASE_URL", "http://localhost:8082")
     monkeypatch.setenv("FREE_CLAUDE_AUTH_TOKEN", "token")
