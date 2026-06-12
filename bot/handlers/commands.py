@@ -39,6 +39,15 @@ from bot.services.decline_chat_join_request import (
     format_decline_chat_join_request_result,
     perform_decline_chat_join_request,
 )
+from bot.services.answer_chat_join_request_query import (
+    CHAT_JOIN_REQUEST_QUERY_RESULTS,
+    AnswerChatJoinRequestQueryError,
+    perform_answer_chat_join_request_query,
+)
+from bot.services.send_chat_join_request_web_app import (
+    SendChatJoinRequestWebAppError,
+    perform_send_chat_join_request_web_app,
+)
 from bot.services.delete_chat_photo import (
     format_delete_chat_photo_result,
     perform_delete_chat_photo,
@@ -276,6 +285,14 @@ from bot.services.send_message_draft import (
     SendMessageDraftError,
     perform_send_message_draft,
 )
+from bot.services.send_rich_message import (
+    SendRichMessageError,
+    perform_send_rich_message,
+)
+from bot.services.send_rich_message_draft import (
+    SendRichMessageDraftError,
+    perform_send_rich_message_draft,
+)
 from bot.services.send_sticker import perform_send_sticker
 from bot.services.edit_message_caption import (
     EDIT_MESSAGE_CAPTION_LIMIT,
@@ -361,7 +378,7 @@ from bot.services.edit_story import EditStoryError, perform_edit_story
 from bot.services.repost_story import RepostStoryError, perform_repost_story
 from bot.services.delete_story import DeleteStoryError, perform_delete_story
 from bot.services.send_photo import perform_send_photo
-from bot.services.send_poll import perform_send_poll
+from bot.services.send_poll import SendPollError, perform_send_poll
 from bot.services.stop_poll import (
     StopPollValidationError,
     format_stop_poll_result,
@@ -1079,9 +1096,11 @@ VENUE_USAGE = (
 
 POLL_OPTION_SEPARATOR = "|"
 
-POLL_MIN_OPTIONS = 2
+POLL_OPTION_LINK_SEPARATOR = "=>"
 
-POLL_MAX_OPTIONS = 10
+POLL_MIN_OPTIONS = 1
+
+POLL_MAX_OPTIONS = 12
 
 POLL_QUESTION_MAX_LENGTH = 300
 
@@ -1094,9 +1113,11 @@ POLL_USAGE = (
     "question followed by the answer options, all separated by a vertical bar.\n"
     "Usage: <code>/poll &lt;question&gt; | &lt;option&gt; | &lt;option&gt; "
     "[| &lt;option&gt; ...]</code>\n"
-    "Provide 2-10 options. The question is limited to 300 characters and each "
-    "option to 100 characters; the question and every option may contain spaces "
-    "and must be non-empty."
+    "Use <code>&lt;option&gt; =&gt; https://example.com</code> to attach a "
+    "Bot API 10.1 link media object to an option.\n"
+    "Provide 1-12 options. The question is limited to 300 characters and each "
+    "option text to 100 characters; the question and every option may contain "
+    "spaces and must be non-empty."
 )
 
 STOP_POLL_USAGE = (
@@ -1212,6 +1233,27 @@ MESSAGE_DRAFT_USAGE = (
     "Usage: <code>/messagedraft [text]</code>\n"
     "Without text a \"Thinking…\" placeholder is shown. The optional text is "
     f"limited to {MESSAGE_DRAFT_TEXT_LIMIT} characters."
+)
+
+RICH_MESSAGE_USAGE = (
+    "<b>richmessage usage</b>\n"
+    "Sends a Bot API 10.1 rich message into this chat via "
+    "<code>sendRichMessage</code>. Pass one JSON <code>InputRichMessage</code> "
+    "object with exactly one of <code>html</code> or <code>markdown</code>.\n"
+    "Usage: <code>/richmessage {\"html\":\"&lt;h1&gt;Status&lt;/h1&gt;\"}</code>\n"
+    "Optional JSON fields: <code>is_rtl</code>, "
+    "<code>skip_entity_detection</code>."
+)
+
+RICH_MESSAGE_DRAFT_USAGE = (
+    "<b>richmessagedraft usage</b>\n"
+    "Streams an ephemeral Bot API 10.1 rich message draft into this private "
+    "chat via <code>sendRichMessageDraft</code>. The draft is temporary and "
+    "must be followed by a persisted <code>sendRichMessage</code> call when "
+    "the content is final.\n"
+    "Usage: <code>/richmessagedraft &lt;draft_id&gt; "
+    "{\"html\":\"&lt;tg-thinking&gt;&lt;/tg-thinking&gt;\"}</code>\n"
+    "The <code>draft_id</code> must be non-zero."
 )
 
 CHECKLIST_TASK_SEPARATOR = "|"
@@ -2547,6 +2589,24 @@ DECLINE_CHAT_JOIN_REQUEST_USAGE = (
     "join request for the target chat."
 )
 
+ANSWER_CHAT_JOIN_REQUEST_QUERY_USAGE = (
+    "<b>answerjoinrequestquery usage</b>\n"
+    "Processes a Bot API 10.1 chat join request query by approving it, "
+    "declining it, or leaving it queued for another administrator. The query id "
+    "comes from <code>ChatJoinRequest.query_id</code> and must be handled "
+    "quickly after the update arrives.\n"
+    "Usage: <code>/answerjoinrequestquery &lt;query_id&gt; "
+    "&lt;approve|decline|queue&gt;</code>"
+)
+
+SEND_CHAT_JOIN_REQUEST_WEB_APP_USAGE = (
+    "<b>joinrequestwebapp usage</b>\n"
+    "Processes a Bot API 10.1 chat join request query by opening a Mini App "
+    "for the user before a final decision is made.\n"
+    "Usage: <code>/joinrequestwebapp &lt;query_id&gt; "
+    "&lt;https://mini-app.example/path&gt;</code>"
+)
+
 EXPORT_CHAT_INVITE_LINK_USAGE = (
     "<b>exportchatinvitelink usage</b>\n"
     "Exports a new primary invite link for the specified group, supergroup or "
@@ -3155,6 +3215,8 @@ async def cmd_help(message: Message):
         "/gamehighscores - Fetch Telegram game high scores for a user (admin only)\n"
         "/chataction - Show a chat action (e.g. typing…) in this chat (admin only)\n"
         "/messagedraft - Stream an ephemeral message draft into this private chat (admin only)\n"
+        "/richmessage - Send a Bot API 10.1 rich message into this chat (admin only)\n"
+        "/richmessagedraft - Stream a Bot API 10.1 rich message draft (admin only)\n"
         "/editcaption - Edit or clear a media message caption (admin only)\n"
         "/editmedia - Replace media in a previously sent media message (admin only)\n"
         "/editlivelocation - Move an active live location message (admin only)\n"
@@ -3256,6 +3318,8 @@ async def cmd_help(message: Message):
         "/promotechatmember - Promote or demote a user in a chat (admin only)\n"
         "/approvechatjoinrequest - Approve a pending chat join request (admin only)\n"
         "/declinechatjoinrequest - Decline a pending chat join request (admin only)\n"
+        "/answerjoinrequestquery - Answer a guard-bot join request query (admin only)\n"
+        "/joinrequestwebapp - Open a Mini App for a join request query (admin only)\n"
         "/exportchatinvitelink - Export a new primary chat invite link (admin only)\n"
         "/leavechat - Make the bot leave a chat (admin only)\n"
         "/editchatinvitelink - Edit a non-primary chat invite link (admin only)\n"
@@ -4221,7 +4285,13 @@ async def cmd_poll(message: Message):
         )
         return
 
-    too_long = next((opt for opt in options if len(opt) > POLL_OPTION_MAX_LENGTH), None)
+    option_texts = [
+        option["text"] if isinstance(option, dict) else option for option in options
+    ]
+    too_long = next(
+        (opt for opt in option_texts if len(opt) > POLL_OPTION_MAX_LENGTH),
+        None,
+    )
     if too_long is not None:
         await message.answer(
             f"Option is too long: {len(too_long)} characters "
@@ -4236,7 +4306,7 @@ async def cmd_poll(message: Message):
             question=question,
             options=options,
         )
-    except TelegramAPIError as exc:
+    except (TelegramAPIError, SendPollError) as exc:
         await _answer_operation_failed(message, "Could not send the poll", exc)
         return
 
@@ -4515,6 +4585,65 @@ async def cmd_message_draft(message: Message):
     await message.answer(
         "Sent message draft." if text else "Sent message draft (Thinking… placeholder)."
     )
+
+
+@router.message(Command("richmessage"))
+async def cmd_send_rich_message(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    rich_message = _parse_rich_message_args(message.text or "")
+    if rich_message is None:
+        await message.answer(RICH_MESSAGE_USAGE, parse_mode="HTML")
+        return
+
+    try:
+        sent_message = await perform_send_rich_message(
+            message.bot,
+            chat_id=message.chat.id,
+            rich_message=rich_message,
+        )
+    except SendRichMessageError as exc:
+        await _answer_operation_failed(message, "Could not send the rich message", exc)
+        return
+
+    message_id = sent_message.get("message_id") if isinstance(sent_message, dict) else None
+    if message_id is not None:
+        await message.answer(f"Sent rich message {message_id}.")
+    else:
+        await message.answer("Sent rich message.")
+
+
+@router.message(Command("richmessagedraft"))
+async def cmd_send_rich_message_draft(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_rich_message_draft_args(message.text or "")
+    if parsed is None:
+        await message.answer(RICH_MESSAGE_DRAFT_USAGE, parse_mode="HTML")
+        return
+
+    draft_id, rich_message = parsed
+    try:
+        await perform_send_rich_message_draft(
+            message.bot,
+            chat_id=message.chat.id,
+            draft_id=draft_id,
+            rich_message=rich_message,
+        )
+    except SendRichMessageDraftError as exc:
+        await _answer_operation_failed(
+            message,
+            "Could not send the rich message draft",
+            exc,
+        )
+        return
+
+    await message.answer(f"Streamed rich message draft {draft_id}.")
+
 
 @router.message(Command("checklist"))
 async def cmd_checklist(message: Message):
@@ -8210,6 +8339,64 @@ async def cmd_leave_chat(message: Message):
     )
 
 
+@router.message(Command("answerjoinrequestquery"))
+async def cmd_answer_chat_join_request_query(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_answer_chat_join_request_query_args(message.text or "")
+    if parsed is None:
+        await message.answer(ANSWER_CHAT_JOIN_REQUEST_QUERY_USAGE, parse_mode="HTML")
+        return
+
+    chat_join_request_query_id, result = parsed
+    try:
+        await perform_answer_chat_join_request_query(
+            message.bot,
+            chat_join_request_query_id=chat_join_request_query_id,
+            result=result,
+        )
+    except AnswerChatJoinRequestQueryError as exc:
+        await _answer_operation_failed(
+            message,
+            "Could not answer the chat join request query",
+            exc,
+        )
+        return
+
+    await message.answer(f"Answered chat join request query with {result}.")
+
+
+@router.message(Command("joinrequestwebapp"))
+async def cmd_send_chat_join_request_web_app(message: Message):
+    if not _is_admin_action_allowed(message.chat.id):
+        await message.answer("This command is restricted to admin chats.")
+        return
+
+    parsed = _parse_send_chat_join_request_web_app_args(message.text or "")
+    if parsed is None:
+        await message.answer(SEND_CHAT_JOIN_REQUEST_WEB_APP_USAGE, parse_mode="HTML")
+        return
+
+    chat_join_request_query_id, web_app_url = parsed
+    try:
+        await perform_send_chat_join_request_web_app(
+            message.bot,
+            chat_join_request_query_id=chat_join_request_query_id,
+            web_app_url=web_app_url,
+        )
+    except SendChatJoinRequestWebAppError as exc:
+        await _answer_operation_failed(
+            message,
+            "Could not send the chat join request Mini App",
+            exc,
+        )
+        return
+
+    await message.answer("Sent chat join request Mini App.")
+
+
 @router.message(Command("approvechatjoinrequest"))
 async def cmd_approve_chat_join_request(message: Message):
     if not _is_admin_action_allowed(message.chat.id):
@@ -9332,17 +9519,38 @@ def _parse_venue_args(text: str):
     return latitude, longitude, title, address
 
 
+def _parse_poll_option(segment: str):
+    if POLL_OPTION_LINK_SEPARATOR not in segment:
+        return segment.strip()
+
+    option_text, _, raw_url = segment.partition(POLL_OPTION_LINK_SEPARATOR)
+    option_text = option_text.strip()
+    url = raw_url.strip()
+    if not option_text or not url.startswith(("http://", "https://")):
+        return None
+
+    return {
+        "text": option_text,
+        "media": {
+            "type": "link",
+            "url": url,
+        },
+    }
+
+
 def _parse_poll_args(text: str):
     """Parse ``/poll`` args into ``(question, options)``.
 
     Splits the raw command text into the command and the remainder, then splits
     the remainder on the vertical bar (``|``) so the first segment is the poll
     ``question`` and the following segments are the answer ``options``. Every
-    segment is trimmed of surrounding whitespace but keeps any internal spaces.
+    plain segment is trimmed of surrounding whitespace but keeps any internal
+    spaces. Option segments may use ``Option => https://example.com`` to attach
+    Bot API 10.1 ``InputMediaLink`` media to that option.
     Returns ``None`` when there are no arguments, when the separator is missing
     so no option is given, or when the question or any option is empty, so the
     caller can show usage. The caller validates the question/option lengths and
-    the 2-10 option count against Telegram's limits.
+    the 1-12 option count against Telegram's limits.
     """
     parts = (text or "").split(maxsplit=1)
     if len(parts) < 2:
@@ -9350,11 +9558,11 @@ def _parse_poll_args(text: str):
 
     segments = [segment.strip() for segment in parts[1].split(POLL_OPTION_SEPARATOR)]
     question = segments[0]
-    options = segments[1:]
+    options = [_parse_poll_option(segment) for segment in segments[1:]]
     if not question or not options:
         return None
 
-    if any(not option for option in options):
+    if any(option is None or not option for option in options):
         return None
 
     return question, options
@@ -9617,6 +9825,73 @@ def _parse_message_draft_args(text: str) -> str:
     if len(parts) < 2:
         return ""
     return parts[1].strip()
+
+
+def _is_valid_rich_message_payload(value) -> bool:
+    if not isinstance(value, dict) or not value:
+        return False
+
+    has_html = "html" in value
+    has_markdown = "markdown" in value
+    if has_html == has_markdown:
+        return False
+
+    content_key = "html" if has_html else "markdown"
+    content = value.get(content_key)
+    if not isinstance(content, str) or not content:
+        return False
+
+    if "is_rtl" in value and not isinstance(value["is_rtl"], bool):
+        return False
+
+    if "skip_entity_detection" in value and not isinstance(
+        value["skip_entity_detection"], bool
+    ):
+        return False
+
+    return True
+
+
+def _parse_rich_message_args(text: str):
+    """Parse ``/richmessage`` args into an ``InputRichMessage`` dict."""
+    parts = (text or "").split(maxsplit=1)
+    if len(parts) != 2:
+        return None
+
+    try:
+        rich_message = json.loads(parts[1])
+    except json.JSONDecodeError:
+        return None
+
+    if not _is_valid_rich_message_payload(rich_message):
+        return None
+
+    return rich_message
+
+
+def _parse_rich_message_draft_args(text: str):
+    """Parse ``/richmessagedraft`` args into ``(draft_id, InputRichMessage)``."""
+    parts = (text or "").split(maxsplit=2)
+    if len(parts) != 3:
+        return None
+
+    try:
+        draft_id = int(parts[1])
+    except ValueError:
+        return None
+
+    if draft_id == 0:
+        return None
+
+    try:
+        rich_message = json.loads(parts[2])
+    except json.JSONDecodeError:
+        return None
+
+    if not _is_valid_rich_message_payload(rich_message):
+        return None
+
+    return draft_id, rich_message
 
 
 def _parse_checklist_args(text: str):
@@ -12875,6 +13150,34 @@ def _parse_decline_chat_join_request_args(text: str):
         return None
 
     return chat_id, user_id
+
+
+def _parse_answer_chat_join_request_query_args(text: str):
+    """Parse ``/answerjoinrequestquery`` args into query id and result."""
+    parts = (text or "").split()
+    if len(parts) != 3:
+        return None
+
+    query_id = parts[1].strip()
+    result = parts[2].strip()
+    if not query_id or result not in CHAT_JOIN_REQUEST_QUERY_RESULTS:
+        return None
+
+    return query_id, result
+
+
+def _parse_send_chat_join_request_web_app_args(text: str):
+    """Parse ``/joinrequestwebapp`` args into query id and Mini App URL."""
+    parts = (text or "").split()
+    if len(parts) != 3:
+        return None
+
+    query_id = parts[1].strip()
+    web_app_url = parts[2].strip()
+    if not query_id or not web_app_url.startswith(("http://", "https://")):
+        return None
+
+    return query_id, web_app_url
 
 
 def _parse_leave_chat_args(text: str):

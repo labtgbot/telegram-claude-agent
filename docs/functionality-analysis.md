@@ -61,10 +61,12 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 `sendPoll`, `sendContact`, `sendDice`, `sendChecklist`, `editMessageLiveLocation`,
 `stopMessageLiveLocation`, `postStory`,
 `editStory`, `sendChatAction`,
-`sendMessageDraft`, `getUserProfilePhotos`, `setMessageReaction`,
+`sendMessageDraft`, `sendRichMessage`, `sendRichMessageDraft`,
+`getUserProfilePhotos`, `setMessageReaction`,
 `setUserEmojiStatus`, `getUserProfileAudios`, `banChatMember`,
 `unbanChatMember`, `restrictChatMember`, `promoteChatMember`,
-`approveChatJoinRequest`, `createChatInviteLink`, `editChatInviteLink`,
+`approveChatJoinRequest`, `answerChatJoinRequestQuery`,
+`sendChatJoinRequestWebApp`, `createChatInviteLink`, `editChatInviteLink`,
 `setChatPhoto`, `deleteChatPhoto`, `pinChatMessage`, `unpinChatMessage`,
 `unpinAllChatMessages`, `getChatMember`, `getUserPersonalChatMessages`,
 `getBusinessAccountStarBalance`, `getStickerSet`,
@@ -145,7 +147,7 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `editMessageReplyMarkup` | `bot/services/edit_message_reply_markup.py`, `/editreplymarkup` в `bot/handlers/commands.py` | Admin-flow обновления только inline keyboard у сообщения, ранее отправленного ботом, по `chat_id` + `message_id` или `inline_message_id`; используется изолированный raw Bot API helper, команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, поддерживает очистку keyboard и empty inline keyboard, а structured logs фиксируют только target message и наличие reply markup. |
 | `sendMediaGroup` | `bot/services/send_media_group.py`, `/mediagroup` в `bot/handlers/commands.py` | Admin-flow отправки 2-10 медиа в текущий чат как единого альбома (media group) по URL или `file_id`, через typed aiogram API; все элементы одного типа (photo/video/document/audio), единый caption применяется к первому элементу. |
 | `sendVenue` | `bot/services/send_venue.py`, `/venue` в `bot/handlers/commands.py` | Admin-flow отправки заведения (venue) — именованного места с названием и адресом, закрепленного на карте — в текущий чат по широте, долготе, title и address, через typed aiogram API; координаты валидируются по диапазонам, а сами координаты, title и address не пишутся в structured logs. |
-| `sendPoll` | `bot/services/send_poll.py`, `/poll` в `bot/handlers/commands.py` | Admin-flow отправки нативного опроса (poll) — интерактивного вопроса с 2-10 вариантами ответа — в текущий чат, через typed aiogram API; длины вопроса (до 300) и вариантов (до 100) и их количество валидируются до обращения к Telegram, а сам вопрос и варианты ответа не пишутся в structured logs. |
+| `sendPoll` | `bot/services/send_poll.py`, `/poll` в `bot/handlers/commands.py` | Admin-flow отправки нативного опроса (poll) — интерактивного вопроса с 1-12 вариантами ответа — в текущий чат через изолированный raw Bot API helper для Bot API 10.1; варианты могут быть строками или объектами `InputPollOption`, включая `InputMediaLink` через синтаксис `/poll вопрос | Option => https://example.com`; длины вопроса (до 300) и текста вариантов (до 100), количество вариантов и HTTP(S)-ссылки валидируются до обращения к Telegram, а вопрос, варианты и ссылки не пишутся в structured logs. |
 | `stopPoll` | `bot/services/stop_poll.py`, `/stoppoll` в `bot/handlers/commands.py` | Admin-flow закрытия активного нативного опроса, ранее отправленного ботом, по `chat_id` и `message_id`, через typed aiogram API; `message_id` валидируется как positive id, команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, а structured logs фиксируют только target message и итоговый poll id/count без текста вопроса и вариантов. |
 | `sendContact` | `bot/services/send_contact.py`, `/contact` в `bot/handlers/commands.py` | Admin-flow отправки телефонного контакта (contact) — имени с номером телефона, который получатель может сохранить в адресную книгу — в текущий чат, через typed aiogram API; phone_number и first_name обязательны, last_name опционален, а номер телефона и имя контакта не пишутся в structured logs. |
 | `sendDice` | `bot/services/send_dice.py`, `/dice` в `bot/handlers/commands.py` | Admin-flow отправки анимированной кости (dice) — анимированного эмодзи со случайным значением, которое выбирает Telegram — в текущий чат, через typed aiogram API; опциональный emoji ограничен набором 🎲/🎯/🏀/⚽/🎳/🎰 и валидируется до обращения к Telegram, без аргумента отправляется 🎲. |
@@ -178,6 +180,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `replaceManagedBotToken` | `bot/services/replace_managed_bot_token.py`, `/replacemanagedbottoken` в `bot/handlers/commands.py` | Admin-flow ротации live token управляемого бота по положительному `user_id`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для managed-bot методов Bot API 9.6; команда доступна только в `TELEGRAM_ADMIN_CHAT_IDS`, не падает обратно на `TELEGRAM_ALLOWED_CHAT_IDS`, требует trusted source для id из `managed_bot`/`managed_bot_created` и явный `confirm`, показывает новый токен только в ответе admin-чата, не пишет токены в structured logs, а rollback выполняется повторной ротацией или заранее сохраненным прежним credential, если Telegram еще принимает его. |
 | `sendChatAction` | `bot/services/send_chat_action.py`, `keep_chat_action` в `bot/handlers/chat.py` и `/chataction` в `bot/handlers/commands.py` | Показ chat action (transient-статуса вроде `typing…`) в чате через typed aiogram API. Автоматически показывается и обновляется, пока Claude/proxy обрабатывает входящее сообщение (управляется `TELEGRAM_CHAT_ACTION_ENABLED`); admin-команда `/chataction [action]` запускает action вручную, где action ограничен набором поддерживаемых значений и валидируется до обращения к Telegram. |
 | `sendMessageDraft` | `bot/services/send_message_draft.py`, `handle_streaming_with_draft` в `bot/handlers/chat.py` и `/messagedraft` в `bot/handlers/commands.py` | Стриминг частичного ответа через эфемерный draft preview (временный ~30-секундный предпросмотр) в private chat как альтернатива частым `editMessageText`, через изолированный raw Bot API helper, так как pinned `aiogram==3.3.0` не имеет typed wrapper для этого метода Bot API 10.0; включается флагом `TELEGRAM_MESSAGE_DRAFT_ENABLED` и работает только в private chats, финальный ответ затем сохраняется обычным `sendMessage`. Admin-команда `/messagedraft [text]` запускает draft вручную; `draft_id` обязан быть ненулевым, а длина текста (до 4096) валидируется до обращения к Telegram, и текст draft не пишется в structured logs. |
+| `sendRichMessage` | `bot/services/send_rich_message.py`, `/richmessage` в `bot/handlers/commands.py` | Admin-flow отправки Bot API 10.1 rich message в текущий чат через изолированный raw Bot API helper; команда принимает один JSON `InputRichMessage` с ровно одним непустым `html` или `markdown`, опционально пропускает boolean-поля `is_rtl` и `skip_entity_detection`, закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, не вызывает `free-claude-code`, возвращает оператору `message_id` при наличии и не пишет rich message body в structured logs. |
+| `sendRichMessageDraft` | `bot/services/send_rich_message_draft.py`, `/richmessagedraft` в `bot/handlers/commands.py` | Admin-flow стриминга Bot API 10.1 rich message draft в private chat через изолированный raw Bot API helper; команда принимает ненулевой `draft_id` и JSON `InputRichMessage`, валидирует тот же `html`/`markdown` contract, возвращает `True`, закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` и не пишет rich draft body в structured logs; финальный контент должен сохраняться отдельным `sendRichMessage`. |
 | `getUserProfilePhotos` | `bot/services/get_user_profile_photos.py`, `/userprofilephotos` в `bot/handlers/commands.py` | Admin-flow получения фотографий профиля Telegram-пользователя по `user_id`, через typed aiogram API; не требует особых прав бота, Telegram может вернуть ошибку при ограниченной приватности пользователя; опциональные `offset` и `limit` (1-100) позволяют постранично получать фотографии, каждая в нескольких разрешениях; `user_id` и `file_id` фотографий не пишутся в structured logs. |
 | `setMessageReaction` | `bot/services/set_message_reaction.py`, `/react` в `bot/handlers/commands.py` | Admin-flow установки emoji-реакции на сообщение в текущем чате по `message_id`, через typed aiogram API (поддерживается с `aiogram==3.3.0`, Bot API 7.0); реакция задаётся стандартным emoji из фиксированного набора Telegram или опускается для удаления всех реакций бота; опциональный флаг `big` включает увеличенную анимацию; служебные сообщения не поддерживают реакции, в альбомах нужно реагировать на первое сообщение; не-premium боты могут ставить не более одной реакции на сообщение. |
 | `setUserEmojiStatus` | `bot/services/set_user_emoji_status.py`, `/setemojistatus` в `bot/handlers/commands.py` | Admin-flow установки или удаления emoji-статуса Telegram-пользователя по `user_id`, через typed aiogram API (Bot API 10.0); пользователь должен предварительно разрешить боту управление своим emoji-статусом через метод Mini App `requestEmojiStatusAccess` — без этого Telegram вернёт ошибку; передача пустой строки в качестве `custom_emoji_id` удаляет текущий статус; бот не требует административных прав; `user_id` не пишется в structured logs уровня "info". |
@@ -219,6 +223,8 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 | `leaveChat` | `bot/services/leave_chat.py`, `/leavechat` в `bot/handlers/commands.py` | Destructive admin-flow вывода бота из группы, супергруппы или канала по `chat_id`, через typed aiogram API `Bot.leave_chat`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, требует явного `confirm`, бот должен быть текущим участником целевого чата; специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, rollback выполняется ручным добавлением бота обратно и восстановлением прав, а ошибки Telegram возвращаются оператору. |
 | `approveChatJoinRequest` | `bot/services/approve_chat_join_request.py`, `/approvechatjoinrequest` в `bot/handlers/commands.py` | Admin-flow одобрения pending join request пользователя в группе, супергруппе или канале по `chat_id` и `user_id`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_invite_users`; используется typed aiogram API, если runtime его предоставляет, иначе изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; специальных update types для самой команды не требуется, так как сценарий запускается обычной командой из admin-чата, а ошибки Telegram по правам, отсутствующей заявке или rate limit возвращаются оператору. |
 | `declineChatJoinRequest` | `bot/services/decline_chat_join_request.py`, `/declinechatjoinrequest` в `bot/handlers/commands.py` | Admin-flow отклонения pending join request пользователя в группе, супергруппе или канале по `chat_id` и `user_id`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_invite_users`; используется typed aiogram API, если runtime его предоставляет, иначе изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; специальных update types для самой команды не требуется, так как сценарий запускается обычной командой из admin-чата, а ошибки Telegram по правам, отсутствующей заявке или rate limit возвращаются оператору. |
+| `answerChatJoinRequestQuery` | `bot/services/answer_chat_join_request_query.py`, `/answerjoinrequestquery` в `bot/handlers/commands.py` | Admin-flow обработки Bot API 10.1 guard-bot join request query по `ChatJoinRequest.query_id`; принимает только `approve`, `decline` или `queue`, использует изолированный raw Bot API helper, закрыт строгим `TELEGRAM_ADMIN_CHAT_IDS`, не требует `chat_id`/`user_id` в команде, должен выполняться в короткое окно Telegram и возвращает Telegram validation/stale-query ошибки оператору. |
+| `sendChatJoinRequestWebApp` | `bot/services/send_chat_join_request_web_app.py`, `/joinrequestwebapp` в `bot/handlers/commands.py` | Admin-flow открытия Mini App для Bot API 10.1 guard-bot join request query по `ChatJoinRequest.query_id`; команда принимает HTTP(S) `web_app_url`, использует изолированный raw Bot API helper, закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS`, должна выполняться в короткое окно Telegram, а Mini App URL не пишется в structured logs. |
 | `createChatInviteLink` | `bot/services/create_chat_invite_link.py`, `/createchatinvitelink` в `bot/handlers/commands.py` | Admin-flow создания дополнительной invite link группы, супергруппы или канала по `chat_id` и опциям `name`, `expire_date`, `member_limit`, `creates_join_request`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_invite_users`; используется typed aiogram API, если runtime его предоставляет, иначе изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; `member_limit` валидируется в диапазоне 1-99999, `creates_join_request=true` нельзя совмещать с `member_limit`, специальных update types не требуется, а ошибки Telegram возвращаются оператору. |
 | `editChatInviteLink` | `bot/services/edit_chat_invite_link.py`, `/editchatinvitelink` в `bot/handlers/commands.py` | Admin-flow изменения существующей non-primary invite link группы, супергруппы или канала по `chat_id`, `invite_link` и опциям `name`, `expire_date`, `member_limit`, `creates_join_request`; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_invite_users`; используется typed aiogram API, если runtime его предоставляет, иначе изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; `member_limit` валидируется в диапазоне 1-99999, `creates_join_request=true` нельзя совмещать с `member_limit`, специальных update types не требуется, а ошибки Telegram возвращаются оператору. |
 | `revokeChatInviteLink` | `bot/services/revoke_chat_invite_link.py`, `/revokechatinvitelink` в `bot/handlers/commands.py` | Admin-flow отзыва invite link, созданной ботом, для группы, супергруппы или канала по `chat_id` и `invite_link`; если отзывается primary link, Telegram автоматически генерирует новую; команда закрыта строгим `TELEGRAM_ADMIN_CHAT_IDS` без fallback и deny-by-default при пустом списке, бот должен быть администратором целевого чата с правом `can_invite_users`; используется typed aiogram API, если runtime его предоставляет, иначе изолированный raw Bot API helper для совместимости с pinned `aiogram==3.3.0`; специальных update types не требуется, так как сценарий запускается обычной командой из admin-чата, а ошибки Telegram по правам или несуществующей ссылке возвращаются оператору. |
@@ -1770,34 +1776,36 @@ id отправленного сообщения, без самих коорди
 
 ### sendPoll
 
-Команда `/poll` вызывает typed aiogram API `Bot.send_poll()` для метода
-Telegram `sendPoll`. По официальной документации метод требует `chat_id`,
-`question` (1-300 символов) и `options` (2-10 строк по 1-100 символов) и
-возвращает отправленное `Message`. По умолчанию опрос анонимный и типа
-`regular`; для quiz-опроса передаются `type="quiz"` и `correct_option_id`, а
-опционально — `explanation`. `open_period` (5-600 секунд) или `close_date`
-задают автоматическое закрытие, а `is_closed` отправляет уже закрытый опрос для
-предпросмотра. Параметры соответствуют typed wrapper'у pinned `aiogram==3.3.0`
-(Bot API 7.0); в этой версии `options` — это список строк (в Bot API 7.3 он стал
-списком `InputPollOption`), а `business_connection_id` и более новые поля в
-wrapper не входят.
+Команда `/poll` вызывает изолированный raw Bot API helper для метода Telegram
+`sendPoll`, потому что текущая aiogram-зависимость не содержит Bot API 10.1 poll
+option media. По официальной документации метод требует `chat_id`, `question`
+(1-300 символов) и `options` как список `InputPollOption`; в Bot API 10.1 poll
+option media поддерживает `InputMediaLink`. Локальная admin-команда принимает
+1-12 вариантов, приводит обычные строки к объектам `{"text": ...}` и возвращает
+отправленное `Message`. По умолчанию опрос анонимный и типа `regular`; helper
+оставляет совместимый `correct_option_id`, но актуальный payload отправляет
+через `correct_option_ids` при наличии, а также пропускает более новые поля
+вроде `allows_revoting`, `explanation_media`, `media` и `reply_parameters`.
 
 Выбран admin-сценарий исходящего ответа: оператор отправляет в чат настоящий
 нативный Telegram-опрос (интерактивный вопрос с вариантами ответа), а не только
 текстовую интерпретацию. Целевой чат всегда тот, где вызвана команда. Синтаксис:
 `/poll <question> | <option> | <option> [| <option> ...]`. Вопрос идет первым, за
 ним следуют варианты ответа, все разделяются вертикальной чертой (`|`); вопрос и
-каждый вариант могут содержать пробелы.
+каждый вариант могут содержать пробелы. Вариант можно записать как
+`Option text => https://example.com`, тогда parser создаст объект варианта с
+`media: {"type": "link", "url": ...}`; принимаются только `http://` и `https://`
+ссылки.
 
 Команда сама проверяет validation path до обращения к Telegram: при отсутствии
 аргументов, отсутствии разделителя (а значит и вариантов) или пустом вопросе/
-варианте показывается usage; при количестве вариантов вне диапазона 2-10 —
+варианте показывается usage; при количестве вариантов вне диапазона 1-12 —
 сообщение о допустимом количестве; при превышении длины вопроса (300) или
 варианта (100) — сообщение о допустимой длине. Опрос отправляется с дефолтами
 Telegram (анонимный одиночный regular-опрос). Вопрос и варианты ответа — это
 контент, который оператор решил опубликовать, поэтому в structured logs пишутся
 только количество вариантов, признак quiz и id отправленного сообщения, без
-текста вопроса и вариантов.
+текста вопроса, вариантов и option media ссылок.
 
 `/poll` относится к исходящим ответам и закрыт строгим admin allowlist:
 
