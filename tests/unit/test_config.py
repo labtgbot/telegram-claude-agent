@@ -108,6 +108,24 @@ def test_media_download_limit_rejects_non_positive_value(monkeypatch):
         Settings()
 
 
+def test_rate_limit_requests_per_minute_from_env(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "42")
+
+    settings = Settings()
+
+    assert settings.rate_limit_requests_per_minute == 42
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_rate_limit_requests_per_minute_rejects_non_positive_value(monkeypatch, value):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("RATE_LIMIT_REQUESTS_PER_MINUTE", value)
+
+    with pytest.raises(ValueError, match="RATE_LIMIT_REQUESTS_PER_MINUTE.*positive"):
+        Settings()
+
+
 @pytest.mark.parametrize("log_level", ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
 def test_log_level_accepts_supported_values(monkeypatch, log_level):
     _base_env(monkeypatch)

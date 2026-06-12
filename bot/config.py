@@ -123,6 +123,15 @@ class Settings(BaseSettings):
             raise ValueError("TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES must be at least 1 byte.")
         return value
 
+    @field_validator("rate_limit_requests_per_minute")
+    @classmethod
+    def _validate_rate_limit_requests_per_minute(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError(
+                "RATE_LIMIT_REQUESTS_PER_MINUTE must be a positive integer greater than 0."
+            )
+        return value
+
     @field_validator("log_level", mode="before")
     @classmethod
     def _validate_log_level(cls, value: str) -> str:
