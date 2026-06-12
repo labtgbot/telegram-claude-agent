@@ -31,10 +31,19 @@ async def test_list_models_openai_format():
         "data": [{"id": "model1"}, {"id": "model2"}]
     }
 
-    with patch.object(client._client, 'post', new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = mock_response
-        # Actually list_models uses GET, but we can test similarly
-        pass
+    with patch.object(client._client, 'get', new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_response
+        models = await client.list_models()
+
+        assert models == ["model1", "model2"]
+        mock_get.assert_awaited_once_with(
+            "http://localhost:8082/v1/models",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer token",
+                "anthropic-version": "2023-06-01",
+            },
+        )
 
 @pytest.mark.asyncio
 async def test_send_message_non_streaming():
