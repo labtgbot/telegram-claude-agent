@@ -7,8 +7,10 @@ Set the following environment variables to run:
   TELEGRAM_BOT_TOKEN
 
 Run with:
-  pytest tests/integration/ -v
+  INTEGRATION_TEST=1 pytest tests/integration/ -v
 """
+
+import os
 
 import pytest
 import httpx
@@ -17,7 +19,7 @@ import httpx
 # a INTEGRATION_TEST=1 environment variable.
 
 pytestmark = pytest.mark.skipif(
-    True,
+    os.getenv("INTEGRATION_TEST") != "1",
     reason="integration tests require a live proxy; run manually with INTEGRATION_TEST=1",
 )
 

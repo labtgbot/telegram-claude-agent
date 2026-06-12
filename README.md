@@ -4167,7 +4167,11 @@ Run unit tests:
 pytest tests/unit
 ```
 
-Integration tests (requires running bot and proxy) are in `tests/integration`.
+Integration tests are skipped by default. To run them with a live bot and proxy:
+
+```bash
+INTEGRATION_TEST=1 pytest tests/integration -v
+```
 
 ## Functionality Analysis
 
