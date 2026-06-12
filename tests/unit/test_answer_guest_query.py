@@ -11,6 +11,7 @@ from bot.services.answer_guest_query import (
     AnswerGuestQueryError,
     perform_answer_guest_query,
 )
+from bot.utils.storage import MemoryStorage
 
 
 class _FakeResponse:
@@ -148,17 +149,27 @@ async def test_perform_answer_guest_query_raises_on_transport_error(monkeypatch)
 
 
 class _FakeClaudeClient:
+    stream_calls = []
+
     def __init__(self, *args, **kwargs):
         self.closed = False
 
-    async def send_message(self, *, messages, model):
+    async def send_message(self, *, messages, model, stream=False):
+        self.__class__.stream_calls.append(stream)
+        if stream:
+            return _guest_stream_response("Guest answer")
         return {"content": [{"type": "text", "text": "Guest answer"}]}
 
     async def close(self):
         self.closed = True
 
 
+async def _guest_stream_response(text):
+    yield {"type": "content_block_delta", "delta": {"type": "text_delta", "text": text}}
+
+
 def _guest_message():
+    sent_msg = SimpleNamespace(edit_text=AsyncMock())
     return SimpleNamespace(
         from_user=SimpleNamespace(id=7),
         chat=SimpleNamespace(id=-100, type="supergroup"),
@@ -170,8 +181,25 @@ def _guest_message():
         document=None,
         reply_to_message=None,
         guest_query_id="guest-query-1",
-        answer=AsyncMock(),
+        answer=AsyncMock(return_value=sent_msg),
     )
+
+
+def _regular_message():
+    sent_msg = SimpleNamespace(edit_text=AsyncMock())
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=8),
+        chat=SimpleNamespace(id=8, type="private"),
+        bot=_bot(),
+        text="question",
+        caption=None,
+        photo=None,
+        voice=None,
+        document=None,
+        reply_to_message=None,
+        answer=AsyncMock(return_value=sent_msg),
+    )
+    return message, sent_msg
 
 
 async def test_handle_chat_message_answers_guest_query(monkeypatch):
@@ -185,6 +213,48 @@ async def test_handle_chat_message_answers_guest_query(monkeypatch):
 
     await chat_handler.handle_chat_message(message)
 
+    answer_guest.assert_awaited_once_with(
+        message.bot,
+        guest_query_id="guest-query-1",
+        text="Guest answer",
+    )
+    message.answer.assert_not_awaited()
+
+
+async def test_handle_chat_message_keeps_streaming_for_regular_message(monkeypatch):
+    monkeypatch.setattr(chat_handler.settings, "telegram_allowed_chat_ids", "")
+    monkeypatch.setattr(chat_handler.settings, "free_claude_streaming_enabled", True)
+    monkeypatch.setattr(chat_handler.settings, "telegram_chat_action_enabled", False)
+    monkeypatch.setattr(chat_handler.settings, "telegram_message_draft_enabled", False)
+    monkeypatch.setattr(chat_handler, "ClaudeProxyClient", _FakeClaudeClient)
+    monkeypatch.setattr(chat_handler, "storage", MemoryStorage())
+    answer_guest = AsyncMock(return_value=True)
+    monkeypatch.setattr(chat_handler, "perform_answer_guest_query", answer_guest)
+    _FakeClaudeClient.stream_calls = []
+    message, sent_msg = _regular_message()
+
+    await chat_handler.handle_chat_message(message)
+
+    assert _FakeClaudeClient.stream_calls == [True]
+    message.answer.assert_awaited_once_with("…")
+    answer_guest.assert_not_awaited()
+    final_edit = sent_msg.edit_text.await_args_list[-1]
+    assert "Guest answer" in final_edit.args[0]
+
+
+async def test_handle_chat_message_answers_guest_query_when_streaming_enabled(monkeypatch):
+    monkeypatch.setattr(chat_handler.settings, "telegram_allowed_chat_ids", "")
+    monkeypatch.setattr(chat_handler.settings, "telegram_guest_mode_enabled", True)
+    monkeypatch.setattr(chat_handler.settings, "free_claude_streaming_enabled", True)
+    monkeypatch.setattr(chat_handler, "ClaudeProxyClient", _FakeClaudeClient)
+    answer_guest = AsyncMock(return_value=True)
+    monkeypatch.setattr(chat_handler, "perform_answer_guest_query", answer_guest)
+    _FakeClaudeClient.stream_calls = []
+    message = _guest_message()
+
+    await chat_handler.handle_chat_message(message)
+
+    assert _FakeClaudeClient.stream_calls == [False]
     answer_guest.assert_awaited_once_with(
         message.bot,
         guest_query_id="guest-query-1",
