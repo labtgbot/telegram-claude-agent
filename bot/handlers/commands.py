@@ -28,6 +28,10 @@ from aiogram.types import (
     WebAppInfo,
 )
 from bot.config import settings
+from bot.utils.admin_auth import (
+    is_admin_action_allowed as check_admin_action_allowed,
+    is_admin_or_allowed_chat as check_admin_or_allowed_chat,
+)
 from bot.services.close import perform_close
 from bot.services.approve_chat_join_request import (
     ApproveChatJoinRequestError,
@@ -3415,7 +3419,7 @@ async def cmd_settings(message: Message):
 
 @router.message(Command("webhook"))
 async def cmd_webhook_info(message: Message):
-    if not _is_admin_or_allowed_chat(message.chat.id):
+    if not _is_admin_or_allowed_chat(message.chat.id, _message_user_id(message)):
         await message.answer("Webhook diagnostics are restricted.")
         return
 
@@ -3430,7 +3434,7 @@ async def cmd_webhook_info(message: Message):
 
 @router.message(Command("deletewebhook"))
 async def cmd_delete_webhook(message: Message):
-    if not _is_admin_or_allowed_chat(message.chat.id):
+    if not _is_admin_or_allowed_chat(message.chat.id, _message_user_id(message)):
         await message.answer("Webhook lifecycle operations are restricted.")
         return
 
@@ -3452,7 +3456,7 @@ async def cmd_delete_webhook(message: Message):
 
 @router.message(Command("logout"))
 async def cmd_log_out(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3486,7 +3490,7 @@ async def cmd_log_out(message: Message):
 
 @router.message(Command("close"))
 async def cmd_close(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3520,7 +3524,7 @@ async def cmd_close(message: Message):
 
 @router.message(Command("forward"))
 async def cmd_forward(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3552,7 +3556,7 @@ async def cmd_forward(message: Message):
 
 @router.message(Command("forwards"))
 async def cmd_forwards(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3585,7 +3589,7 @@ async def cmd_forwards(message: Message):
 
 @router.message(Command("copy"))
 async def cmd_copy(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3617,7 +3621,7 @@ async def cmd_copy(message: Message):
 
 @router.message(Command("copies"))
 async def cmd_copies(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3652,7 +3656,7 @@ async def cmd_copies(message: Message):
 
 @router.message(Command("photo"))
 async def cmd_photo(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3686,7 +3690,7 @@ async def cmd_photo(message: Message):
 
 @router.message(Command("audio"))
 async def cmd_audio(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3720,7 +3724,7 @@ async def cmd_audio(message: Message):
 
 @router.message(Command("livephoto"))
 async def cmd_live_photo(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3755,7 +3759,7 @@ async def cmd_live_photo(message: Message):
 
 @router.message(Command("document"))
 async def cmd_document(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3789,7 +3793,7 @@ async def cmd_document(message: Message):
 
 @router.message(Command("video"))
 async def cmd_video(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3823,7 +3827,7 @@ async def cmd_video(message: Message):
 
 @router.message(Command("videonote"))
 async def cmd_video_note(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3846,7 +3850,7 @@ async def cmd_video_note(message: Message):
 
 @router.message(Command("animation"))
 async def cmd_animation(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3881,7 +3885,7 @@ async def cmd_animation(message: Message):
 
 @router.message(Command("sticker"))
 async def cmd_sticker(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3910,7 +3914,7 @@ async def cmd_sticker(message: Message):
 
 @router.message(Command("voice"))
 async def cmd_voice(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3944,7 +3948,7 @@ async def cmd_voice(message: Message):
 
 @router.message(Command("paidmedia"))
 async def cmd_paid_media(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -3987,7 +3991,7 @@ async def cmd_paid_media(message: Message):
 
 @router.message(Command("sendinvoice"))
 async def cmd_send_invoice(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4027,7 +4031,7 @@ async def cmd_send_invoice(message: Message):
 
 @router.message(Command("createinvoicelink"))
 async def cmd_create_invoice_link(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4066,7 +4070,7 @@ async def cmd_create_invoice_link(message: Message):
 
 @router.message(Command("answerwebappquery"))
 async def cmd_answer_web_app_query(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4097,7 +4101,7 @@ async def cmd_answer_web_app_query(message: Message):
 
 @router.message(Command("savepreparedinline"))
 async def cmd_save_prepared_inline_message(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4129,7 +4133,7 @@ async def cmd_save_prepared_inline_message(message: Message):
 
 @router.message(Command("setpassporterrors"))
 async def cmd_set_passport_data_errors(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4156,7 +4160,7 @@ async def cmd_set_passport_data_errors(message: Message):
 
 @router.message(Command("savepreparedkeyboard"))
 async def cmd_save_prepared_keyboard_button(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4181,7 +4185,7 @@ async def cmd_save_prepared_keyboard_button(message: Message):
 
 @router.message(Command("location"))
 async def cmd_location(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4220,7 +4224,7 @@ async def cmd_location(message: Message):
 
 @router.message(Command("venue"))
 async def cmd_venue(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4261,7 +4265,7 @@ async def cmd_venue(message: Message):
 
 @router.message(Command("poll"))
 async def cmd_poll(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4314,7 +4318,7 @@ async def cmd_poll(message: Message):
 
 @router.message(Command("stoppoll"))
 async def cmd_stop_poll(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4348,7 +4352,7 @@ async def cmd_stop_poll(message: Message):
 
 @router.message(Command("approvesuggestedpost"))
 async def cmd_approve_suggested_post(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4381,7 +4385,7 @@ async def cmd_approve_suggested_post(message: Message):
 
 @router.message(Command("declinesuggestedpost"))
 async def cmd_decline_suggested_post(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4414,7 +4418,7 @@ async def cmd_decline_suggested_post(message: Message):
 
 @router.message(Command("contact"))
 async def cmd_contact(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4440,7 +4444,7 @@ async def cmd_contact(message: Message):
 
 @router.message(Command("dice"))
 async def cmd_dice(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4465,7 +4469,7 @@ async def cmd_dice(message: Message):
 
 @router.message(Command("game"))
 async def cmd_game(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4490,7 +4494,7 @@ async def cmd_game(message: Message):
 
 @router.message(Command("setgamescore"))
 async def cmd_set_game_score(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4510,7 +4514,7 @@ async def cmd_set_game_score(message: Message):
 
 @router.message(Command("gamehighscores"))
 async def cmd_get_game_high_scores(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4530,7 +4534,7 @@ async def cmd_get_game_high_scores(message: Message):
 
 @router.message(Command("chataction"))
 async def cmd_chat_action(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4557,7 +4561,7 @@ async def cmd_chat_action(message: Message):
 
 @router.message(Command("messagedraft"))
 async def cmd_message_draft(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4589,7 +4593,7 @@ async def cmd_message_draft(message: Message):
 
 @router.message(Command("richmessage"))
 async def cmd_send_rich_message(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4617,7 +4621,7 @@ async def cmd_send_rich_message(message: Message):
 
 @router.message(Command("richmessagedraft"))
 async def cmd_send_rich_message_draft(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4647,7 +4651,7 @@ async def cmd_send_rich_message_draft(message: Message):
 
 @router.message(Command("checklist"))
 async def cmd_checklist(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4701,7 +4705,7 @@ async def cmd_checklist(message: Message):
 
 @router.message(Command("editchecklist"))
 async def cmd_edit_message_checklist(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4761,7 +4765,7 @@ async def cmd_edit_message_checklist(message: Message):
 
 @router.message(Command("editcaption"))
 async def cmd_edit_message_caption(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4803,7 +4807,7 @@ async def cmd_edit_message_caption(message: Message):
 
 @router.message(Command("editmedia"))
 async def cmd_edit_message_media(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4847,7 +4851,7 @@ async def cmd_edit_message_media(message: Message):
 
 @router.message(Command("editreplymarkup"))
 async def cmd_edit_message_reply_markup(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4882,7 +4886,7 @@ async def cmd_edit_message_reply_markup(message: Message):
 
 @router.message(Command("editlivelocation"))
 async def cmd_edit_message_live_location(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4919,7 +4923,7 @@ async def cmd_edit_message_live_location(message: Message):
 
 @router.message(Command("stoplivelocation"))
 async def cmd_stop_message_live_location(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4948,7 +4952,7 @@ async def cmd_stop_message_live_location(message: Message):
 
 @router.message(Command("poststory"))
 async def cmd_post_story(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -4990,7 +4994,7 @@ async def cmd_post_story(message: Message):
 
 @router.message(Command("repoststory"))
 async def cmd_repost_story(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5027,7 +5031,7 @@ async def cmd_repost_story(message: Message):
 
 @router.message(Command("editstory"))
 async def cmd_edit_story(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5066,7 +5070,7 @@ async def cmd_edit_story(message: Message):
 
 @router.message(Command("deletestory"))
 async def cmd_delete_story(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5092,7 +5096,7 @@ async def cmd_delete_story(message: Message):
 
 @router.message(Command("businessconnection"))
 async def cmd_business_connection(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5115,7 +5119,7 @@ async def cmd_business_connection(message: Message):
 
 @router.message(Command("businessstarbalance"))
 async def cmd_business_star_balance(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5153,7 +5157,7 @@ async def cmd_business_star_balance(message: Message):
 
 @router.message(Command("mystarbalance"))
 async def cmd_my_star_balance(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5175,7 +5179,7 @@ async def cmd_my_star_balance(message: Message):
 
 @router.message(Command("startransactions"))
 async def cmd_star_transactions(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5198,7 +5202,7 @@ async def cmd_star_transactions(message: Message):
 
 @router.message(Command("refundstars"))
 async def cmd_refund_stars(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5246,7 +5250,7 @@ async def cmd_refund_stars(message: Message):
 
 @router.message(Command("edituserstarsubscription"))
 async def cmd_edit_user_star_subscription(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5300,7 +5304,7 @@ async def cmd_edit_user_star_subscription(message: Message):
 
 @router.message(Command("businessgifts"))
 async def cmd_business_gifts(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5331,7 +5335,7 @@ async def cmd_business_gifts(message: Message):
 
 @router.message(Command("usergifts"))
 async def cmd_user_gifts(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5359,7 +5363,7 @@ async def cmd_user_gifts(message: Message):
 
 @router.message(Command("chatgifts"))
 async def cmd_chat_gifts(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5387,7 +5391,7 @@ async def cmd_chat_gifts(message: Message):
 
 @router.message(Command("transferbusinessstars"))
 async def cmd_transfer_business_stars(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5432,7 +5436,7 @@ async def cmd_transfer_business_stars(message: Message):
 
 @router.message(Command("convertgiftstars"))
 async def cmd_convert_gift_stars(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5470,7 +5474,7 @@ async def cmd_convert_gift_stars(message: Message):
 
 @router.message(Command("upgradegift"))
 async def cmd_upgrade_gift(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5507,7 +5511,7 @@ async def cmd_upgrade_gift(message: Message):
 
 @router.message(Command("transfergift"))
 async def cmd_transfer_gift(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5548,7 +5552,7 @@ async def cmd_transfer_gift(message: Message):
 
 @router.message(Command("readbusinessmessage"))
 async def cmd_read_business_message(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5575,7 +5579,7 @@ async def cmd_read_business_message(message: Message):
 
 @router.message(Command("setbusinessaccountname"))
 async def cmd_set_business_account_name(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5601,7 +5605,7 @@ async def cmd_set_business_account_name(message: Message):
 
 @router.message(Command("setbusinessaccountusername"))
 async def cmd_set_business_account_username(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5626,7 +5630,7 @@ async def cmd_set_business_account_username(message: Message):
 
 @router.message(Command("setbusinessaccountbio"))
 async def cmd_set_business_account_bio(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5652,7 +5656,7 @@ async def cmd_set_business_account_bio(message: Message):
 
 @router.message(Command("setbusinessaccountprofilephoto"))
 async def cmd_set_business_account_profile_photo(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5692,7 +5696,7 @@ async def cmd_set_business_account_profile_photo(message: Message):
 
 @router.message(Command("removebusinessaccountprofilephoto"))
 async def cmd_remove_business_account_profile_photo(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5730,7 +5734,7 @@ async def cmd_remove_business_account_profile_photo(message: Message):
 
 @router.message(Command("setbusinessaccountgiftsettings"))
 async def cmd_set_business_account_gift_settings(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5770,7 +5774,7 @@ async def cmd_set_business_account_gift_settings(message: Message):
 
 @router.message(Command("deletebusinessmessages"))
 async def cmd_delete_business_messages(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5801,7 +5805,7 @@ async def cmd_delete_business_messages(message: Message):
 
 @router.message(Command("managedbottoken"))
 async def cmd_managed_bot_token(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5827,7 +5831,7 @@ async def cmd_managed_bot_token(message: Message):
 
 @router.message(Command("managedbotaccess"))
 async def cmd_managed_bot_access_settings(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5860,7 +5864,7 @@ async def cmd_managed_bot_access_settings(message: Message):
 
 @router.message(Command("setmanagedbotaccess"))
 async def cmd_set_managed_bot_access_settings(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5907,7 +5911,7 @@ async def cmd_set_managed_bot_access_settings(message: Message):
 
 @router.message(Command("replacemanagedbottoken"))
 async def cmd_replace_managed_bot_token(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5941,7 +5945,7 @@ async def cmd_replace_managed_bot_token(message: Message):
 
 @router.message(Command("availablegifts"))
 async def cmd_available_gifts(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -5965,7 +5969,7 @@ async def cmd_available_gifts(message: Message):
 
 @router.message(Command("sendgift"))
 async def cmd_send_gift(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6007,7 +6011,7 @@ async def cmd_send_gift(message: Message):
 
 @router.message(Command("giftpremium"))
 async def cmd_gift_premium(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6046,7 +6050,7 @@ async def cmd_gift_premium(message: Message):
 
 @router.message(Command("verifyuser"))
 async def cmd_verify_user(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6085,7 +6089,7 @@ async def cmd_verify_user(message: Message):
 
 @router.message(Command("removeuserverification"))
 async def cmd_remove_user_verification(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6113,7 +6117,7 @@ async def cmd_remove_user_verification(message: Message):
 
 @router.message(Command("verifychat"))
 async def cmd_verify_chat(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6152,7 +6156,7 @@ async def cmd_verify_chat(message: Message):
 
 @router.message(Command("removechatverification"))
 async def cmd_remove_chat_verification(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6180,7 +6184,7 @@ async def cmd_remove_chat_verification(message: Message):
 
 @router.message(Command("userprofilephotos"))
 async def cmd_user_profile_photos(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6218,7 +6222,7 @@ async def cmd_user_profile_photos(message: Message):
 
 @router.message(Command("userprofileaudios"))
 async def cmd_user_profile_audios(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6256,7 +6260,7 @@ async def cmd_user_profile_audios(message: Message):
 
 @router.message(Command("banchatmember"))
 async def cmd_ban_chat_member(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6287,7 +6291,7 @@ async def cmd_ban_chat_member(message: Message):
 
 @router.message(Command("banchatsenderchat"))
 async def cmd_ban_chat_sender_chat(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6316,7 +6320,7 @@ async def cmd_ban_chat_sender_chat(message: Message):
 
 @router.message(Command("unbanchatmember"))
 async def cmd_unban_chat_member(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6346,7 +6350,7 @@ async def cmd_unban_chat_member(message: Message):
 
 @router.message(Command("unbanchatsenderchat"))
 async def cmd_unban_chat_sender_chat(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6375,7 +6379,7 @@ async def cmd_unban_chat_sender_chat(message: Message):
 
 @router.message(Command("restrictchatmember"))
 async def cmd_restrict_chat_member(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6421,7 +6425,7 @@ async def cmd_restrict_chat_member(message: Message):
 
 @router.message(Command("setchatpermissions"))
 async def cmd_set_chat_permissions(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6456,7 +6460,7 @@ async def cmd_set_chat_permissions(message: Message):
 
 @router.message(Command("unpinchatmessage"))
 async def cmd_unpin_chat_message(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6485,7 +6489,7 @@ async def cmd_unpin_chat_message(message: Message):
 
 @router.message(Command("deletemessage"))
 async def cmd_delete_message(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6517,7 +6521,7 @@ async def cmd_delete_message(message: Message):
 
 @router.message(Command("deletemessages"))
 async def cmd_delete_messages(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6549,7 +6553,7 @@ async def cmd_delete_messages(message: Message):
 
 @router.message(Command("unpinallchatmessages"))
 async def cmd_unpin_all_chat_messages(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6572,7 +6576,7 @@ async def cmd_unpin_all_chat_messages(message: Message):
 
 @router.message(Command("pinchatmessage"))
 async def cmd_pin_chat_message(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6606,7 +6610,7 @@ async def cmd_pin_chat_message(message: Message):
 
 @router.message(Command("deletechatphoto"))
 async def cmd_delete_chat_photo(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6629,7 +6633,7 @@ async def cmd_delete_chat_photo(message: Message):
 
 @router.message(Command("setchatphoto"))
 async def cmd_set_chat_photo(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6658,7 +6662,7 @@ async def cmd_set_chat_photo(message: Message):
 
 @router.message(Command("setmyprofilephoto"))
 async def cmd_set_my_profile_photo(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6684,7 +6688,7 @@ async def cmd_set_my_profile_photo(message: Message):
 
 @router.message(Command("removemyprofilephoto"))
 async def cmd_remove_my_profile_photo(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6706,7 +6710,7 @@ async def cmd_remove_my_profile_photo(message: Message):
 
 @router.message(Command("setchatdescription"))
 async def cmd_set_chat_description(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6738,7 +6742,7 @@ async def cmd_set_chat_description(message: Message):
 
 @router.message(Command("setchattitle"))
 async def cmd_set_chat_title(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6767,7 +6771,7 @@ async def cmd_set_chat_title(message: Message):
 
 @router.message(Command("setmycommands"))
 async def cmd_set_my_commands(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6790,7 +6794,7 @@ async def cmd_set_my_commands(message: Message):
 
 @router.message(Command("setchatmenubutton"))
 async def cmd_set_chat_menu_button(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6819,7 +6823,7 @@ async def cmd_set_chat_menu_button(message: Message):
 
 @router.message(Command("getchatmenubutton"))
 async def cmd_get_chat_menu_button(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6845,7 +6849,7 @@ async def cmd_get_chat_menu_button(message: Message):
 
 @router.message(Command("setmyname"))
 async def cmd_set_my_name(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6876,7 +6880,7 @@ async def cmd_set_my_name(message: Message):
 
 @router.message(Command("setmydescription"))
 async def cmd_set_my_description(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6910,7 +6914,7 @@ async def cmd_set_my_description(message: Message):
 
 @router.message(Command("setmyshortdescription"))
 async def cmd_set_my_short_description(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6944,7 +6948,7 @@ async def cmd_set_my_short_description(message: Message):
 
 @router.message(Command("setmydefaultrights"))
 async def cmd_set_my_default_administrator_rights(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -6979,7 +6983,7 @@ async def cmd_set_my_default_administrator_rights(message: Message):
 
 @router.message(Command("getmyname"))
 async def cmd_get_my_name(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7005,7 +7009,7 @@ async def cmd_get_my_name(message: Message):
 
 @router.message(Command("getmydefaultrights"))
 async def cmd_get_my_default_administrator_rights(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7034,7 +7038,7 @@ async def cmd_get_my_default_administrator_rights(message: Message):
 
 @router.message(Command("getmydescription"))
 async def cmd_get_my_description(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7060,7 +7064,7 @@ async def cmd_get_my_description(message: Message):
 
 @router.message(Command("getmyshortdescription"))
 async def cmd_get_my_short_description(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7089,7 +7093,7 @@ async def cmd_get_my_short_description(message: Message):
 
 @router.message(Command("deletemycommands"))
 async def cmd_delete_my_commands(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7117,7 +7121,7 @@ async def cmd_delete_my_commands(message: Message):
 
 @router.message(Command("getmycommands"))
 async def cmd_get_my_commands(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7149,7 +7153,7 @@ async def cmd_get_my_commands(message: Message):
 
 @router.message(Command("setchatstickerset"))
 async def cmd_set_chat_sticker_set(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7181,7 +7185,7 @@ async def cmd_set_chat_sticker_set(message: Message):
 
 @router.message(Command("deletechatstickerset"))
 async def cmd_delete_chat_sticker_set(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7204,7 +7208,7 @@ async def cmd_delete_chat_sticker_set(message: Message):
 
 @router.message(Command("promotechatmember"))
 async def cmd_promote_chat_member(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7239,7 +7243,7 @@ async def cmd_promote_chat_member(message: Message):
 
 @router.message(Command("exportchatinvitelink"))
 async def cmd_export_chat_invite_link(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7268,7 +7272,7 @@ async def cmd_export_chat_invite_link(message: Message):
 
 @router.message(Command("getchat"))
 async def cmd_get_chat(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7294,7 +7298,7 @@ async def cmd_get_chat(message: Message):
 
 @router.message(Command("getchatmembercount"))
 async def cmd_get_chat_member_count(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7320,7 +7324,7 @@ async def cmd_get_chat_member_count(message: Message):
 
 @router.message(Command("getchatmember"))
 async def cmd_get_chat_member(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7348,7 +7352,7 @@ async def cmd_get_chat_member(message: Message):
 
 @router.message(Command("getchatadministrators"))
 async def cmd_get_chat_administrators(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7374,7 +7378,7 @@ async def cmd_get_chat_administrators(message: Message):
 
 @router.message(Command("forumtopiciconstickers"))
 async def cmd_forum_topic_icon_stickers(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7396,7 +7400,7 @@ async def cmd_forum_topic_icon_stickers(message: Message):
 
 @router.message(Command("getstickerset"))
 async def cmd_get_sticker_set(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7416,7 +7420,7 @@ async def cmd_get_sticker_set(message: Message):
 
 @router.message(Command("customemojistickers"))
 async def cmd_custom_emoji_stickers(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7446,7 +7450,7 @@ async def cmd_custom_emoji_stickers(message: Message):
 
 @router.message(Command("uploadstickerfile"))
 async def cmd_upload_sticker_file(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7480,7 +7484,7 @@ async def cmd_upload_sticker_file(message: Message):
 
 @router.message(Command("createnewstickerset"))
 async def cmd_create_new_sticker_set(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7521,7 +7525,7 @@ async def cmd_create_new_sticker_set(message: Message):
 
 @router.message(Command("addstickertoset"))
 async def cmd_add_sticker_to_set(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7558,7 +7562,7 @@ async def cmd_add_sticker_to_set(message: Message):
 
 @router.message(Command("replacestickerinset"))
 async def cmd_replace_sticker_in_set(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7597,7 +7601,7 @@ async def cmd_replace_sticker_in_set(message: Message):
 
 @router.message(Command("setstickerposition"))
 async def cmd_set_sticker_position_in_set(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7628,7 +7632,7 @@ async def cmd_set_sticker_position_in_set(message: Message):
 
 @router.message(Command("setstickeremojis"))
 async def cmd_set_sticker_emoji_list(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7659,7 +7663,7 @@ async def cmd_set_sticker_emoji_list(message: Message):
 
 @router.message(Command("setstickermaskposition"))
 async def cmd_set_sticker_mask_position(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7690,7 +7694,7 @@ async def cmd_set_sticker_mask_position(message: Message):
 
 @router.message(Command("setstickerkeywords"))
 async def cmd_set_sticker_keywords(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7721,7 +7725,7 @@ async def cmd_set_sticker_keywords(message: Message):
 
 @router.message(Command("setstickersettitle"))
 async def cmd_set_sticker_set_title(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7752,7 +7756,7 @@ async def cmd_set_sticker_set_title(message: Message):
 
 @router.message(Command("setstickersetthumbnail"))
 async def cmd_set_sticker_set_thumbnail(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7787,7 +7791,7 @@ async def cmd_set_sticker_set_thumbnail(message: Message):
 
 @router.message(Command("setcustomemojithumbnail"))
 async def cmd_set_custom_emoji_sticker_set_thumbnail(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7825,7 +7829,7 @@ async def cmd_set_custom_emoji_sticker_set_thumbnail(message: Message):
 
 @router.message(Command("deletestickerfromset"))
 async def cmd_delete_sticker_from_set(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7848,7 +7852,7 @@ async def cmd_delete_sticker_from_set(message: Message):
 
 @router.message(Command("deletestickerset"))
 async def cmd_delete_sticker_set(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7871,7 +7875,7 @@ async def cmd_delete_sticker_set(message: Message):
 
 @router.message(Command("editforumtopic"))
 async def cmd_edit_forum_topic(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7907,7 +7911,7 @@ async def cmd_edit_forum_topic(message: Message):
 
 @router.message(Command("editgeneralforumtopic"))
 async def cmd_edit_general_forum_topic(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7939,7 +7943,7 @@ async def cmd_edit_general_forum_topic(message: Message):
 
 @router.message(Command("createforumtopic"))
 async def cmd_create_forum_topic(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -7976,7 +7980,7 @@ async def cmd_create_forum_topic(message: Message):
 
 @router.message(Command("closeforumtopic"))
 async def cmd_close_forum_topic(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8008,7 +8012,7 @@ async def cmd_close_forum_topic(message: Message):
 
 @router.message(Command("closegeneralforumtopic"))
 async def cmd_close_general_forum_topic(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8034,7 +8038,7 @@ async def cmd_close_general_forum_topic(message: Message):
 
 @router.message(Command("reopenforumtopic"))
 async def cmd_reopen_forum_topic(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8066,7 +8070,7 @@ async def cmd_reopen_forum_topic(message: Message):
 
 @router.message(Command("reopengeneralforumtopic"))
 async def cmd_reopen_general_forum_topic(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8092,7 +8096,7 @@ async def cmd_reopen_general_forum_topic(message: Message):
 
 @router.message(Command("hidegeneralforumtopic"))
 async def cmd_hide_general_forum_topic(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8118,7 +8122,7 @@ async def cmd_hide_general_forum_topic(message: Message):
 
 @router.message(Command("unhidegeneralforumtopic"))
 async def cmd_unhide_general_forum_topic(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8144,7 +8148,7 @@ async def cmd_unhide_general_forum_topic(message: Message):
 
 @router.message(Command("deleteforumtopic"))
 async def cmd_delete_forum_topic(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8176,7 +8180,7 @@ async def cmd_delete_forum_topic(message: Message):
 
 @router.message(Command("unpinallforumtopicmessages"))
 async def cmd_unpin_all_forum_topic_messages(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8208,7 +8212,7 @@ async def cmd_unpin_all_forum_topic_messages(message: Message):
 
 @router.message(Command("unpinallgeneralforumtopicmessages"))
 async def cmd_unpin_all_general_forum_topic_messages(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8241,7 +8245,7 @@ async def cmd_unpin_all_general_forum_topic_messages(message: Message):
 
 @router.message(Command("userpersonalchatmessages"))
 async def cmd_get_user_personal_chat_messages(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8277,7 +8281,7 @@ async def cmd_get_user_personal_chat_messages(message: Message):
 
 @router.message(Command("userchatboosts"))
 async def cmd_get_user_chat_boosts(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8313,7 +8317,7 @@ async def cmd_get_user_chat_boosts(message: Message):
 
 @router.message(Command("leavechat"))
 async def cmd_leave_chat(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8341,7 +8345,7 @@ async def cmd_leave_chat(message: Message):
 
 @router.message(Command("answerjoinrequestquery"))
 async def cmd_answer_chat_join_request_query(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8370,7 +8374,7 @@ async def cmd_answer_chat_join_request_query(message: Message):
 
 @router.message(Command("joinrequestwebapp"))
 async def cmd_send_chat_join_request_web_app(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8399,7 +8403,7 @@ async def cmd_send_chat_join_request_web_app(message: Message):
 
 @router.message(Command("approvechatjoinrequest"))
 async def cmd_approve_chat_join_request(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8427,7 +8431,7 @@ async def cmd_approve_chat_join_request(message: Message):
 
 @router.message(Command("declinechatjoinrequest"))
 async def cmd_decline_chat_join_request(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8455,7 +8459,7 @@ async def cmd_decline_chat_join_request(message: Message):
 
 @router.message(Command("createchatinvitelink"))
 async def cmd_create_chat_invite_link(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8483,7 +8487,7 @@ async def cmd_create_chat_invite_link(message: Message):
 
 @router.message(Command("editchatinvitelink"))
 async def cmd_edit_chat_invite_link(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8512,7 +8516,7 @@ async def cmd_edit_chat_invite_link(message: Message):
 
 @router.message(Command("revokechatinvitelink"))
 async def cmd_revoke_chat_invite_link(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8540,7 +8544,7 @@ async def cmd_revoke_chat_invite_link(message: Message):
 
 @router.message(Command("createchatsubscriptioninvitelink"))
 async def cmd_create_chat_subscription_invite_link(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8579,7 +8583,7 @@ async def cmd_create_chat_subscription_invite_link(message: Message):
 
 @router.message(Command("editchatsubscriptioninvitelink"))
 async def cmd_edit_chat_subscription_invite_link(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8615,7 +8619,7 @@ async def cmd_edit_chat_subscription_invite_link(message: Message):
 
 @router.message(Command("setchatadministratortitle"))
 async def cmd_set_chat_administrator_custom_title(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8652,7 +8656,7 @@ async def cmd_set_chat_administrator_custom_title(message: Message):
 
 @router.message(Command("setchatmembertag"))
 async def cmd_set_chat_member_tag(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8686,7 +8690,7 @@ async def cmd_set_chat_member_tag(message: Message):
 
 @router.message(Command("react"))
 async def cmd_react(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8731,7 +8735,7 @@ async def cmd_react(message: Message):
 
 @router.message(Command("deletereaction"))
 async def cmd_delete_message_reaction(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8765,7 +8769,7 @@ async def cmd_delete_message_reaction(message: Message):
 
 @router.message(Command("deleteallreactions"))
 async def cmd_delete_all_message_reactions(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8797,7 +8801,7 @@ async def cmd_delete_all_message_reactions(message: Message):
 
 @router.message(Command("setemojistatus"))
 async def cmd_set_emoji_status(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8828,7 +8832,7 @@ async def cmd_set_emoji_status(message: Message):
 
 @router.message(Command("mediagroup"))
 async def cmd_media_group(message: Message):
-    if not _is_admin_action_allowed(message.chat.id):
+    if not _is_admin_action_allowed(message.chat.id, _message_user_id(message)):
         await message.answer("This command is restricted to admin chats.")
         return
 
@@ -8894,18 +8898,28 @@ async def cmd_clear(message: Message):
     await message.answer("Conversation history cleared.", reply_markup=keyboard)
 
 
-def _is_admin_or_allowed_chat(chat_id: int) -> bool:
-    admin_chat_ids = settings.admin_chat_ids
-    if admin_chat_ids:
-        return chat_id in admin_chat_ids
-
-    allowed_chat_ids = settings.allowed_chat_ids
-    return bool(allowed_chat_ids and chat_id in allowed_chat_ids)
+def _message_user_id(message: Message) -> int | None:
+    from_user = getattr(message, "from_user", None)
+    return getattr(from_user, "id", None)
 
 
-def _is_admin_action_allowed(chat_id: int) -> bool:
-    admin_chat_ids = settings.admin_chat_ids
-    return bool(admin_chat_ids and chat_id in admin_chat_ids)
+def _is_admin_or_allowed_chat(chat_id: int, user_id: int | None = None) -> bool:
+    return check_admin_or_allowed_chat(
+        chat_id=chat_id,
+        user_id=user_id,
+        admin_chat_ids=settings.admin_chat_ids,
+        allowed_chat_ids=settings.allowed_chat_ids,
+        admin_user_ids=settings.admin_user_ids,
+    )
+
+
+def _is_admin_action_allowed(chat_id: int, user_id: int | None = None) -> bool:
+    return check_admin_action_allowed(
+        chat_id=chat_id,
+        user_id=user_id,
+        admin_chat_ids=settings.admin_chat_ids,
+        admin_user_ids=settings.admin_user_ids,
+    )
 
 
 def _parse_drop_pending_updates(text: str | None) -> bool:

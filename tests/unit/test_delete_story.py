@@ -150,7 +150,7 @@ def _message(text: str = "/deletestory", chat_id: int = 42):
 
 
 async def test_cmd_delete_story_rejects_unlisted_chat(monkeypatch):
-    monkeypatch.setattr(commands, "_is_admin_action_allowed", lambda chat_id: False)
+    monkeypatch.setattr(commands, "_is_admin_action_allowed", lambda *args: False)
     monkeypatch.setattr(commands, "perform_delete_story", AsyncMock())
     message = _message(
         text=f"/deletestory {BUSINESS_CONNECTION_ID} {STORY_ID}",
@@ -164,7 +164,7 @@ async def test_cmd_delete_story_rejects_unlisted_chat(monkeypatch):
 
 
 async def test_cmd_delete_story_shows_usage_without_args(monkeypatch):
-    monkeypatch.setattr(commands, "_is_admin_action_allowed", lambda chat_id: True)
+    monkeypatch.setattr(commands, "_is_admin_action_allowed", lambda *args: True)
     monkeypatch.setattr(commands, "perform_delete_story", AsyncMock())
     message = _message(text="/deletestory", chat_id=42)
 
@@ -177,7 +177,7 @@ async def test_cmd_delete_story_shows_usage_without_args(monkeypatch):
 
 
 async def test_cmd_delete_story_deletes_story(monkeypatch):
-    monkeypatch.setattr(commands, "_is_admin_action_allowed", lambda chat_id: True)
+    monkeypatch.setattr(commands, "_is_admin_action_allowed", lambda *args: True)
     monkeypatch.setattr(commands, "perform_delete_story", AsyncMock(return_value=True))
     message = _message(
         text=f"/deletestory {BUSINESS_CONNECTION_ID} {STORY_ID}",
@@ -195,7 +195,7 @@ async def test_cmd_delete_story_deletes_story(monkeypatch):
 
 
 async def test_cmd_delete_story_reports_service_error(monkeypatch):
-    monkeypatch.setattr(commands, "_is_admin_action_allowed", lambda chat_id: True)
+    monkeypatch.setattr(commands, "_is_admin_action_allowed", lambda *args: True)
     monkeypatch.setattr(
         commands,
         "perform_delete_story",

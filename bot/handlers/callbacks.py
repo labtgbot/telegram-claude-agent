@@ -7,6 +7,7 @@ from bot.config import settings
 from bot.services.answer_callback_query import perform_answer_callback_query
 from bot.services.close import perform_close
 from bot.services.log_out import perform_log_out
+from bot.utils.admin_auth import is_admin_action_allowed as check_admin_action_allowed
 from bot.utils.storage import storage
 from bot.utils.user_errors import format_user_error, log_user_error_context
 
@@ -37,9 +38,18 @@ async def _ack(query: CallbackQuery, text: str | None = None, *, show_alert: boo
         )
 
 
-def _is_admin_action_allowed(chat_id: int) -> bool:
-    admin_chat_ids = settings.admin_chat_ids
-    return bool(admin_chat_ids and chat_id in admin_chat_ids)
+def _is_admin_action_allowed(chat_id: int, user_id: int | None = None) -> bool:
+    return check_admin_action_allowed(
+        chat_id=chat_id,
+        user_id=user_id,
+        admin_chat_ids=settings.admin_chat_ids,
+        admin_user_ids=settings.admin_user_ids,
+    )
+
+
+def _callback_user_id(query: CallbackQuery) -> int | None:
+    from_user = getattr(query, "from_user", None)
+    return getattr(from_user, "id", None)
 
 
 async def _answer_operation_failed(
@@ -93,7 +103,10 @@ async def handle_clear_history_callback(query: CallbackQuery):
 
 @router.callback_query(F.data == CALLBACK_LOGOUT_CONFIRM)
 async def handle_logout_confirm_callback(query: CallbackQuery):
-    if query.message is None or not _is_admin_action_allowed(query.message.chat.id):
+    if query.message is None or not _is_admin_action_allowed(
+        query.message.chat.id,
+        _callback_user_id(query),
+    ):
         await _ack(query, "This action is restricted to admin chats.", show_alert=True)
         return
 
@@ -114,7 +127,10 @@ async def handle_logout_confirm_callback(query: CallbackQuery):
 
 @router.callback_query(F.data == CALLBACK_CLOSE_CONFIRM)
 async def handle_close_confirm_callback(query: CallbackQuery):
-    if query.message is None or not _is_admin_action_allowed(query.message.chat.id):
+    if query.message is None or not _is_admin_action_allowed(
+        query.message.chat.id,
+        _callback_user_id(query),
+    ):
         await _ack(query, "This action is restricted to admin chats.", show_alert=True)
         return
 

@@ -48,6 +48,22 @@ def test_admin_chat_ids_reject_malformed_token(monkeypatch):
         Settings()
 
 
+def test_admin_user_ids_parsing_from_string(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_ADMIN_USER_IDS", "42, 100500")
+
+    settings = Settings()
+
+    assert settings.admin_user_ids == [42, 100500]
+
+
+def test_admin_user_ids_reject_malformed_token(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_ADMIN_USER_IDS", "42, nope")
+    with pytest.raises(ValueError, match="TELEGRAM_ADMIN_USER_IDS.*nope"):
+        Settings()
+
+
 def test_free_claude_base_url_rejects_scheme_relative_url(monkeypatch):
     _base_env(monkeypatch)
     monkeypatch.setenv("FREE_CLAUDE_BASE_URL", "//evil")

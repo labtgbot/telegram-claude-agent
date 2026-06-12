@@ -67,11 +67,11 @@ async def test_perform_answer_callback_query_reraises_telegram_errors():
         await perform_answer_callback_query(bot, callback_query_id="callback-1")
 
 
-def _query(data: str, chat_id: int = 42):
+def _query(data: str, chat_id: int = 42, user_id: int = 7):
     return SimpleNamespace(
         id="callback-1",
         data=data,
-        from_user=SimpleNamespace(id=7),
+        from_user=SimpleNamespace(id=user_id),
         message=SimpleNamespace(chat=SimpleNamespace(id=chat_id), answer=AsyncMock()),
         bot=SimpleNamespace(answer_callback_query=AsyncMock(return_value=True)),
     )
@@ -112,10 +112,38 @@ async def test_logout_callback_rejects_non_admin_chat(monkeypatch):
     assert kwargs["show_alert"] is True
 
 
+async def test_logout_callback_rejects_non_admin_user_in_admin_group(monkeypatch):
+    monkeypatch.setattr(callbacks.settings, "telegram_admin_chat_ids", "-10042")
+    monkeypatch.setattr(callbacks.settings, "telegram_admin_user_ids", "")
+    monkeypatch.setattr(callbacks, "perform_log_out", AsyncMock(return_value=True))
+    query = _query("admin:logout:confirm", chat_id=-10042, user_id=7)
+
+    await callbacks.handle_logout_confirm_callback(query)
+
+    callbacks.perform_log_out.assert_not_awaited()
+    query.bot.answer_callback_query.assert_awaited_once()
+    _, kwargs = query.bot.answer_callback_query.await_args
+    assert kwargs["show_alert"] is True
+
+
 async def test_logout_callback_performs_admin_action(monkeypatch):
     monkeypatch.setattr(callbacks.settings, "telegram_admin_chat_ids", "42")
+    monkeypatch.setattr(callbacks.settings, "telegram_admin_user_ids", "")
     monkeypatch.setattr(callbacks, "perform_log_out", AsyncMock(return_value=True))
-    query = _query("admin:logout:confirm", chat_id=42)
+    query = _query("admin:logout:confirm", chat_id=42, user_id=42)
+
+    await callbacks.handle_logout_confirm_callback(query)
+
+    callbacks.perform_log_out.assert_awaited_once_with(query.bot)
+    query.bot.answer_callback_query.assert_awaited_once()
+    query.message.answer.assert_awaited_once()
+
+
+async def test_logout_callback_allows_admin_user_in_admin_group(monkeypatch):
+    monkeypatch.setattr(callbacks.settings, "telegram_admin_chat_ids", "-10042")
+    monkeypatch.setattr(callbacks.settings, "telegram_admin_user_ids", "7")
+    monkeypatch.setattr(callbacks, "perform_log_out", AsyncMock(return_value=True))
+    query = _query("admin:logout:confirm", chat_id=-10042, user_id=7)
 
     await callbacks.handle_logout_confirm_callback(query)
 
