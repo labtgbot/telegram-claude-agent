@@ -556,10 +556,11 @@ async def handle_chat_message(message: Message):
     )
     try:
         use_draft_stream = _should_use_message_draft(message)
+        use_streaming = settings.free_claude_streaming_enabled and not _guest_query_id(message)
         async with _typing_indicator(message):
-            if settings.free_claude_streaming_enabled and use_draft_stream:
+            if use_streaming and use_draft_stream:
                 reply_text = await handle_streaming_with_draft(message, client, messages, model)
-            elif settings.free_claude_streaming_enabled:
+            elif use_streaming:
                 reply_text = await handle_streaming(message, client, messages, model)
             else:
                 response = await client.send_message(
