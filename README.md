@@ -73,14 +73,14 @@ TELEGRAM_ADMIN_CHAT_IDS=  # optional admin webhook command allowlist
 TELEGRAM_CHAT_ACTION_ENABLED=true  # show "typing…" while a request is handled
 TELEGRAM_MESSAGE_DRAFT_ENABLED=false  # stream replies via ephemeral drafts (private chats only)
 TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES=8388608  # reject incoming media above 8 MiB before download
-TELEGRAM_BOT_NAME=  # optional startup sync for the bot display name
-TELEGRAM_BOT_NAME_LANGUAGE_CODE=  # optional IETF language code for localized bot name
-TELEGRAM_BOT_SHORT_DESCRIPTION=  # optional startup sync for the bot profile short description
-TELEGRAM_BOT_SHORT_DESCRIPTION_LANGUAGE_CODE=  # optional IETF language code for localized bot short description
-TELEGRAM_BOT_DESCRIPTION=  # optional startup sync for the bot profile description
-TELEGRAM_BOT_DESCRIPTION_LANGUAGE_CODE=  # optional IETF language code for localized bot description
-TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS=  # optional startup sync preset: moderator, manager, channel, or clear
-TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS_FOR_CHANNELS=  # optional true for channels, false for groups
+# TELEGRAM_BOT_NAME=  # optional startup sync for the bot display name
+# TELEGRAM_BOT_NAME_LANGUAGE_CODE=  # optional IETF language code for localized bot name
+# TELEGRAM_BOT_SHORT_DESCRIPTION=  # optional startup sync for the bot profile short description
+# TELEGRAM_BOT_SHORT_DESCRIPTION_LANGUAGE_CODE=  # optional IETF language code for localized bot short description
+# TELEGRAM_BOT_DESCRIPTION=  # optional startup sync for the bot profile description
+# TELEGRAM_BOT_DESCRIPTION_LANGUAGE_CODE=  # optional IETF language code for localized bot description
+# TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS=  # optional startup sync preset: moderator, manager, channel, or clear
+# TELEGRAM_BOT_DEFAULT_ADMINISTRATOR_RIGHTS_FOR_CHANNELS=  # optional true for channels, false for groups
 
 API_SECRET_TOKEN=random_secret_for_webhook_verification
 RATE_LIMIT_REQUESTS_PER_MINUTE=60
@@ -149,7 +149,10 @@ docker-compose up -d
 
 See `docker-compose.yml` for a reference setup including free-claude-code. Set
 `FREE_CLAUDE_CODE_IMAGE` to a versioned tag or digest from the registry you use;
-the compose file intentionally has no `latest` fallback.
+the compose file intentionally has no `latest` fallback. The compose file
+forwards the runtime variables documented in `.env.example` to the bot
+container; startup profile sync variables are pass-through and only appear in
+the container when you explicitly set them.
 
 #### Using systemd (example)
 
