@@ -222,7 +222,7 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/savepreparedkeyboard` – Save a prepared keyboard button for a Mini App user (admin only).
 - `/location` – Send a point on the map into this chat as a real Telegram location via latitude and longitude (admin only).
 - `/venue` – Send a venue (a named place with a title and an address pinned on the map) into this chat via latitude and longitude (admin only).
-- `/poll` – Send a native poll (an interactive question with 2-10 tappable answer options) into this chat (admin only).
+- `/poll` – Send a native poll (an interactive question with 1-12 tappable answer options, optionally with Bot API 10.1 link media on options) into this chat (admin only).
 - `/stoppoll` – Stop a bot-sent native poll by chat/message id and return the final poll state (admin only).
 - `/approvesuggestedpost` – Approve a direct messages suggested post by chat/message id, with an optional Unix send date (admin only).
 - `/declinesuggestedpost` – Decline a direct messages suggested post by chat/message id, with an optional creator comment (admin only).
@@ -233,6 +233,8 @@ Make sure to set `TELEGRAM_WEBHOOK_URL` to a publicly accessible HTTPS URL.
 - `/gamehighscores` – Fetch Telegram game high scores for a user on a chat or inline game message (admin only).
 - `/chataction` – Show a chat action (a transient status such as `typing…`) in this chat (admin only).
 - `/messagedraft` – Stream an ephemeral message draft (a ~30-second preview shown above the input field) into this private chat (admin only).
+- `/richmessage` – Send a Bot API 10.1 rich message into this chat from an `InputRichMessage` JSON object (admin only).
+- `/richmessagedraft` – Stream a Bot API 10.1 rich message draft into this private chat (admin only).
 - `/checklist` – Send a checklist (a titled list of 1-30 tasks) into this chat on behalf of a connected business account (admin only).
 - `/editchecklist` – Edit an existing business checklist message by chat/message id (admin only).
 - `/poststory` – Post a photo story on behalf of a connected business account by `business_connection_id` (admin only).
@@ -326,6 +328,8 @@ typed method when available and an isolated raw Bot API helper on pinned
 - `/promotechatmember <chat_id> <user_id> <moderator|manager|demote>` – Promote or demote a group, supergroup, or channel member where the bot has `can_promote_members` (admin only).
 - `/approvechatjoinrequest <chat_id> <user_id>` – Approve a pending join request where the bot has `can_invite_users` (admin only).
 - `/declinechatjoinrequest <chat_id> <user_id>` – Decline a pending join request where the bot has `can_invite_users` (admin only).
+- `/answerjoinrequestquery <query_id> <approve|decline|queue>` – Answer a Bot API 10.1 guard-bot join request query within Telegram's query window (admin only).
+- `/joinrequestwebapp <query_id> <web_app_url>` – Open a Mini App for a Bot API 10.1 guard-bot join request query (admin only).
 - `/exportchatinvitelink <chat_id>` – Export a new primary invite link for a group, supergroup, or channel where the bot has `can_invite_users` (admin only).
 - `/getchat <chat_id>` – Fetch Telegram chat metadata for a private chat, group, supergroup, or channel (admin only).
 - `/getchatadministrators <chat_id>` – Fetch the administrator list and rights for a group, supergroup, or channel known to the bot (admin only).
@@ -1648,19 +1652,23 @@ commands:
 
 ### Send a poll
 
-The restricted `/poll` command calls Telegram Bot API `sendPoll` through
-aiogram's typed `Bot.send_poll()` wrapper. It lets an operator post a native
-**poll** into the chat — an interactive question with tappable answer options —
-instead of only a textual interpretation.
+The restricted `/poll` command calls Telegram Bot API `sendPoll` through an
+isolated raw HTTP helper, because the current aiogram dependency does not expose
+Bot API 10.1 poll option media. It lets an operator post a native **poll** into
+the chat — an interactive question with tappable answer options — instead of
+only a textual interpretation.
 
 Usage: `/poll <question> | <option> | <option> [| <option> ...]`
 
 - the poll is always sent into the chat where the command was issued;
 - the `question` comes first and the answer `options` follow, all separated by a
   vertical bar (`|`); the question and every option may contain spaces;
-- provide 2-10 options; the question is limited to 300 characters and each
+- provide 1-12 options; the question is limited to 300 characters and each
   option to 100 characters (the command validates these limits before calling
   Telegram);
+- write an option as `Option text => https://example.com` to attach a Bot API
+  10.1 `InputMediaLink` object to that option; only `http://` and `https://`
+  links are accepted by the command parser;
 - the command shows usage when there are no arguments, when the separator is
   missing so no option is given, or when the question or any option is empty;
 - the question and the answer options are content the operator chose to
@@ -1979,6 +1987,61 @@ admin commands:
 - it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
   **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
   is empty, the command is disabled;
+- the global rate-limit middleware still applies.
+
+### Send a rich message
+
+The restricted `/richmessage` command calls Telegram Bot API 10.1
+`sendRichMessage` through an isolated raw HTTP helper. It lets an operator post
+a rich message from an `InputRichMessage` JSON object while the project remains
+on an aiogram dependency that does not expose this Bot API 10.1 method yet.
+
+Usage: `/richmessage {"html":"<h1>Status</h1>"}`
+
+- the rich message is always sent into the chat where the command was issued;
+- the JSON object must contain exactly one non-empty `html` or `markdown`
+  string;
+- optional boolean fields `is_rtl` and `skip_entity_detection` are passed
+  through unchanged;
+- the helper returns Telegram's sent `Message` object, and the command reports
+  the resulting `message_id` when Telegram returns one;
+- Telegram validation, permission, media-right and rate-limit errors are
+  reported back to the admin chat.
+
+Because the command makes the bot post arbitrary rich content, it is guarded
+like the other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the rich message body is kept out of structured logs;
+- the global rate-limit middleware still applies.
+
+### Stream a rich message draft
+
+The restricted `/richmessagedraft` command calls Telegram Bot API 10.1
+`sendRichMessageDraft` through an isolated raw HTTP helper. It streams a partial
+rich message to a private chat as an ephemeral ~30-second preview; when the
+content is final, Telegram expects a separate persisted `sendRichMessage` call.
+
+Usage: `/richmessagedraft <draft_id> {"html":"<tg-thinking></tg-thinking>"}`
+
+- the `draft_id` must be a non-zero integer; Telegram animates changes for
+  drafts that reuse the same id;
+- the target chat is the private chat where the command was issued;
+- the JSON object follows the same validation as `/richmessage`: exactly one
+  non-empty `html` or `markdown` field, plus optional `is_rtl` and
+  `skip_entity_detection`;
+- Telegram validation, private-chat and rate-limit errors are reported back to
+  the admin chat.
+
+Because the command streams arbitrary rich draft content, it is guarded like the
+other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the rich draft body is kept out of structured logs;
 - the global rate-limit middleware still applies.
 
 ### Send a checklist
@@ -3976,6 +4039,56 @@ Because the command denies access to a chat, it is guarded like the other admin 
   is empty, the command is disabled;
 - the global rate-limit middleware still applies.
 
+### Answer chat join request query
+
+The `/answerjoinrequestquery <query_id> <approve|decline|queue>` admin command
+calls Telegram Bot API 10.1 `answerChatJoinRequestQuery`. It processes a
+guard-bot join request query identified by `ChatJoinRequest.query_id`: `approve`
+allows the user to join, `decline` rejects the request, and `queue` leaves the
+decision to other administrators.
+
+Telegram includes `query_id` only for join request updates that need this query
+flow, and the bot must answer it within Telegram's short query window. The
+current aiogram dependency does not expose this Bot API 10.1 method yet, so the
+service uses an isolated raw Bot API helper. No chat id or user id is passed to
+this method; Telegram resolves the target request from the query id. Telegram
+validation, stale-query and rate-limit errors are reported back to the admin
+chat.
+
+Because the command can grant or deny chat access, it is guarded like the other
+admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- query ids are not logged as message content; failures log only the error
+  shape;
+- the global rate-limit middleware still applies.
+
+### Send chat join request Mini App
+
+The `/joinrequestwebapp <query_id> <web_app_url>` admin command calls Telegram
+Bot API 10.1 `sendChatJoinRequestWebApp`. It handles a guard-bot join request
+query by opening a Mini App for the user before a final approve, decline or
+queue decision is made.
+
+The command accepts only `http://` and `https://` URLs before calling Telegram.
+The same `ChatJoinRequest.query_id` timing rule applies: the query must be
+handled quickly after the update arrives. The current aiogram dependency does
+not expose this Bot API 10.1 method yet, so the service uses an isolated raw Bot
+API helper. Telegram validation, stale-query and Mini App URL errors are
+reported back to the admin chat.
+
+Because the command can send a user into a Mini App during chat-access review,
+it is guarded like the other admin commands:
+
+- it is only available to chats listed in `TELEGRAM_ADMIN_CHAT_IDS` and does
+  **not** fall back to `TELEGRAM_ALLOWED_CHAT_IDS`; if `TELEGRAM_ADMIN_CHAT_IDS`
+  is empty, the command is disabled;
+- the Mini App URL is operator-provided content and is kept out of structured
+  logs;
+- the global rate-limit middleware still applies.
+
 ### Edit chat invite link
 
 The `/editchatinvitelink <chat_id> <invite_link> [name=<text>] [expire_date=<unix_time>] [member_limit=<1-99999>] [creates_join_request=true|false]` admin command calls Telegram Bot API `editChatInviteLink`. It edits an existing non-primary invite link for a group, supergroup or channel. The project still pins `aiogram==3.3.0`, so the service uses aiogram's typed `edit_chat_invite_link` method when the runtime provides it and falls back to an isolated raw Bot API helper otherwise.
@@ -4075,7 +4188,7 @@ telegram-claude-agent/
 │   │   ├── logging.py          # Structured logging
 │   │   └── rate_limit.py       # Rate limiting per user
 │   ├── handlers/
-│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /sticker, /getstickerset, /setstickerkeywords, /setstickersettitle, /setstickersetthumbnail, /setcustomemojithumbnail, /deletestickerset, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /checklist, /setmycommands, /mediagroup, /clear
+│   │   ├── commands.py         # /start, /help, /model, /settings, /webhook, /deletewebhook, /logout, /close, /forward, /forwards, /copy, /copies, /photo, /audio, /livephoto, /document, /video, /videonote, /animation, /sticker, /getstickerset, /setstickerkeywords, /setstickersettitle, /setstickersetthumbnail, /setcustomemojithumbnail, /deletestickerset, /voice, /paidmedia, /location, /venue, /poll, /contact, /dice, /chataction, /messagedraft, /richmessage, /richmessagedraft, /checklist, /setmycommands, /mediagroup, /clear
 │   │   ├── chat.py             # Text and media message handler (shows typing… while processing)
 │   │   └── inline.py           # Inline query handler
 │   ├── services/
@@ -4108,12 +4221,16 @@ telegram-claude-agent/
 │   │   ├── send_paid_media.py  # Telegram sendPaidMedia raw Bot API helper
 │   │   ├── send_location.py    # Telegram sendLocation outbound helper
 │   │   ├── send_venue.py       # Telegram sendVenue outbound helper
-│   │   ├── send_poll.py        # Telegram sendPoll outbound helper
+│   │   ├── send_poll.py        # Telegram sendPoll raw Bot API helper
 │   │   ├── send_contact.py     # Telegram sendContact outbound helper
 │   │   ├── send_dice.py        # Telegram sendDice outbound helper
 │   │   ├── send_chat_action.py # Telegram sendChatAction outbound helper (typing…)
 │   │   ├── send_checklist.py   # Telegram sendChecklist raw Bot API helper
 │   │   ├── send_message_draft.py # Telegram sendMessageDraft raw Bot API helper
+│   │   ├── send_rich_message.py # Telegram sendRichMessage raw Bot API helper
+│   │   ├── send_rich_message_draft.py # Telegram sendRichMessageDraft raw helper
+│   │   ├── answer_chat_join_request_query.py # Telegram answerChatJoinRequestQuery raw helper
+│   │   ├── send_chat_join_request_web_app.py # Telegram sendChatJoinRequestWebApp raw helper
 │   │   └── send_media_group.py # Telegram sendMediaGroup outbound helper
 │   └── utils/
 │       ├── storage.py          # In-memory conversation storage with idle eviction
@@ -4164,12 +4281,14 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/paidmedia` command makes the bot post arbitrary monetized media priced in Telegram Stars into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/location` command makes the bot post an arbitrary point on the map into the chat as a location, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; coordinates are kept out of the structured logs.
 - The `/venue` command makes the bot post an arbitrary venue (a named place with a title and an address) into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the coordinates, title and address are kept out of the structured logs.
-- The `/poll` command makes the bot post an arbitrary native poll into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the question and the answer options are kept out of the structured logs.
+- The `/poll` command makes the bot post an arbitrary native poll into the chat, optionally with Bot API 10.1 link media on options, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the question, answer options and option links are kept out of the structured logs.
 - The `/contact` command makes the bot post an arbitrary phone contact into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the phone number and the contact's name are kept out of the structured logs.
 - The `/dice` command makes the bot post an animated dice into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/game` command makes the bot post a BotFather-configured Telegram game into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty.
 - The `/chataction` command makes the bot show a chat action in the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the automatic `typing…` indicator shown while processing a request is independent of this command and is controlled by `TELEGRAM_CHAT_ACTION_ENABLED`.
 - The `/messagedraft` command makes the bot post an ephemeral message draft into the (private) chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the draft text is kept out of the structured logs. The automatic draft-based streaming preview is independent of this command and is controlled by `TELEGRAM_MESSAGE_DRAFT_ENABLED`.
+- The `/richmessage` command makes the bot post arbitrary Bot API 10.1 rich content into the chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the rich message body is kept out of the structured logs.
+- The `/richmessagedraft` command makes the bot stream arbitrary Bot API 10.1 rich draft content into the private chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the rich draft body is kept out of the structured logs.
 - The `/checklist` command makes the bot post an arbitrary checklist into the chat on behalf of a connected business account, so it requires `TELEGRAM_ADMIN_CHAT_IDS` and is unavailable when that list is empty; the title and task texts are kept out of the structured logs.
 - The `/businessconnection` command fetches business connection owner/lifecycle metadata by `business_connection_id`, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps returned owner fields out of structured logs.
 - The `/businessgifts` command fetches owned gifts of a connected business account by `business_connection_id`, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and logs only the connection id, item count, next-offset presence and error shape.
@@ -4192,6 +4311,8 @@ The `ClaudeProxyClient` is designed to work with the Anthropic Messages API form
 - The `/exportchatinvitelink` command rotates and exposes the primary invite link for a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.
 - The `/approvechatjoinrequest` command approves a user's pending request to enter a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.
 - The `/declinechatjoinrequest` command declines a user's pending request to enter a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.
+- The `/answerjoinrequestquery` command answers a Bot API 10.1 guard-bot join request query by approving, declining, or queueing it, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and must be used within Telegram's query window.
+- The `/joinrequestwebapp` command opens a Mini App for a Bot API 10.1 guard-bot join request query, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and keeps the Mini App URL out of structured logs.
 - The `/createchatinvitelink` command creates and exposes an additional invite link for a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.
 - The `/editchatinvitelink` command changes an existing non-primary invite link for a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.
 - The `/revokechatinvitelink` command revokes an invite link created by the bot for a target chat, so it requires `TELEGRAM_ADMIN_CHAT_IDS`, is unavailable when that list is empty, and also requires the bot to have `can_invite_users` in the target chat.

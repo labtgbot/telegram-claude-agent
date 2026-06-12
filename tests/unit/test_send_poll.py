@@ -1,96 +1,174 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
-from aiogram.methods import SendPoll
 
 from bot.handlers import commands
-from bot.services.send_poll import perform_send_poll
+from bot.services import send_poll
+from bot.services.send_poll import SendPollError, perform_send_poll
 
 QUESTION = "What is the best editor?"
 OPTIONS = ["Vim", "Emacs", "VS Code"]
 
 
-async def test_perform_send_poll_uses_typed_aiogram_api():
-    sent = SimpleNamespace(message_id=777)
-    bot = SimpleNamespace(send_poll=AsyncMock(return_value=sent))
+class _FakeResponse:
+    def __init__(self, data):
+        self._data = data
+
+    def json(self):
+        return self._data
+
+
+class _FakeClient:
+    def __init__(self, *, response=None, exc=None):
+        self._response = response
+        self._exc = exc
+        self.posted = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def post(self, url, json):
+        self.posted = {"url": url, "json": json}
+        if self._exc is not None:
+            raise self._exc
+        return self._response
+
+
+def _bot(token="123:abc"):
+    return SimpleNamespace(
+        token=token,
+        session=SimpleNamespace(
+            api=SimpleNamespace(
+                api_url=lambda token, method: (
+                    f"https://api.telegram.org/bot{token}/{method}"
+                )
+            )
+        ),
+    )
+
+
+def _install_client(monkeypatch, client):
+    monkeypatch.setattr(send_poll.httpx, "AsyncClient", lambda *a, **k: client)
+
+
+async def test_perform_send_poll_posts_current_raw_payload(monkeypatch):
+    client = _FakeClient(
+        response=_FakeResponse({"ok": True, "result": {"message_id": 777}})
+    )
+    _install_client(monkeypatch, client)
 
     result = await perform_send_poll(
-        bot,
+        _bot(),
         chat_id=42,
         question=QUESTION,
         options=OPTIONS,
     )
 
-    assert result is sent
-    bot.send_poll.assert_awaited_once_with(
-        chat_id=42,
-        question=QUESTION,
-        options=OPTIONS,
-        is_anonymous=None,
-        type=None,
-        allows_multiple_answers=None,
-        correct_option_id=None,
-        explanation=None,
-        open_period=None,
-        close_date=None,
-        is_closed=None,
-        message_thread_id=None,
-        disable_notification=None,
-        protect_content=None,
+    assert result == {"message_id": 777}
+    assert client.posted["url"] == "https://api.telegram.org/bot123:abc/sendPoll"
+    assert client.posted["json"] == {
+        "chat_id": 42,
+        "question": QUESTION,
+        "options": [{"text": "Vim"}, {"text": "Emacs"}, {"text": "VS Code"}],
+    }
+
+
+async def test_perform_send_poll_forwards_current_metadata(monkeypatch):
+    client = _FakeClient(
+        response=_FakeResponse({"ok": True, "result": {"message_id": 1}})
     )
-
-
-async def test_perform_send_poll_forwards_quiz_metadata():
-    bot = SimpleNamespace(send_poll=AsyncMock(return_value=SimpleNamespace(message_id=1)))
+    _install_client(monkeypatch, client)
 
     await perform_send_poll(
-        bot,
+        _bot(),
         chat_id=42,
         question=QUESTION,
         options=OPTIONS,
         type="quiz",
-        correct_option_id=2,
+        correct_option_ids=[2],
         explanation="VS Code is the answer.",
+        explanation_media={"type": "photo", "media": "https://example.com/a.jpg"},
         is_anonymous=False,
         open_period=60,
+        allows_revoting=True,
     )
 
-    _, kwargs = bot.send_poll.await_args
-    assert kwargs["type"] == "quiz"
-    assert kwargs["correct_option_id"] == 2
-    assert kwargs["explanation"] == "VS Code is the answer."
-    assert kwargs["is_anonymous"] is False
-    assert kwargs["open_period"] == 60
+    assert client.posted["json"]["type"] == "quiz"
+    assert client.posted["json"]["correct_option_ids"] == [2]
+    assert client.posted["json"]["explanation"] == "VS Code is the answer."
+    assert client.posted["json"]["explanation_media"] == {
+        "type": "photo",
+        "media": "https://example.com/a.jpg",
+    }
+    assert client.posted["json"]["is_anonymous"] is False
+    assert client.posted["json"]["open_period"] == 60
+    assert client.posted["json"]["allows_revoting"] is True
 
 
-async def test_perform_send_poll_reraises_telegram_errors():
-    error = TelegramBadRequest(
-        method=SendPoll(chat_id=1, question=QUESTION, options=OPTIONS),
-        message="Bad Request: poll must have at least 2 option",
+async def test_perform_send_poll_forwards_option_media_link(monkeypatch):
+    client = _FakeClient(
+        response=_FakeResponse({"ok": True, "result": {"message_id": 1}})
     )
-    bot = SimpleNamespace(send_poll=AsyncMock(side_effect=error))
+    _install_client(monkeypatch, client)
 
-    with pytest.raises(TelegramBadRequest):
+    await perform_send_poll(
+        _bot(),
+        chat_id=42,
+        question=QUESTION,
+        options=[
+            "Plain",
+            {
+                "text": "Read more",
+                "media": {"type": "link", "url": "https://example.com"},
+            },
+        ],
+    )
+
+    assert client.posted["json"]["options"] == [
+        {"text": "Plain"},
+        {
+            "text": "Read more",
+            "media": {"type": "link", "url": "https://example.com"},
+        },
+    ]
+
+
+async def test_perform_send_poll_raises_on_telegram_error(monkeypatch):
+    client = _FakeClient(
+        response=_FakeResponse(
+            {
+                "ok": False,
+                "error_code": 400,
+                "description": "Bad Request: chat not found",
+            }
+        )
+    )
+    _install_client(monkeypatch, client)
+
+    with pytest.raises(SendPollError) as excinfo:
         await perform_send_poll(
-            bot,
+            _bot(),
             chat_id=1,
             question=QUESTION,
             options=OPTIONS,
         )
 
+    assert excinfo.value.error_code == 400
+    assert "chat not found" in str(excinfo.value)
 
-async def test_perform_send_poll_reraises_forbidden():
-    error = TelegramForbiddenError(
-        method=SendPoll(chat_id=1, question=QUESTION, options=OPTIONS),
-        message="Forbidden: bot was blocked by the user",
-    )
-    bot = SimpleNamespace(send_poll=AsyncMock(side_effect=error))
 
-    with pytest.raises(TelegramForbiddenError):
+async def test_perform_send_poll_raises_on_transport_error(monkeypatch):
+    client = _FakeClient(exc=httpx.ConnectError("boom"))
+    _install_client(monkeypatch, client)
+
+    with pytest.raises(SendPollError):
         await perform_send_poll(
-            bot,
+            _bot(),
             chat_id=1,
             question=QUESTION,
             options=OPTIONS,
@@ -192,6 +270,34 @@ async def test_cmd_poll_sends_poll(monkeypatch):
     assert args[0] == "Sent poll with 3 options."
 
 
+async def test_cmd_poll_sends_option_media_links(monkeypatch):
+    monkeypatch.setattr(commands.settings, "telegram_admin_chat_ids", "42")
+    monkeypatch.setattr(
+        commands, "perform_send_poll", AsyncMock(return_value=object())
+    )
+    message = _message(
+        text=f"/poll {QUESTION} | Docs => https://example.com/docs | Plain",
+        chat_id=42,
+    )
+
+    await commands.cmd_poll(message)
+
+    commands.perform_send_poll.assert_awaited_once_with(
+        message.bot,
+        chat_id=42,
+        question=QUESTION,
+        options=[
+            {
+                "text": "Docs",
+                "media": {"type": "link", "url": "https://example.com/docs"},
+            },
+            "Plain",
+        ],
+    )
+    args, _ = message.answer.await_args
+    assert args[0] == "Sent poll with 2 options."
+
+
 async def test_cmd_poll_keeps_spaces_in_question_and_options(monkeypatch):
     monkeypatch.setattr(commands.settings, "telegram_admin_chat_ids", "42")
     monkeypatch.setattr(
@@ -209,22 +315,29 @@ async def test_cmd_poll_keeps_spaces_in_question_and_options(monkeypatch):
     assert kwargs["options"] == ["Option  One", "Option  Two"]
 
 
-async def test_cmd_poll_rejects_too_few_options(monkeypatch):
+async def test_cmd_poll_sends_single_option(monkeypatch):
     monkeypatch.setattr(commands.settings, "telegram_admin_chat_ids", "42")
-    monkeypatch.setattr(commands, "perform_send_poll", AsyncMock())
+    monkeypatch.setattr(
+        commands, "perform_send_poll", AsyncMock(return_value=object())
+    )
     message = _message(text=f"/poll {QUESTION} | Only one", chat_id=42)
 
     await commands.cmd_poll(message)
 
-    commands.perform_send_poll.assert_not_awaited()
+    commands.perform_send_poll.assert_awaited_once_with(
+        message.bot,
+        chat_id=42,
+        question=QUESTION,
+        options=["Only one"],
+    )
     args, _ = message.answer.await_args
-    assert "A poll needs between" in args[0]
+    assert args[0] == "Sent poll with 1 options."
 
 
 async def test_cmd_poll_rejects_too_many_options(monkeypatch):
     monkeypatch.setattr(commands.settings, "telegram_admin_chat_ids", "42")
     monkeypatch.setattr(commands, "perform_send_poll", AsyncMock())
-    options = " | ".join(f"Option {i}" for i in range(11))
+    options = " | ".join(f"Option {i}" for i in range(13))
     message = _message(text=f"/poll {QUESTION} | {options}", chat_id=42)
 
     await commands.cmd_poll(message)
@@ -260,11 +373,34 @@ async def test_cmd_poll_rejects_too_long_option(monkeypatch):
     assert "Option is too long" in args[0]
 
 
+async def test_cmd_poll_rejects_empty_link_option_text(monkeypatch):
+    monkeypatch.setattr(commands.settings, "telegram_admin_chat_ids", "42")
+    monkeypatch.setattr(commands, "perform_send_poll", AsyncMock())
+    message = _message(text=f"/poll {QUESTION} | => https://example.com")
+
+    await commands.cmd_poll(message)
+
+    commands.perform_send_poll.assert_not_awaited()
+    args, kwargs = message.answer.await_args
+    assert "poll usage" in args[0]
+    assert kwargs["parse_mode"] == "HTML"
+
+
+async def test_cmd_poll_rejects_invalid_link_option_url(monkeypatch):
+    monkeypatch.setattr(commands.settings, "telegram_admin_chat_ids", "42")
+    monkeypatch.setattr(commands, "perform_send_poll", AsyncMock())
+    message = _message(text=f"/poll {QUESTION} | Docs => ftp://example.com")
+
+    await commands.cmd_poll(message)
+
+    commands.perform_send_poll.assert_not_awaited()
+    args, kwargs = message.answer.await_args
+    assert "poll usage" in args[0]
+    assert kwargs["parse_mode"] == "HTML"
+
+
 async def test_cmd_poll_reports_telegram_errors(monkeypatch):
-    error = TelegramBadRequest(
-        method=SendPoll(chat_id=42, question=QUESTION, options=OPTIONS),
-        message="Bad Request: chat not found",
-    )
+    error = SendPollError("Bad Request: chat not found", error_code=400)
     monkeypatch.setattr(commands.settings, "telegram_admin_chat_ids", "42")
     monkeypatch.setattr(
         commands, "perform_send_poll", AsyncMock(side_effect=error)
