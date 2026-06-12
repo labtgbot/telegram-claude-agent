@@ -26,10 +26,11 @@ async def test_perform_log_out_reraises_telegram_errors():
         await perform_log_out(bot)
 
 
-def _message(text: str = "/logout", chat_id: int = 42):
+def _message(text: str = "/logout", chat_id: int = 42, user_id: int | None = None):
     return SimpleNamespace(
         text=text,
         chat=SimpleNamespace(id=chat_id),
+        from_user=SimpleNamespace(id=chat_id if user_id is None else user_id),
         bot=object(),
         answer=AsyncMock(),
     )
@@ -45,6 +46,30 @@ async def test_cmd_log_out_rejects_unlisted_chat(monkeypatch):
 
     commands.perform_log_out.assert_not_awaited()
     message.answer.assert_awaited_once_with("This command is restricted to admin chats.")
+
+
+async def test_cmd_log_out_rejects_non_admin_user_in_admin_group(monkeypatch):
+    monkeypatch.setattr(commands.settings, "telegram_admin_chat_ids", "-10042")
+    monkeypatch.setattr(commands.settings, "telegram_admin_user_ids", "")
+    monkeypatch.setattr(commands, "perform_log_out", AsyncMock())
+    message = _message(text="/logout confirm", chat_id=-10042, user_id=7)
+
+    await commands.cmd_log_out(message)
+
+    commands.perform_log_out.assert_not_awaited()
+    message.answer.assert_awaited_once_with("This command is restricted to admin chats.")
+
+
+async def test_cmd_log_out_allows_admin_user_in_admin_group(monkeypatch):
+    monkeypatch.setattr(commands.settings, "telegram_admin_chat_ids", "-10042")
+    monkeypatch.setattr(commands.settings, "telegram_admin_user_ids", "7")
+    monkeypatch.setattr(commands, "perform_log_out", AsyncMock(return_value=True))
+    message = _message(text="/logout confirm", chat_id=-10042, user_id=7)
+
+    await commands.cmd_log_out(message)
+
+    commands.perform_log_out.assert_awaited_once_with(message.bot)
+    message.answer.assert_awaited_once()
 
 
 async def test_cmd_log_out_requires_confirmation(monkeypatch):

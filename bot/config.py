@@ -13,9 +13,10 @@ _SECRET_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{1,256}$")
 _SECRET_TOKEN_MIN_LENGTH = 16
 DEFAULT_TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES = 8 * 1024 * 1024
 _HTTP_URL_ADAPTER = TypeAdapter(AnyHttpUrl)
-_CHAT_ID_ENV_NAMES = {
+_ID_LIST_ENV_NAMES = {
     "telegram_allowed_chat_ids": "TELEGRAM_ALLOWED_CHAT_IDS",
     "telegram_admin_chat_ids": "TELEGRAM_ADMIN_CHAT_IDS",
+    "telegram_admin_user_ids": "TELEGRAM_ADMIN_USER_IDS",
 }
 LOG_LEVEL_NAMES = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 _LOG_LEVEL_NAME_SET = set(LOG_LEVEL_NAMES)
@@ -35,7 +36,7 @@ def _parse_id_list(raw: str, source_name: str = "chat id list") -> List[int]:
             ids.append(int(token))
         except ValueError as exc:
             raise ValueError(
-                f"{source_name} must be a comma-separated list of integer chat IDs; "
+                f"{source_name} must be a comma-separated list of integer IDs; "
                 f"invalid token: {token!r}."
             ) from exc
     return ids
@@ -55,6 +56,7 @@ class Settings(BaseSettings):
     telegram_guest_mode_enabled: bool = True
     telegram_allowed_chat_ids: str = ""
     telegram_admin_chat_ids: str = ""
+    telegram_admin_user_ids: str = ""
     telegram_chat_action_enabled: bool = True
     telegram_message_draft_enabled: bool = False
     telegram_media_download_max_bytes: int = DEFAULT_TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES
@@ -83,10 +85,14 @@ class Settings(BaseSettings):
             ) from exc
         return value
 
-    @field_validator("telegram_allowed_chat_ids", "telegram_admin_chat_ids")
+    @field_validator(
+        "telegram_allowed_chat_ids",
+        "telegram_admin_chat_ids",
+        "telegram_admin_user_ids",
+    )
     @classmethod
     def _validate_chat_id_list(cls, value: str, info: ValidationInfo) -> str:
-        source_name = _CHAT_ID_ENV_NAMES.get(info.field_name or "", "chat id list")
+        source_name = _ID_LIST_ENV_NAMES.get(info.field_name or "", "ID list")
         _parse_id_list(value, source_name)
         return value
 
@@ -146,6 +152,10 @@ class Settings(BaseSettings):
     @property
     def admin_chat_ids(self) -> List[int]:
         return _parse_id_list(self.telegram_admin_chat_ids, "TELEGRAM_ADMIN_CHAT_IDS")
+
+    @property
+    def admin_user_ids(self) -> List[int]:
+        return _parse_id_list(self.telegram_admin_user_ids, "TELEGRAM_ADMIN_USER_IDS")
 
 # Global settings instance
 settings = Settings()
