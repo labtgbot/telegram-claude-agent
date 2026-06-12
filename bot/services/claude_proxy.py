@@ -65,12 +65,18 @@ class ClaudeProxyClient:
             payload["system"] = system
 
         if stream:
-            resp = await self._client.post(
+            request = self._client.build_request(
+                "POST",
                 f"{self.base_url}/v1/messages",
                 json=payload,
                 headers=self._auth_headers()
             )
-            resp.raise_for_status()
+            resp = await self._client.send(request, stream=True)
+            try:
+                resp.raise_for_status()
+            except Exception:
+                await resp.aclose()
+                raise
             return self._stream_response(resp)
         else:
             resp = await self._client.post(

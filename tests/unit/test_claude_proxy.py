@@ -1,5 +1,9 @@
+import asyncio
+import json
 from contextlib import aclosing
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import httpx
 import pytest
 from bot.services.claude_proxy import ClaudeProxyClient
 
@@ -92,16 +96,93 @@ async def test_send_message_streaming():
 
     mock_response.aiter_lines = mock_aiter_lines
 
-    with patch.object(client._client, 'post', new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = mock_response
+    with patch.object(client._client, "send", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = mock_response
         messages = [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
         stream = await client.send_message(messages=messages, model="claude-3-opus", stream=True)
+        args, kwargs = mock_send.call_args
+        request = args[0]
+        payload = json.loads(request.content.decode())
+        assert request.method == "POST"
+        assert str(request.url) == "http://localhost:8082/v1/messages"
+        assert payload["messages"] == messages
+        assert payload["model"] == "claude-3-opus"
+        assert payload["stream"] is True
+        assert request.headers["Authorization"] == "Bearer token"
+        assert kwargs["stream"] is True
         chunks = []
         async for chunk in stream:
             chunks.append(chunk)
         assert len(chunks) == 2  # two deltas before message_stop
         assert chunks[0]["delta"]["text"] == "Hello"
         assert chunks[1]["delta"]["text"] == " World"
+
+
+class _BlockingSSEStream(httpx.AsyncByteStream):
+    def __init__(self):
+        self.iteration_started = asyncio.Event()
+        self.release_remaining = asyncio.Event()
+        self.closed = False
+
+    async def __aiter__(self):
+        self.iteration_started.set()
+        yield (
+            b'data: {"type": "content_block_delta", '
+            b'"delta": {"type": "text_delta", "text": "Hello"}}\n\n'
+        )
+        await self.release_remaining.wait()
+        yield b'data: {"type": "message_stop"}\n\n'
+
+    async def aclose(self):
+        self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_send_message_streaming_returns_before_sse_body_completes():
+    slow_stream = _BlockingSSEStream()
+
+    async def handler(_request):
+        return httpx.Response(200, stream=slow_stream)
+
+    transport = httpx.MockTransport(handler)
+    client = ClaudeProxyClient("http://localhost:8082", "token")
+    await client.close()
+    client._client = httpx.AsyncClient(transport=transport, timeout=1, follow_redirects=True)
+
+    send_task = asyncio.create_task(
+        client.send_message(
+            messages=[{"role": "user", "content": [{"type": "text", "text": "Hi"}]}],
+            model="m",
+            stream=True,
+        )
+    )
+    body_iteration_task = asyncio.create_task(slow_stream.iteration_started.wait())
+
+    try:
+        done, _pending = await asyncio.wait(
+            {send_task, body_iteration_task},
+            timeout=1,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        assert send_task in done
+        assert body_iteration_task not in done
+
+        stream = send_task.result()
+        chunks = []
+        async for chunk in stream:
+            chunks.append(chunk)
+            slow_stream.release_remaining.set()
+
+        assert chunks[0]["delta"]["text"] == "Hello"
+        assert slow_stream.closed is True
+    finally:
+        slow_stream.release_remaining.set()
+        for task in (send_task, body_iteration_task):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(send_task, body_iteration_task, return_exceptions=True)
+        await client.close()
 
 
 def _streaming_response_mock():
@@ -124,8 +205,8 @@ async def test_streaming_closes_response_on_completion():
     client = ClaudeProxyClient("http://localhost:8082", "token")
     mock_response = _streaming_response_mock()
 
-    with patch.object(client._client, 'post', new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = mock_response
+    with patch.object(client._client, "send", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = mock_response
         messages = [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
         stream = await client.send_message(messages=messages, model="m", stream=True)
         async for _ in stream:
@@ -134,12 +215,34 @@ async def test_streaming_closes_response_on_completion():
 
 
 @pytest.mark.asyncio
+async def test_streaming_closes_response_on_status_error():
+    client = ClaudeProxyClient("http://localhost:8082", "token")
+    request = httpx.Request("POST", "http://localhost:8082/v1/messages")
+    error = httpx.HTTPStatusError(
+        "proxy failed",
+        request=request,
+        response=httpx.Response(502, request=request),
+    )
+    mock_response = MagicMock()
+    mock_response.raise_for_status.side_effect = error
+    mock_response.aclose = AsyncMock()
+
+    with patch.object(client._client, "send", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = mock_response
+        messages = [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
+        with pytest.raises(httpx.HTTPStatusError):
+            await client.send_message(messages=messages, model="m", stream=True)
+
+        mock_response.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_streaming_closes_response_on_explicit_aclose():
     client = ClaudeProxyClient("http://localhost:8082", "token")
     mock_response = _streaming_response_mock()
 
-    with patch.object(client._client, 'post', new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = mock_response
+    with patch.object(client._client, "send", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = mock_response
         messages = [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
         stream = await client.send_message(messages=messages, model="m", stream=True)
         async for _ in stream:
@@ -154,8 +257,8 @@ async def test_streaming_closes_response_on_early_break_with_aclosing():
     client = ClaudeProxyClient("http://localhost:8082", "token")
     mock_response = _streaming_response_mock()
 
-    with patch.object(client._client, 'post', new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = mock_response
+    with patch.object(client._client, "send", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = mock_response
         messages = [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
         stream = await client.send_message(messages=messages, model="m", stream=True)
         # Mirrors the handler which wraps the stream in ``contextlib.aclosing``.
@@ -170,8 +273,8 @@ async def test_streaming_closes_response_on_consumer_exception():
     client = ClaudeProxyClient("http://localhost:8082", "token")
     mock_response = _streaming_response_mock()
 
-    with patch.object(client._client, 'post', new_callable=AsyncMock) as mock_post:
-        mock_post.return_value = mock_response
+    with patch.object(client._client, "send", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = mock_response
         messages = [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
         stream = await client.send_message(messages=messages, model="m", stream=True)
         # Mirrors the handler which wraps the stream in ``contextlib.aclosing``;
