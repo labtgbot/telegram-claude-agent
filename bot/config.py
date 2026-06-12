@@ -17,6 +17,8 @@ _CHAT_ID_ENV_NAMES = {
     "telegram_allowed_chat_ids": "TELEGRAM_ALLOWED_CHAT_IDS",
     "telegram_admin_chat_ids": "TELEGRAM_ADMIN_CHAT_IDS",
 }
+LOG_LEVEL_NAMES = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+_LOG_LEVEL_NAME_SET = set(LOG_LEVEL_NAMES)
 
 
 def _parse_id_list(raw: str, source_name: str = "chat id list") -> List[int]:
@@ -114,6 +116,15 @@ class Settings(BaseSettings):
         if value < 1:
             raise ValueError("TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES must be at least 1 byte.")
         return value
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _validate_log_level(cls, value: str) -> str:
+        normalized = str(value).strip().upper()
+        if normalized not in _LOG_LEVEL_NAME_SET:
+            allowed = ", ".join(LOG_LEVEL_NAMES)
+            raise ValueError(f"LOG_LEVEL must be one of: {allowed}.")
+        return normalized
 
     @model_validator(mode="after")
     def _require_secret_token_in_webhook_mode(self) -> "Settings":

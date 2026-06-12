@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Awaitable, Callable
@@ -35,13 +36,20 @@ from bot.services.set_my_default_administrator_rights import (
 )
 from bot.handlers.commands import _default_administrator_rights_for_preset
 
-# Logging configuration
-structlog.configure(
-    processors=[
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.JSONRenderer(),
-    ]
-)
+def configure_logging(log_level: str) -> None:
+    numeric_level = getattr(logging, log_level)
+    logging.basicConfig(level=numeric_level)
+    logging.getLogger().setLevel(numeric_level)
+    structlog.configure(
+        processors=[
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.JSONRenderer(),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(numeric_level),
+    )
+
+
+configure_logging(settings.log_level)
 logger = structlog.get_logger()
 
 POLLING_RETRY_BASE_DELAY_SECONDS = 1
