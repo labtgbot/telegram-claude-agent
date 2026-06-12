@@ -34,6 +34,7 @@ TELEGRAM_MESSAGE_LIMIT = 4096
 # that reuse the same draft_id, so refresh the preview at most this often to show
 # steady progress without flooding the ephemeral endpoint with tiny deltas.
 DRAFT_UPDATE_INTERVAL_SECONDS = 0.5
+EDIT_UPDATE_INTERVAL_SECONDS = 0.5
 IMAGE_HISTORY_PLACEHOLDER = "[image omitted from history]"
 CHAT_USER_ERROR_MESSAGE = format_user_error(
     "❌ Error: Something went wrong while processing your message"
@@ -315,11 +316,29 @@ async def send_final_reply(
     await send_reply_safely(message, text, parse_mode=parse_mode)
 
 
+async def _try_edit_stream_preview(
+    sent_msg, text: str, *, error_logged: bool
+) -> tuple[bool, bool]:
+    try:
+        await sent_msg.edit_text(text[:TELEGRAM_MESSAGE_LIMIT])
+        return True, error_logged
+    except Exception as exc:
+        if error_logged:
+            logger.debug("streaming_preview_edit_failed", error=str(exc))
+        else:
+            logger.warning("streaming_preview_edit_failed", error=str(exc))
+            error_logged = True
+        return False, error_logged
+
+
 async def handle_streaming(
     message: Message, client: ClaudeProxyClient, messages: list, model: str
 ) -> str:
     sent_msg = await message.answer("…")
     full_text = ""
+    last_update = time.monotonic()
+    last_preview_text = ""
+    preview_edit_error_logged = False
     try:
         stream = await client.send_message(
             messages=messages,
@@ -339,20 +358,36 @@ async def handle_streaming(
                 if not text:
                     continue
                 full_text += text
-                try:
-                    await sent_msg.edit_text(full_text[:TELEGRAM_MESSAGE_LIMIT])
-                except Exception:
-                    pass
+                now = time.monotonic()
+                if now - last_update >= EDIT_UPDATE_INTERVAL_SECONDS:
+                    last_update = now
+                    preview_text = full_text[:TELEGRAM_MESSAGE_LIMIT]
+                    edited, preview_edit_error_logged = await _try_edit_stream_preview(
+                        sent_msg,
+                        preview_text,
+                        error_logged=preview_edit_error_logged,
+                    )
+                    if edited:
+                        last_preview_text = preview_text
     except Exception:
         await sent_msg.edit_text(CHAT_USER_ERROR_MESSAGE)
         raise
 
     reply_text = full_text or "Claude returned no text response."
+    if full_text:
+        preview_text = full_text[:TELEGRAM_MESSAGE_LIMIT]
+        if preview_text != last_preview_text:
+            await _try_edit_stream_preview(
+                sent_msg,
+                preview_text,
+                error_logged=preview_edit_error_logged,
+            )
     rendered = md_to_html(reply_text)
     chunks = _split_for_telegram(rendered)
     try:
         await sent_msg.edit_text(chunks[0], parse_mode="HTML")
-    except Exception:
+    except Exception as exc:
+        logger.warning("streaming_final_edit_failed_falling_back_to_plain", error=str(exc))
         await sent_msg.edit_text(chunks[0][:TELEGRAM_MESSAGE_LIMIT])
     for extra in chunks[1:]:
         try:
