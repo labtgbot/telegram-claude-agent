@@ -36,6 +36,7 @@ TELEGRAM_MESSAGE_LIMIT = 4096
 DRAFT_UPDATE_INTERVAL_SECONDS = 0.5
 EDIT_UPDATE_INTERVAL_SECONDS = 0.5
 IMAGE_HISTORY_PLACEHOLDER = "[image omitted from history]"
+_CHAT_USER_ERROR_REPORTED_ATTR = "_chat_user_error_reported"
 CHAT_USER_ERROR_MESSAGE = format_user_error(
     "❌ Error: Something went wrong while processing your message"
 )
@@ -466,8 +467,9 @@ async def handle_streaming(
                     )
                     if edited:
                         last_preview_text = preview_text
-    except Exception:
+    except Exception as exc:
         await sent_msg.edit_text(CHAT_USER_ERROR_MESSAGE)
+        setattr(exc, _CHAT_USER_ERROR_REPORTED_ATTR, True)
         raise
 
     reply_text = full_text or "Claude returned no text response."
@@ -737,6 +739,7 @@ async def handle_chat_message(message: Message):
 
     except Exception as exc:
         logger.exception("chat_handler_failed", error=str(exc))
-        await message.answer(CHAT_USER_ERROR_MESSAGE)
+        if not getattr(exc, _CHAT_USER_ERROR_REPORTED_ATTR, False):
+            await message.answer(CHAT_USER_ERROR_MESSAGE)
     finally:
         await client.close()
