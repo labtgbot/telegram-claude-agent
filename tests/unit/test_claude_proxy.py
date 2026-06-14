@@ -99,9 +99,13 @@ async def test_send_message_streaming():
     # Mock aiter_lines to yield SSE lines
     async def mock_aiter_lines():
         yield "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"text_delta\", \"text\": \"Hello\"}}"
+        yield ""
         yield "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"text_delta\", \"text\": \" World\"}}"
+        yield ""
         yield "data: {\"type\": \"message_stop\"}"
+        yield ""
         yield "data: [DONE]"
+        yield ""
 
     mock_response.aiter_lines = mock_aiter_lines
 
@@ -127,6 +131,71 @@ async def test_send_message_streaming():
         assert chunks[1]["delta"]["text"] == " World"
 
 
+async def _collect_streaming_body(body: str):
+    async def handler(_request):
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=body.encode("utf-8"),
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = ClaudeProxyClient("http://localhost:8082", "token")
+    await client.close()
+    client._client = httpx.AsyncClient(transport=transport, timeout=1, follow_redirects=True)
+
+    try:
+        stream = await client.send_message(
+            messages=[{"role": "user", "content": [{"type": "text", "text": "Hi"}]}],
+            model="m",
+            stream=True,
+        )
+        return [chunk async for chunk in stream]
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_send_message_streaming_accepts_data_without_space_after_colon():
+    chunks = await _collect_streaming_body(
+        'data:{"type":"content_block_delta","index":0,'
+        '"delta":{"type":"text_delta","text":"Hi"}}\n'
+        "\n"
+        "data:[DONE]\n"
+        "\n"
+    )
+
+    assert chunks == [
+        {
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {"type": "text_delta", "text": "Hi"},
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_send_message_streaming_concatenates_multiline_data_event():
+    chunks = await _collect_streaming_body(
+        "data: {\n"
+        'data:   "type": "content_block_delta",\n'
+        'data:   "index": 0,\n'
+        'data:   "delta": {"type": "text_delta", "text": "Hi"}\n'
+        "data: }\n"
+        "\n"
+        "data: [DONE]\n"
+        "\n"
+    )
+
+    assert chunks == [
+        {
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {"type": "text_delta", "text": "Hi"},
+        }
+    ]
+
+
 @pytest.mark.asyncio
 async def test_send_message_streaming_raises_on_anthropic_error_event():
     client = ClaudeProxyClient("http://localhost:8082", "token")
@@ -139,11 +208,14 @@ async def test_send_message_streaming_raises_on_anthropic_error_event():
             'data: {"type": "content_block_delta", '
             '"delta": {"type": "text_delta", "text": "Hello"}}'
         )
+        yield ""
         yield (
             'data: {"type": "error", '
             '"error": {"type": "overloaded_error", "message": "Overloaded"}}'
         )
+        yield ""
         yield "data: {\"type\": \"message_stop\"}"
+        yield ""
 
     mock_response.aiter_lines = mock_aiter_lines
 
@@ -237,9 +309,13 @@ def _streaming_response_mock():
 
     async def mock_aiter_lines():
         yield "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"text_delta\", \"text\": \"Hello\"}}"
+        yield ""
         yield "data: {\"type\": \"content_block_delta\", \"delta\": {\"type\": \"text_delta\", \"text\": \" World\"}}"
+        yield ""
         yield "data: {\"type\": \"message_stop\"}"
+        yield ""
         yield "data: [DONE]"
+        yield ""
 
     mock_response.aiter_lines = mock_aiter_lines
     return mock_response

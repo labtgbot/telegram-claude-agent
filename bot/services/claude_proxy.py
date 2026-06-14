@@ -6,6 +6,9 @@ class ClaudeProxyError(Exception):
     pass
 
 
+_STREAM_DONE = object()
+
+
 def _format_stream_error(error: Any) -> str:
     if isinstance(error, dict):
         error_type = error.get("type") or "unknown_error"
@@ -14,6 +17,27 @@ def _format_stream_error(error: Any) -> str:
     if error:
         return str(error)
     return "Claude stream returned an error."
+
+
+def _parse_sse_data_event(data_lines: List[str]) -> Optional[Union[Dict[str, Any], object]]:
+    if not data_lines:
+        return None
+
+    data = "\n".join(data_lines)
+    if data == "[DONE]":
+        return _STREAM_DONE
+
+    try:
+        event = json.loads(data)
+    except json.JSONDecodeError:
+        return None
+
+    event_type = event.get("type")
+    if event_type == "message_stop":
+        return _STREAM_DONE
+    if event_type == "error":
+        raise ClaudeProxyError(_format_stream_error(event.get("error")))
+    return event
 
 
 class ClaudeProxyClient:
@@ -99,25 +123,31 @@ class ClaudeProxyClient:
             return resp.json()
 
     async def _stream_response(self, response: httpx.Response) -> AsyncIterator[Dict[str, Any]]:
+        data_lines: List[str] = []
         try:
-            async for line in response.aiter_lines():
-                line = line.strip()
-                if not line:
+            async for raw_line in response.aiter_lines():
+                line = raw_line.rstrip("\r")
+                if line == "":
+                    event = _parse_sse_data_event(data_lines)
+                    data_lines.clear()
+                    if event is _STREAM_DONE:
+                        break
+                    if event is not None:
+                        yield event
                     continue
-                if line.startswith("data: "):
-                    data = line[6:]
-                    if data == "[DONE]":
-                        break
-                    try:
-                        event = json.loads(data)
-                    except json.JSONDecodeError:
-                        continue
-                    event_type = event.get("type")
-                    if event_type == "message_stop":
-                        break
-                    if event_type == "error":
-                        raise ClaudeProxyError(_format_stream_error(event.get("error")))
-                    yield event
+
+                if line.startswith(":"):
+                    continue
+
+                field_name, separator, value = line.partition(":")
+                if separator and value.startswith(" "):
+                    value = value[1:]
+                if field_name == "data":
+                    data_lines.append(value)
+
+            event = _parse_sse_data_event(data_lines)
+            if event is not None and event is not _STREAM_DONE:
+                yield event
         finally:
             # Always release the underlying HTTP connection, even when the
             # consumer breaks early or raises mid-stream. Otherwise the response
