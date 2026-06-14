@@ -27,6 +27,28 @@ def test_webhook_rejects_invalid_token(client, monkeypatch):
     assert resp.status_code == 403
 
 
+def test_webhook_secret_token_uses_constant_time_compare(client, monkeypatch):
+    token = "a-Strong_Secret_123456"
+    monkeypatch.setattr(main.settings, "api_secret_token", token)
+
+    calls = []
+
+    def fake_compare_digest(header_token, configured_token):
+        calls.append((header_token, configured_token))
+        return False
+
+    monkeypatch.setattr(main.secrets, "compare_digest", fake_compare_digest)
+
+    resp = client.post(
+        "/webhook",
+        json={"update_id": 1},
+        headers={"X-Telegram-Bot-Api-Secret-Token": token},
+    )
+
+    assert resp.status_code == 403
+    assert calls == [(token, token)]
+
+
 def test_webhook_rejects_when_token_not_configured(client, monkeypatch):
     # Even without a configured token the endpoint must not feed updates.
     monkeypatch.setattr(main.settings, "api_secret_token", None)
