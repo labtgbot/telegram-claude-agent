@@ -5,6 +5,17 @@ from typing import List, Dict, Any, AsyncIterator, Optional, Union
 class ClaudeProxyError(Exception):
     pass
 
+
+def _format_stream_error(error: Any) -> str:
+    if isinstance(error, dict):
+        error_type = error.get("type") or "unknown_error"
+        message = error.get("message") or "Claude stream returned an error."
+        return f"{error_type}: {message}"
+    if error:
+        return str(error)
+    return "Claude stream returned an error."
+
+
 class ClaudeProxyClient:
     def __init__(self, base_url: str, auth_token: str, timeout: int = 120):
         self.base_url = base_url.rstrip('/')
@@ -101,8 +112,11 @@ class ClaudeProxyClient:
                         event = json.loads(data)
                     except json.JSONDecodeError:
                         continue
-                    if event.get("type") == "message_stop":
+                    event_type = event.get("type")
+                    if event_type == "message_stop":
                         break
+                    if event_type == "error":
+                        raise ClaudeProxyError(_format_stream_error(event.get("error")))
                     yield event
         finally:
             # Always release the underlying HTTP connection, even when the
