@@ -402,7 +402,9 @@ async def test_handle_streaming_throttles_frequent_edit_previews_and_flushes(mon
     edit_calls = sent_msg.edit_text.await_args_list
     assert len(edit_calls) == 2
     assert edit_calls[0].args[0] == "**bold**"
-    assert edit_calls[0].kwargs == {}
+    # The live preview shows raw streamed markdown, so it must disable HTML
+    # parsing explicitly (the bot default is HTML); see #410.
+    assert edit_calls[0].kwargs == {"parse_mode": None}
     assert edit_calls[1].args[0] == "<b>bold</b>"
     assert edit_calls[1].kwargs["parse_mode"] == "HTML"
 
