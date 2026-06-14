@@ -20,6 +20,7 @@ CALLBACK_CLEAR_HISTORY = "history:clear"
 CALLBACK_LOGOUT_CONFIRM = "admin:logout:confirm"
 CALLBACK_CLOSE_CONFIRM = "admin:close:confirm"
 CALLBACK_CANCEL = "action:cancel"
+CALLBACK_RESTRICTED_TEXT = "This action is restricted to allowed chats."
 
 
 async def _ack(query: CallbackQuery, text: str | None = None, *, show_alert: bool = False):
@@ -52,6 +53,29 @@ def _callback_user_id(query: CallbackQuery) -> int | None:
     return getattr(from_user, "id", None)
 
 
+def _callback_chat_id(query: CallbackQuery) -> int | None:
+    message = getattr(query, "message", None)
+    chat = getattr(message, "chat", None)
+    return getattr(chat, "id", None)
+
+
+def _is_allowed_chat_callback(query: CallbackQuery) -> bool:
+    allowed_ids = settings.allowed_chat_ids
+    if not allowed_ids:
+        return True
+
+    chat_id = _callback_chat_id(query)
+    return chat_id in allowed_ids
+
+
+async def _reject_unallowed_chat_callback(query: CallbackQuery) -> bool:
+    if _is_allowed_chat_callback(query):
+        return False
+
+    await _ack(query, CALLBACK_RESTRICTED_TEXT, show_alert=True)
+    return True
+
+
 async def _answer_operation_failed(
     query: CallbackQuery, summary: str, exc: Exception
 ) -> None:
@@ -70,6 +94,9 @@ async def _answer_operation_failed(
 
 @router.callback_query(F.data == CALLBACK_SETTINGS_REFRESH)
 async def handle_settings_refresh_callback(query: CallbackQuery):
+    if await _reject_unallowed_chat_callback(query):
+        return
+
     user_id = query.from_user.id
     current_model = storage.get_setting(user_id, "model", settings.free_claude_default_model)
     await _ack(query, "Settings refreshed.")
@@ -79,6 +106,9 @@ async def handle_settings_refresh_callback(query: CallbackQuery):
 
 @router.callback_query(F.data.startswith(CALLBACK_MODEL_PREFIX))
 async def handle_model_set_callback(query: CallbackQuery):
+    if await _reject_unallowed_chat_callback(query):
+        return
+
     model = (query.data or "").removeprefix(CALLBACK_MODEL_PREFIX).strip()
     if not model:
         await _ack(query, "Model is missing.", show_alert=True)
@@ -92,6 +122,9 @@ async def handle_model_set_callback(query: CallbackQuery):
 
 @router.callback_query(F.data == CALLBACK_CLEAR_HISTORY)
 async def handle_clear_history_callback(query: CallbackQuery):
+    if await _reject_unallowed_chat_callback(query):
+        return
+
     if query.message is None:
         await _ack(query, "Message context is missing.", show_alert=True)
         return
