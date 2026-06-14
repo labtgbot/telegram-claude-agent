@@ -1,3 +1,4 @@
+import json
 from typing import Any, Optional
 
 import httpx
@@ -7,9 +8,8 @@ from bot.services.send_message_draft import DEFAULT_REQUEST_TIMEOUT, _build_api_
 
 logger = structlog.get_logger()
 
-# Telegram message-style text limit. Bot API 10.0 documents answerGuestQuery as
-# returning a text answer to the guest query; keep the same upper bound used for
-# ordinary Telegram messages so invalid over-long responses are rejected locally.
+# Telegram InputTextMessageContent.message_text uses the same 4096-character
+# bound as ordinary text messages, so reject over-long guest answers locally.
 ANSWER_GUEST_QUERY_TEXT_LIMIT = 4096
 
 
@@ -34,15 +34,16 @@ async def perform_answer_guest_query(
     *,
     guest_query_id: str,
     text: str,
+    parse_mode: str | None = "HTML",
     request_timeout: float = DEFAULT_REQUEST_TIMEOUT,
-) -> bool:
+) -> Any:
     """Answer a Telegram Guest Mode query via raw Bot API ``answerGuestQuery``.
 
     Guest Mode lets a bot answer a ``guest_message`` without being a member of
     the chat. Telegram provides ``Message.guest_query_id`` on such updates; this
     helper sends the final Claude response back through ``answerGuestQuery``.
     The method requires a non-empty ``guest_query_id`` and response ``text`` and
-    returns ``True`` on success.
+    returns Telegram's ``SentGuestMessage`` result on success.
 
     Because operator/user content may be present in ``text``, logs include only
     structural metadata such as the query id and text length, never the text.
@@ -59,9 +60,19 @@ async def perform_answer_guest_query(
             f"(max {ANSWER_GUEST_QUERY_TEXT_LIMIT})."
         )
 
+    input_message_content: dict[str, Any] = {"message_text": text}
+    if parse_mode is not None:
+        input_message_content["parse_mode"] = parse_mode
+
+    result = {
+        "type": "article",
+        "id": "guest-response",
+        "title": "Claude response",
+        "input_message_content": input_message_content,
+    }
     payload = {
         "guest_query_id": guest_query_id,
-        "text": text,
+        "result": json.dumps(result),
     }
     url = _build_api_url(bot, "answerGuestQuery")
 

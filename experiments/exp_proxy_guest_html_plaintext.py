@@ -1,6 +1,7 @@
 """
-EXPERIMENT: Guest Mode answers are HTML-rendered but sent WITHOUT parse_mode,
-so the guest sees literal HTML markup.
+REGRESSION CHECK: Guest Mode answers are HTML-rendered and sent through
+answerGuestQuery as an InlineQueryResultArticle whose InputTextMessageContent
+uses parse_mode="HTML".
 
 Chain (chat.py):
   handle_streaming_with_draft / non-stream branch:
@@ -8,20 +9,24 @@ Chain (chat.py):
       await send_final_reply(message, md_to_html(reply_text))   # <-- HTML
   send_final_reply:
       if guest_query_id:
-          await perform_answer_guest_query(bot, guest_query_id=..., text=text[:4096])
+          await perform_answer_guest_query(
+              bot,
+              guest_query_id=...,
+              text=text[:4096],
+              parse_mode="HTML",
+          )
           return
       # else: send_reply_safely(message, text, parse_mode="HTML")
 
-perform_answer_guest_query payload = {"guest_query_id":..., "text": text}
-  -> NO parse_mode, NO entities. Telegram renders it as PLAIN TEXT.
+  perform_answer_guest_query payload =
+    {"guest_query_id":..., "result": "{\"type\":\"article\",...}"}
+    where result.input_message_content.parse_mode == "HTML".
 
-So for a guest, md_to_html('**hi** <b>') is delivered as the literal string
-'<b>hi</b> &lt;b&gt;' instead of formatted text. We demonstrate the exact bytes
-that would be POSTed to answerGuestQuery and show they contain raw HTML tags and
-escaped entities that the guest will see verbatim.
+So for a guest, md_to_html('**hi** <b>') is delivered as Telegram HTML inside
+InputTextMessageContent, matching the non-guest path.
 
 Contrast: the non-guest path passes the SAME md_to_html output with
-parse_mode="HTML", so it renders correctly. The guest path is inconsistent.
+parse_mode="HTML", so both paths now render formatted text consistently.
 """
 import os
 os.environ.setdefault("FREE_CLAUDE_BASE_URL", "http://localhost")
@@ -96,16 +101,17 @@ async def main():
     print()
     print("POST url :", captured.get("url"))
     print("POST body:", json.dumps(captured.get("body"), ensure_ascii=False))
-    sent_text = captured.get("body", {}).get("text", "")
-    has_parse_mode = "parse_mode" in captured.get("body", {})
+    result = json.loads(captured.get("body", {}).get("result", "{}"))
+    content = result.get("input_message_content", {})
+    sent_text = content.get("message_text", "")
+    parse_mode = content.get("parse_mode")
     print()
-    print(f"parse_mode present in payload? {has_parse_mode}")
-    print(f"guest receives literal text  : {sent_text!r}")
-    if not has_parse_mode and ("<b>" in sent_text or "&amp;" in sent_text or "&lt;" in sent_text):
-        print(">>> RESULT: Guest gets HTML-rendered text with NO parse_mode, so the")
-        print(">>>         literal '<b>', '&amp;', '&lt;' are shown to the guest instead")
-        print(">>>         of formatted output. The non-guest path renders the same")
-        print(">>>         string with parse_mode='HTML'. Guest output is garbled.")
+    print(f"result type: {result.get('type')!r}")
+    print(f"parse_mode: {parse_mode!r}")
+    print(f"guest message_text: {sent_text!r}")
+    if parse_mode == "HTML" and ("<b>" in sent_text or "&amp;" in sent_text or "&lt;" in sent_text):
+        print(">>> RESULT: Guest gets Telegram HTML with parse_mode='HTML',")
+        print(">>>         so tags/entities are rendered instead of shown literally.")
     # also confirm fallback message.answer was NOT used (guest path returns early)
     print("fallback message.answer used?", bool(msg.answers))
 

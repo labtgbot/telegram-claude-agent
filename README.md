@@ -365,9 +365,11 @@ typed method when available and an isolated raw Bot API helper on pinned
 When Telegram delivers a Guest Mode message with `Message.guest_query_id`, the
 bot now sends the final Claude response through the raw Bot API
 `answerGuestQuery` endpoint. This lets Telegram return the answer to the guest
-query without requiring the bot to be a member of the target chat. If Telegram
-rejects the guest query answer, the handler logs the error and falls back to the
-normal chat reply path.
+query without requiring the bot to be a member of the target chat. The response
+is wrapped as an `InlineQueryResultArticle` with `InputTextMessageContent` and
+`parse_mode=HTML`, so the same rendered Claude HTML is formatted for guests and
+regular chat users. If Telegram rejects the guest query answer, the handler logs
+the error and falls back to the normal chat reply path.
 
 ### Callback queries
 

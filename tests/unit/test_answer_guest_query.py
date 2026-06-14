@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -64,7 +65,7 @@ def _install_client(monkeypatch, client):
     )
 
 
-async def test_perform_answer_guest_query_posts_raw_payload(monkeypatch):
+async def test_perform_answer_guest_query_posts_inline_article_payload(monkeypatch):
     client = _FakeClient(response=_FakeResponse({"ok": True, "result": True}))
     _install_client(monkeypatch, client)
 
@@ -78,9 +79,15 @@ async def test_perform_answer_guest_query_posts_raw_payload(monkeypatch):
     assert client.posted["url"] == (
         "https://api.telegram.org/bot123:abc/answerGuestQuery"
     )
-    assert client.posted["json"] == {
-        "guest_query_id": "guest-query-1",
-        "text": "answer",
+    assert client.posted["json"]["guest_query_id"] == "guest-query-1"
+    assert json.loads(client.posted["json"]["result"]) == {
+        "type": "article",
+        "id": "guest-response",
+        "title": "Claude response",
+        "input_message_content": {
+            "message_text": "answer",
+            "parse_mode": "HTML",
+        },
     }
 
 
@@ -217,6 +224,7 @@ async def test_handle_chat_message_answers_guest_query(monkeypatch):
         message.bot,
         guest_query_id="guest-query-1",
         text="Guest answer",
+        parse_mode="HTML",
     )
     message.answer.assert_not_awaited()
 
@@ -259,5 +267,6 @@ async def test_handle_chat_message_answers_guest_query_when_streaming_enabled(mo
         message.bot,
         guest_query_id="guest-query-1",
         text="Guest answer",
+        parse_mode="HTML",
     )
     message.answer.assert_not_awaited()
