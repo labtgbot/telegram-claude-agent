@@ -10,6 +10,7 @@ import bot.handlers.chat as chat
 from bot.handlers import commands
 from bot.services.get_custom_emoji_stickers import GetCustomEmojiStickersValidationError
 from bot.services.stop_poll import StopPollValidationError
+from bot.utils.storage import MemoryStorage
 
 
 INTERNAL_ERROR = "proxy failed at http://internal-proxy.local/v1/messages"
@@ -43,6 +44,13 @@ class _FailingProxyClient:
         pass
 
 
+class _FailingStreamingProxyClient(_FailingProxyClient):
+    async def send_message(self, *args, **kwargs):
+        if kwargs.get("stream"):
+            raise RuntimeError(INTERNAL_ERROR)
+        return await super().send_message(*args, **kwargs)
+
+
 @pytest.mark.asyncio
 async def test_streaming_handler_does_not_expose_internal_exception_text():
     sent_message = SimpleNamespace(edit_text=AsyncMock())
@@ -73,6 +81,24 @@ async def test_chat_handler_does_not_expose_internal_exception_text(monkeypatch)
     assert "❌ Error" in args[0]
     assert INTERNAL_ERROR not in args[0]
     assert "http://internal-proxy.local" not in args[0]
+
+
+@pytest.mark.asyncio
+async def test_chat_handler_streaming_failure_reports_error_once(monkeypatch):
+    sent_message = SimpleNamespace(edit_text=AsyncMock())
+    message = _message()
+    message.answer = AsyncMock(return_value=sent_message)
+    monkeypatch.setattr(chat, "ClaudeProxyClient", _FailingStreamingProxyClient)
+    monkeypatch.setattr(chat, "storage", MemoryStorage())
+    monkeypatch.setattr(chat.settings, "free_claude_streaming_enabled", True)
+    monkeypatch.setattr(chat.settings, "telegram_message_draft_enabled", False)
+    monkeypatch.setattr(chat.settings, "telegram_chat_action_enabled", False)
+
+    await chat.handle_chat_message(message)
+
+    assert message.answer.await_count == 1
+    message.answer.assert_awaited_once_with("…")
+    sent_message.edit_text.assert_awaited_once_with(chat.CHAT_USER_ERROR_MESSAGE)
 
 
 @pytest.mark.asyncio
