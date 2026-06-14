@@ -29,6 +29,7 @@ class MemoryStorage:
         self._cleanup_if_due(now)
 
         key = (chat_id, user_id)
+        self._touch_settings(user_id, now)
         history = self.histories.get(key)
         if history is None:
             return []
@@ -46,6 +47,7 @@ class MemoryStorage:
         if len(history) > self.max_history:
             history.pop(0)
         self._history_last_access[key] = now
+        self._touch_settings(user_id, now)
 
     def clear_history(self, chat_id: int, user_id: int):
         now = self._clock()
@@ -54,10 +56,12 @@ class MemoryStorage:
         key = (chat_id, user_id)
         self.histories.pop(key, None)
         self._history_last_access.pop(key, None)
+        self._touch_settings(user_id, now)
 
     def get_setting(self, user_id: int, key: str, default=None):
         now = self._clock()
         self._cleanup_if_due(now)
+        self._touch_histories(user_id, now)
 
         settings = self.user_settings.get(user_id)
         if settings is None:
@@ -73,6 +77,7 @@ class MemoryStorage:
         settings = self.user_settings.setdefault(user_id, {})
         settings[key] = value
         self._settings_last_access[user_id] = now
+        self._touch_histories(user_id, now)
 
     def cleanup_expired(self, now: float | None = None) -> int:
         now = self._clock() if now is None else now
@@ -105,6 +110,15 @@ class MemoryStorage:
 
         if now - self._last_cleanup >= self.cleanup_interval_seconds:
             self.cleanup_expired(now)
+
+    def _touch_settings(self, user_id: int, now: float):
+        if user_id in self.user_settings:
+            self._settings_last_access[user_id] = now
+
+    def _touch_histories(self, user_id: int, now: float):
+        for history_key in self.histories:
+            if history_key[1] == user_id:
+                self._history_last_access[history_key] = now
 
 
 storage = MemoryStorage()
