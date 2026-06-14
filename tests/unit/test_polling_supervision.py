@@ -19,18 +19,30 @@ class FailingDispatcher:
     def __init__(self):
         self.calls = 0
         self.handle_signals = []
+        self.start_polling_kwargs = []
 
-    async def start_polling(self, bot, *, skip_updates, handle_signals):
+    async def start_polling(self, bot, **kwargs):
         self.calls += 1
-        self.handle_signals.append(handle_signals)
+        self.start_polling_kwargs.append(kwargs)
+        self.handle_signals.append(kwargs["handle_signals"])
         assert bot is not None
-        assert skip_updates is True
-        assert handle_signals is False
+        assert "skip_updates" not in kwargs
+        assert kwargs == {"handle_signals": False}
         raise RuntimeError(f"polling boom {self.calls}")
+
+
+class RecordingBot:
+    def __init__(self):
+        self.drop_pending_updates = []
+
+    async def delete_webhook(self, *, drop_pending_updates):
+        self.drop_pending_updates.append(drop_pending_updates)
+        return True
 
 
 async def test_supervised_polling_retries_failed_start_polling_with_backoff():
     dispatcher = FailingDispatcher()
+    bot = RecordingBot()
     delays = []
     snapshots = []
 
@@ -43,7 +55,7 @@ async def test_supervised_polling_retries_failed_start_polling_with_backoff():
     with pytest.raises(asyncio.CancelledError):
         await main._run_supervised_polling(
             dispatcher,
-            object(),
+            bot,
             sleep=fake_sleep,
             base_delay_seconds=1,
             max_delay_seconds=10,
@@ -51,6 +63,11 @@ async def test_supervised_polling_retries_failed_start_polling_with_backoff():
 
     assert dispatcher.calls == 2
     assert dispatcher.handle_signals == [False, False]
+    assert dispatcher.start_polling_kwargs == [
+        {"handle_signals": False},
+        {"handle_signals": False},
+    ]
+    assert bot.drop_pending_updates == [True, True]
     assert delays == [1, 2]
     assert [snapshot["status"] for snapshot in snapshots] == ["degraded", "degraded"]
     assert snapshots[0]["last_error"] == "polling boom 1"
@@ -61,26 +78,31 @@ async def test_supervised_polling_stops_when_start_polling_returns_during_shutdo
     class ReturningDispatcher:
         def __init__(self):
             self.calls = 0
+            self.start_polling_kwargs = []
 
-        async def start_polling(self, bot, *, skip_updates, handle_signals):
+        async def start_polling(self, bot, **kwargs):
             self.calls += 1
+            self.start_polling_kwargs.append(kwargs)
             assert bot is not None
-            assert skip_updates is True
-            assert handle_signals is False
+            assert "skip_updates" not in kwargs
+            assert kwargs == {"handle_signals": False}
 
     async def unexpected_sleep(delay):
         raise AssertionError(f"supervisor retried after shutdown with delay {delay}")
 
     dispatcher = ReturningDispatcher()
+    bot = RecordingBot()
 
     await main._run_supervised_polling(
         dispatcher,
-        object(),
+        bot,
         sleep=unexpected_sleep,
         shutdown_requested=lambda: True,
     )
 
     assert dispatcher.calls == 1
+    assert dispatcher.start_polling_kwargs == [{"handle_signals": False}]
+    assert bot.drop_pending_updates == [True]
     assert main.polling_state.snapshot()["status"] == "stopped"
 
 
@@ -88,16 +110,19 @@ async def test_supervised_polling_retries_unexpected_clean_start_polling_return(
     class ReturningDispatcher:
         def __init__(self):
             self.calls = 0
+            self.start_polling_kwargs = []
 
-        async def start_polling(self, bot, *, skip_updates, handle_signals):
+        async def start_polling(self, bot, **kwargs):
             self.calls += 1
+            self.start_polling_kwargs.append(kwargs)
             assert bot is not None
-            assert skip_updates is True
-            assert handle_signals is False
+            assert "skip_updates" not in kwargs
+            assert kwargs == {"handle_signals": False}
 
     delays = []
     snapshots = []
     dispatcher = ReturningDispatcher()
+    bot = RecordingBot()
 
     async def fake_sleep(delay):
         delays.append(delay)
@@ -108,7 +133,7 @@ async def test_supervised_polling_retries_unexpected_clean_start_polling_return(
     with pytest.raises(asyncio.CancelledError):
         await main._run_supervised_polling(
             dispatcher,
-            object(),
+            bot,
             sleep=fake_sleep,
             base_delay_seconds=1,
             max_delay_seconds=10,
@@ -116,6 +141,11 @@ async def test_supervised_polling_retries_unexpected_clean_start_polling_return(
         )
 
     assert dispatcher.calls == 2
+    assert dispatcher.start_polling_kwargs == [
+        {"handle_signals": False},
+        {"handle_signals": False},
+    ]
+    assert bot.drop_pending_updates == [True, True]
     assert delays == [1, 2]
     assert [snapshot["status"] for snapshot in snapshots] == ["degraded", "degraded"]
     assert snapshots[0]["last_error"] == "start_polling returned unexpectedly"
