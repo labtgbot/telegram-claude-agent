@@ -55,6 +55,7 @@ logger = structlog.get_logger()
 POLLING_RETRY_BASE_DELAY_SECONDS = 1
 POLLING_RETRY_MAX_DELAY_SECONDS = 60
 SleepCallable = Callable[[float], Awaitable[None]]
+ShutdownRequestedCallable = Callable[[], bool]
 
 
 @dataclass
@@ -153,10 +154,15 @@ dp.include_router(inline_router)
 
 polling_task = None
 polling_state = PollingSupervisorState()
+polling_shutdown_requested = False
 
 
 def _exception_message(exc: Exception) -> str:
     return str(exc) or exc.__class__.__name__
+
+
+def _is_polling_shutdown_requested() -> bool:
+    return polling_shutdown_requested
 
 
 async def _ensure_bot_identity_cached(telegram_bot: Bot):
@@ -177,6 +183,7 @@ async def _run_supervised_polling(
     sleep: SleepCallable = asyncio.sleep,
     base_delay_seconds: float = POLLING_RETRY_BASE_DELAY_SECONDS,
     max_delay_seconds: float = POLLING_RETRY_MAX_DELAY_SECONDS,
+    shutdown_requested: ShutdownRequestedCallable = _is_polling_shutdown_requested,
 ) -> None:
     retry_delay_seconds = base_delay_seconds
     try:
@@ -184,7 +191,11 @@ async def _run_supervised_polling(
             polling_state.mark_running()
             try:
                 logger.info("polling_started")
-                await dispatcher.start_polling(telegram_bot, skip_updates=True)
+                await dispatcher.start_polling(
+                    telegram_bot,
+                    skip_updates=True,
+                    handle_signals=False,
+                )
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -196,6 +207,11 @@ async def _run_supervised_polling(
                     retry_delay_seconds=retry_delay_seconds,
                 )
             else:
+                if shutdown_requested():
+                    polling_state.mark_stopped()
+                    logger.info("polling_stopped_for_shutdown")
+                    return
+
                 error = "start_polling returned unexpectedly"
                 polling_state.mark_degraded(error, retry_delay_seconds=retry_delay_seconds)
                 logger.error(
@@ -212,7 +228,8 @@ async def _run_supervised_polling(
 
 
 async def on_startup():
-    global polling_task
+    global polling_shutdown_requested, polling_task
+    polling_shutdown_requested = False
     # Ensure bot username is cached
     await _ensure_bot_identity_cached(bot)
     await sync_configured_bot_name(
@@ -268,7 +285,8 @@ async def on_startup():
 
 
 async def on_shutdown():
-    global polling_task
+    global polling_shutdown_requested, polling_task
+    polling_shutdown_requested = True
     if polling_task:
         polling_task.cancel()
         try:
