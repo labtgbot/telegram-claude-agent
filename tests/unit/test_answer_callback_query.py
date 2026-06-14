@@ -88,6 +88,33 @@ async def test_model_callback_sets_user_model(monkeypatch):
     query.message.answer.assert_awaited_once_with("Model set to: claude-3-opus")
 
 
+async def test_model_callback_escapes_model_in_html_message(monkeypatch):
+    monkeypatch.setattr(callbacks.storage, "set_setting", Mock())
+    query = _query("model:set:<b>evil</b><a href='https://evil.example'>click</a>")
+
+    await callbacks.handle_model_set_callback(query)
+
+    query.message.answer.assert_awaited_once_with(
+        "Model set to: &lt;b&gt;evil&lt;/b&gt;"
+        "&lt;a href=&#x27;https://evil.example&#x27;&gt;click&lt;/a&gt;"
+    )
+
+
+async def test_settings_refresh_callback_escapes_current_model(monkeypatch):
+    monkeypatch.setattr(
+        callbacks.storage,
+        "get_setting",
+        Mock(return_value="<b>evil</b>&broken"),
+    )
+    query = _query("settings:refresh")
+
+    await callbacks.handle_settings_refresh_callback(query)
+
+    query.message.answer.assert_awaited_once_with(
+        "Current model: &lt;b&gt;evil&lt;/b&gt;&amp;broken"
+    )
+
+
 async def test_clear_history_callback_clears_current_chat_history(monkeypatch):
     monkeypatch.setattr(callbacks.storage, "clear_history", Mock())
     query = _query("history:clear", chat_id=100)

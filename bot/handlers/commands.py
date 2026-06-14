@@ -1,5 +1,6 @@
-import re
 import json
+import re
+from html import escape
 
 import structlog
 from aiogram import Router
@@ -3351,6 +3352,7 @@ async def cmd_model(message: Message):
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
         current = storage.get_setting(user_id, "model", settings.free_claude_default_model)
+        escaped_current = escape(current)
         client = ClaudeProxyClient(
             settings.free_claude_base_url,
             settings.free_claude_auth_token,
@@ -3358,7 +3360,7 @@ async def cmd_model(message: Message):
         )
         try:
             models = await client.list_models()
-            models_list = "\n".join(f"- {m}" for m in models)
+            models_list = "\n".join(f"- {escape(m)}" for m in models)
             model_buttons = [
                 [
                     InlineKeyboardButton(
@@ -3375,13 +3377,13 @@ async def cmd_model(message: Message):
             )
             kwargs = {"reply_markup": keyboard} if model_buttons else {}
             await message.answer(
-                f"Current model: {current}\nAvailable models:\n{models_list}",
+                f"Current model: {escaped_current}\nAvailable models:\n{models_list}",
                 **kwargs,
             )
         except Exception as e:
             await _answer_operation_failed(
                 message,
-                f"Current model: {current}\nCould not fetch model list",
+                f"Current model: {escaped_current}\nCould not fetch model list",
                 e,
             )
         finally:
@@ -3389,7 +3391,7 @@ async def cmd_model(message: Message):
     else:
         new_model = args[1].strip()
         storage.set_setting(user_id, "model", new_model)
-        await message.answer(f"Model set to: {new_model}")
+        await message.answer(f"Model set to: {escape(new_model)}")
 
 @router.message(Command("settings"))
 async def cmd_settings(message: Message):
@@ -3400,7 +3402,7 @@ async def cmd_settings(message: Message):
     rate_limit = settings.rate_limit_requests_per_minute
     settings_text = (
         f"<b>Your settings:</b>\n"
-        f"Model: {current_model}\n"
+        f"Model: {escape(current_model)}\n"
         f"Streaming: {'enabled' if streaming else 'disabled'}\n"
         f"Guest mode: {'enabled' if guest_mode else 'disabled'}\n"
         f"Rate limit: {rate_limit} requests per minute"
