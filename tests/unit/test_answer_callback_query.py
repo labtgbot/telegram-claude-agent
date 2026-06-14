@@ -99,6 +99,51 @@ async def test_clear_history_callback_clears_current_chat_history(monkeypatch):
     query.message.answer.assert_awaited_once_with("Conversation history cleared.")
 
 
+async def test_model_callback_rejects_unlisted_chat(monkeypatch):
+    monkeypatch.setattr(callbacks.settings, "telegram_allowed_chat_ids", "111")
+    monkeypatch.setattr(callbacks.storage, "set_setting", Mock())
+    query = _query("model:set:claude-3-opus", chat_id=999)
+
+    await callbacks.handle_model_set_callback(query)
+
+    callbacks.storage.set_setting.assert_not_called()
+    query.bot.answer_callback_query.assert_awaited_once()
+    _, kwargs = query.bot.answer_callback_query.await_args
+    assert kwargs["text"] == "This action is restricted to allowed chats."
+    assert kwargs["show_alert"] is True
+    query.message.answer.assert_not_awaited()
+
+
+async def test_clear_history_callback_rejects_unlisted_chat(monkeypatch):
+    monkeypatch.setattr(callbacks.settings, "telegram_allowed_chat_ids", "111")
+    monkeypatch.setattr(callbacks.storage, "clear_history", Mock())
+    query = _query("history:clear", chat_id=999)
+
+    await callbacks.handle_clear_history_callback(query)
+
+    callbacks.storage.clear_history.assert_not_called()
+    query.bot.answer_callback_query.assert_awaited_once()
+    _, kwargs = query.bot.answer_callback_query.await_args
+    assert kwargs["text"] == "This action is restricted to allowed chats."
+    assert kwargs["show_alert"] is True
+    query.message.answer.assert_not_awaited()
+
+
+async def test_settings_refresh_callback_rejects_unlisted_chat(monkeypatch):
+    monkeypatch.setattr(callbacks.settings, "telegram_allowed_chat_ids", "111")
+    monkeypatch.setattr(callbacks.storage, "get_setting", Mock())
+    query = _query("settings:refresh", chat_id=999)
+
+    await callbacks.handle_settings_refresh_callback(query)
+
+    callbacks.storage.get_setting.assert_not_called()
+    query.bot.answer_callback_query.assert_awaited_once()
+    _, kwargs = query.bot.answer_callback_query.await_args
+    assert kwargs["text"] == "This action is restricted to allowed chats."
+    assert kwargs["show_alert"] is True
+    query.message.answer.assert_not_awaited()
+
+
 async def test_logout_callback_rejects_non_admin_chat(monkeypatch):
     monkeypatch.setattr(callbacks.settings, "telegram_admin_chat_ids", "")
     monkeypatch.setattr(callbacks, "perform_log_out", AsyncMock(return_value=True))
