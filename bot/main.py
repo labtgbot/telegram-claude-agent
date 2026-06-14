@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import secrets
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Awaitable, Callable
@@ -304,7 +305,9 @@ async def telegram_webhook(request: Request):
     if not settings.api_secret_token:
         raise HTTPException(status_code=403, detail="Webhook secret token not configured")
     header_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-    if header_token != settings.api_secret_token:
+    if header_token is None or not secrets.compare_digest(
+        header_token, settings.api_secret_token
+    ):
         raise HTTPException(status_code=403, detail="Invalid secret token")
     try:
         update_data = await request.json()
