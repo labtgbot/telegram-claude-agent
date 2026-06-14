@@ -15,6 +15,30 @@ def test_bot_uses_default_properties_for_html_parse_mode():
     assert main.bot.default.parse_mode == ParseMode.HTML
 
 
+def _registered_middleware_types(observer):
+    return {type(mw) for mw in observer.middleware}
+
+
+def test_middlewares_registered_on_concrete_event_observers():
+    """Regression for #409.
+
+    Middlewares attached to ``dp.update`` receive the raw ``Update`` object and
+    never the concrete event, so their ``isinstance`` branches never fire. They
+    must be registered on the message/callback_query/inline_query observers.
+    """
+    from bot.middlewares.logging import LoggingMiddleware
+    from bot.middlewares.rate_limit import RateLimitMiddleware
+
+    for observer in (main.dp.message, main.dp.callback_query, main.dp.inline_query):
+        registered = _registered_middleware_types(observer)
+        assert LoggingMiddleware in registered
+        assert RateLimitMiddleware in registered
+
+    update_middleware = _registered_middleware_types(main.dp.update)
+    assert LoggingMiddleware not in update_middleware
+    assert RateLimitMiddleware not in update_middleware
+
+
 def test_app_uses_lifespan_instead_of_deprecated_event_hooks():
     assert not main.app.router.on_startup
     assert not main.app.router.on_shutdown

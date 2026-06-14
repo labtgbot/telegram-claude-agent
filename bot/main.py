@@ -128,8 +128,22 @@ bot = Bot(
 dp = Dispatcher()
 
 # Register middlewares
-dp.update.middleware(LoggingMiddleware())
-dp.update.middleware(RateLimitMiddleware(settings.rate_limit_requests_per_minute))
+#
+# Middlewares attached to ``dp.update`` receive the raw ``Update`` object, never
+# the concrete ``Message``/``CallbackQuery``/``InlineQuery`` event. Both
+# middlewares branch on ``isinstance(event, types.Message)`` (etc.), which is
+# always False for an ``Update`` — so logging never recorded per-event details
+# and rate limiting was never enforced. Register them on the concrete event
+# observers instead so they receive the unpacked event (see issue #409).
+#
+# A single RateLimitMiddleware instance is shared across the observers so a
+# user's per-minute budget is counted across messages, callbacks and inline
+# queries together rather than tracked separately per event type.
+logging_middleware = LoggingMiddleware()
+rate_limit_middleware = RateLimitMiddleware(settings.rate_limit_requests_per_minute)
+for observer in (dp.message, dp.callback_query, dp.inline_query):
+    observer.middleware(logging_middleware)
+    observer.middleware(rate_limit_middleware)
 
 # Register routers
 dp.include_router(commands_router)

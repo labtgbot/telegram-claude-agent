@@ -27,12 +27,12 @@ class RateLimitMiddleware(BaseMiddleware):
         data: Dict[str, Any],
     ) -> Awaitable:
         user_id = None
-        if isinstance(event, types.Message):
-            user_id = event.from_user.id
-        elif isinstance(event, types.CallbackQuery):
-            user_id = event.from_user.id
-        elif isinstance(event, types.InlineQuery):
-            user_id = event.from_user.id
+        # ``from_user`` is None for channel posts, anonymous group admins and
+        # automatic forwards. Guard against it so the middleware does not crash
+        # with AttributeError once it is attached to concrete event observers.
+        if isinstance(event, (types.Message, types.CallbackQuery, types.InlineQuery)):
+            if event.from_user is not None:
+                user_id = event.from_user.id
 
         if user_id is None:
             return await handler(event, data)
