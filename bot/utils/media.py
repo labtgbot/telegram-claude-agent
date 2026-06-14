@@ -1,10 +1,12 @@
 import asyncio
 import os
 import tempfile
+import threading
 
 import structlog
 
 logger = structlog.get_logger()
+_transcribe_model_lock = threading.Lock()
 
 
 async def transcribe_voice(audio_data: bytes) -> str:
@@ -22,7 +24,9 @@ def _transcribe_sync(audio_data: bytes) -> str:
             temp_path = f.name
 
         if not hasattr(_transcribe_sync, "model"):
-            _transcribe_sync.model = whisper.load_model("base")
+            with _transcribe_model_lock:
+                if not hasattr(_transcribe_sync, "model"):
+                    _transcribe_sync.model = whisper.load_model("base")
         model = _transcribe_sync.model
         result = model.transcribe(temp_path)
         return result["text"]
