@@ -114,8 +114,8 @@ class PollingSupervisorState:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    await on_startup()
     try:
+        await on_startup()
         yield
     finally:
         await on_shutdown()
