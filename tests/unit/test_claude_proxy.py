@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from bot.services.claude_proxy import ClaudeProxyClient
+from bot.services.claude_proxy import ClaudeProxyClient, ClaudeProxyError
 
 @pytest.mark.asyncio
 async def test_list_models_anthropic_format():
@@ -125,6 +125,42 @@ async def test_send_message_streaming():
         assert len(chunks) == 2  # two deltas before message_stop
         assert chunks[0]["delta"]["text"] == "Hello"
         assert chunks[1]["delta"]["text"] == " World"
+
+
+@pytest.mark.asyncio
+async def test_send_message_streaming_raises_on_anthropic_error_event():
+    client = ClaudeProxyClient("http://localhost:8082", "token")
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.aclose = AsyncMock()
+
+    async def mock_aiter_lines():
+        yield (
+            'data: {"type": "content_block_delta", '
+            '"delta": {"type": "text_delta", "text": "Hello"}}'
+        )
+        yield (
+            'data: {"type": "error", '
+            '"error": {"type": "overloaded_error", "message": "Overloaded"}}'
+        )
+        yield "data: {\"type\": \"message_stop\"}"
+
+    mock_response.aiter_lines = mock_aiter_lines
+
+    with patch.object(client._client, "send", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = mock_response
+        messages = [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
+        stream = await client.send_message(messages=messages, model="m", stream=True)
+        chunks = []
+
+        with pytest.raises(ClaudeProxyError, match="overloaded_error: Overloaded"):
+            async for chunk in stream:
+                chunks.append(chunk)
+
+        assert chunks == [
+            {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Hello"}}
+        ]
+        mock_response.aclose.assert_awaited_once()
 
 
 class _BlockingSSEStream(httpx.AsyncByteStream):
