@@ -3,6 +3,8 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from aiogram.enums import ParseMode
@@ -81,6 +83,66 @@ async def test_lifespan_runs_shutdown_when_startup_fails(monkeypatch):
             raise AssertionError("lifespan body should not run when startup fails")
 
     assert calls == ["startup", "shutdown"]
+
+
+async def test_on_startup_sets_webhook_and_drops_pending_updates(monkeypatch):
+    async def noop(*args, **kwargs):
+        return None
+
+    for name in (
+        "_ensure_bot_identity_cached",
+        "sync_configured_bot_name",
+        "audit_configured_bot_name",
+        "sync_configured_bot_short_description",
+        "audit_configured_bot_short_description",
+        "sync_configured_bot_description",
+        "audit_configured_bot_description",
+        "sync_configured_my_default_administrator_rights",
+        "audit_configured_my_default_administrator_rights",
+    ):
+        monkeypatch.setattr(main, name, noop)
+
+    webhook_url = "https://example.com/webhook"
+    secret_token = "a-Strong_Secret_123456"
+    bot = SimpleNamespace(set_webhook=AsyncMock())
+    monkeypatch.setattr(main, "bot", bot)
+    monkeypatch.setattr(main.settings, "telegram_webhook_url", webhook_url)
+    monkeypatch.setattr(main.settings, "api_secret_token", secret_token)
+
+    await main.on_startup()
+
+    bot.set_webhook.assert_awaited_once_with(
+        url=webhook_url,
+        secret_token=secret_token,
+        drop_pending_updates=True,
+    )
+    assert main.polling_task is None
+    assert main.polling_state.snapshot()["mode"] == "webhook"
+
+
+async def test_on_shutdown_deletes_configured_webhook_before_closing_session(monkeypatch):
+    events = []
+
+    async def delete_webhook(*, drop_pending_updates):
+        events.append(("delete_webhook", drop_pending_updates))
+        return True
+
+    async def close_session():
+        events.append(("close_session", None))
+
+    bot = SimpleNamespace(
+        delete_webhook=AsyncMock(side_effect=delete_webhook),
+        session=SimpleNamespace(close=AsyncMock(side_effect=close_session)),
+    )
+    monkeypatch.setattr(main, "bot", bot)
+    monkeypatch.setattr(main.settings, "telegram_webhook_url", "https://example.com/webhook")
+    monkeypatch.setattr(main, "polling_task", None)
+
+    await main.on_shutdown()
+
+    bot.delete_webhook.assert_awaited_once_with(drop_pending_updates=False)
+    bot.session.close.assert_awaited_once_with()
+    assert events == [("delete_webhook", False), ("close_session", None)]
 
 
 def test_main_bootstrap_applies_log_level_to_structlog_and_stdlib():

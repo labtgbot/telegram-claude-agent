@@ -278,6 +278,7 @@ async def on_startup():
         await bot.set_webhook(
             url=settings.telegram_webhook_url,
             secret_token=settings.api_secret_token,
+            drop_pending_updates=True,
         )
         polling_state.mark_webhook()
     else:
@@ -295,6 +296,14 @@ async def on_shutdown():
         except asyncio.CancelledError:
             pass
         polling_task = None
+    if settings.telegram_webhook_url:
+        try:
+            await bot.delete_webhook(drop_pending_updates=False)
+        except Exception as exc:
+            logger.warning(
+                "webhook_delete_on_shutdown_failed",
+                error=_exception_message(exc),
+            )
     await bot.session.close()
 
 @app.post("/webhook")
