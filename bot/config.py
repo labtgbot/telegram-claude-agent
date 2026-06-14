@@ -85,6 +85,19 @@ class Settings(BaseSettings):
             ) from exc
         return value
 
+    @field_validator("telegram_webhook_url")
+    @classmethod
+    def _validate_telegram_webhook_url(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return value
+        try:
+            _HTTP_URL_ADAPTER.validate_python(value)
+        except ValidationError as exc:
+            raise ValueError(
+                "TELEGRAM_WEBHOOK_URL must be an http(s) URL with a host."
+            ) from exc
+        return value
+
     @field_validator(
         "telegram_allowed_chat_ids",
         "telegram_admin_chat_ids",

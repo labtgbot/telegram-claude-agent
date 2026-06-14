@@ -77,6 +77,33 @@ def test_free_claude_base_url_rejects_non_http_scheme(monkeypatch):
     with pytest.raises(ValueError, match="FREE_CLAUDE_BASE_URL.*http"):
         Settings()
 
+
+@pytest.mark.parametrize(
+    "webhook_url",
+    [
+        "not a url at all !!!",
+        "//example.com/webhook",
+        "ftp://example.com/webhook",
+    ],
+)
+def test_telegram_webhook_url_rejects_invalid_http_url(monkeypatch, webhook_url):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_URL", webhook_url)
+    monkeypatch.setenv("API_SECRET_TOKEN", "a-Strong_Secret_123456")
+
+    with pytest.raises(ValueError, match="TELEGRAM_WEBHOOK_URL.*http"):
+        Settings()
+
+
+def test_telegram_webhook_url_accepts_valid_http_url(monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_URL", "https://example.com/webhook")
+    monkeypatch.setenv("API_SECRET_TOKEN", "a-Strong_Secret_123456")
+
+    settings = Settings()
+
+    assert settings.telegram_webhook_url == "https://example.com/webhook"
+
 def test_boolean_parsing(monkeypatch):
     monkeypatch.setenv("FREE_CLAUDE_BASE_URL", "http://localhost:8082")
     monkeypatch.setenv("FREE_CLAUDE_AUTH_TOKEN", "token")
