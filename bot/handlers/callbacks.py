@@ -1,3 +1,5 @@
+from html import escape
+
 import structlog
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
@@ -101,7 +103,7 @@ async def handle_settings_refresh_callback(query: CallbackQuery):
     current_model = storage.get_setting(user_id, "model", settings.free_claude_default_model)
     await _ack(query, "Settings refreshed.")
     if query.message:
-        await query.message.answer(f"Current model: {current_model}")
+        await query.message.answer(f"Current model: {escape(current_model)}")
 
 
 @router.callback_query(F.data.startswith(CALLBACK_MODEL_PREFIX))
@@ -117,7 +119,7 @@ async def handle_model_set_callback(query: CallbackQuery):
     storage.set_setting(query.from_user.id, "model", model)
     await _ack(query, f"Model set to: {model}")
     if query.message:
-        await query.message.answer(f"Model set to: {model}")
+        await query.message.answer(f"Model set to: {escape(model)}")
 
 
 @router.callback_query(F.data == CALLBACK_CLEAR_HISTORY)
