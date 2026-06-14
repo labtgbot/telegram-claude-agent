@@ -4,6 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from aiogram.enums import ParseMode
 
 import bot.main as main
@@ -58,6 +59,26 @@ async def test_lifespan_runs_startup_and_shutdown(monkeypatch):
 
     async with main.lifespan(main.app):
         assert calls == ["startup"]
+
+    assert calls == ["startup", "shutdown"]
+
+
+async def test_lifespan_runs_shutdown_when_startup_fails(monkeypatch):
+    calls = []
+
+    async def fake_startup():
+        calls.append("startup")
+        raise RuntimeError("startup failed after partial initialization")
+
+    async def fake_shutdown():
+        calls.append("shutdown")
+
+    monkeypatch.setattr(main, "on_startup", fake_startup)
+    monkeypatch.setattr(main, "on_shutdown", fake_shutdown)
+
+    with pytest.raises(RuntimeError, match="startup failed after partial initialization"):
+        async with main.lifespan(main.app):
+            raise AssertionError("lifespan body should not run when startup fails")
 
     assert calls == ["startup", "shutdown"]
 
