@@ -38,6 +38,32 @@ def test_md_to_html_bold_italic_code():
     assert md_to_html("inline `code` here") == "inline <code>code</code> here"
 
 
+def test_md_to_html_nested_bold_italic_stays_valid():
+    rendered = md_to_html("mix **bold** *italic* ***both***")
+
+    assert rendered == "mix <b>bold</b> <i>italic</i> <b><i>both</i></b>"
+    assert _is_valid_html(rendered)
+
+
+def test_md_to_html_keeps_non_markdown_stars_literal():
+    assert md_to_html("Run on src/*.py and tests/*.py") == (
+        "Run on src/*.py and tests/*.py"
+    )
+    assert md_to_html("Use 5 * 3 = 15 and then c * d") == (
+        "Use 5 * 3 = 15 and then c * d"
+    )
+    assert md_to_html("Shopping list:\n* milk\n* eggs\n* bread") == (
+        "Shopping list:\n* milk\n* eggs\n* bread"
+    )
+
+
+def test_md_to_html_keeps_arithmetic_stars_inside_bold_literal():
+    rendered = md_to_html("**Compute a * b first, then c * d at the end**")
+
+    assert rendered == "<b>Compute a * b first, then c * d at the end</b>"
+    assert _is_valid_html(rendered)
+
+
 def test_md_to_html_fenced_code_block_preserves_content():
     rendered = md_to_html("```python\nprint('hi')\n```")
     assert "<pre><code>" in rendered

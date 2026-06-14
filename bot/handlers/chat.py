@@ -135,9 +135,96 @@ def _strip_bot_mention(text: str, bot_username: str) -> str:
 
 
 _MD_INLINE_CODE = re.compile(r"`([^`\n]+?)`")
-_MD_BOLD = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
-_MD_ITALIC = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", re.DOTALL)
 _MD_FENCED_CODE = re.compile(r"```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```", re.MULTILINE)
+_MD_EMPHASIS_TAGS = {
+    "*": ("<i>", "</i>"),
+    "**": ("<b>", "</b>"),
+    "***": ("<b><i>", "</i></b>"),
+}
+_MD_OPENING_BOUNDARY_CHARS = set(" \t\r\n([{<\"'")
+_MD_CLOSING_BOUNDARY_CHARS = set(" \t\r\n.,;:!?)]}>\"'")
+_MD_OPENING_BLOCKED_CHARS = set(".,;:!?)]}/\\")
+
+
+def _star_run_length(text: str, pos: int) -> int:
+    end = pos
+    while end < len(text) and text[end] == "*":
+        end += 1
+    return end - pos
+
+
+def _can_open_emphasis(text: str, pos: int, size: int) -> bool:
+    after_pos = pos + size
+    if after_pos >= len(text):
+        return False
+
+    before = text[pos - 1] if pos > 0 else None
+    after = text[after_pos]
+    if after.isspace() or after in _MD_OPENING_BLOCKED_CHARS:
+        return False
+    return before is None or before in _MD_OPENING_BOUNDARY_CHARS
+
+
+def _can_close_emphasis(text: str, pos: int, size: int) -> bool:
+    before = text[pos - 1] if pos > 0 else None
+    after_pos = pos + size
+    after = text[after_pos] if after_pos < len(text) else None
+    if before is None or before.isspace():
+        return False
+    return after is None or after in _MD_CLOSING_BOUNDARY_CHARS
+
+
+def _render_markdown_emphasis(text: str) -> str:
+    """Render star emphasis in one pass so Telegram HTML tags never overlap."""
+
+    def _render_until(
+        start: int, end_marker: str | None = None
+    ) -> tuple[str, bool, int]:
+        parts: list[str] = []
+        literal_start = start
+        i = start
+
+        while i < len(text):
+            if end_marker == "*" and text[i] == "\n":
+                parts.append(html_escape(text[literal_start:i]))
+                return "".join(parts), False, i
+
+            if text[i] != "*":
+                i += 1
+                continue
+
+            run_len = _star_run_length(text, i)
+            marker = "*" * run_len if run_len in (1, 2, 3) else None
+            if marker is None:
+                i += run_len
+                continue
+
+            if (
+                marker == end_marker
+                and _can_close_emphasis(text, i, run_len)
+            ):
+                parts.append(html_escape(text[literal_start:i]))
+                return "".join(parts), True, i + run_len
+
+            if _can_open_emphasis(text, i, run_len):
+                parts.append(html_escape(text[literal_start:i]))
+                inner, closed, next_i = _render_until(i + run_len, marker)
+                if closed:
+                    open_tag, close_tag = _MD_EMPHASIS_TAGS[marker]
+                    parts.append(f"{open_tag}{inner}{close_tag}")
+                else:
+                    parts.append(html_escape(text[i:next_i]))
+                i = next_i
+                literal_start = i
+                continue
+
+            i += run_len
+
+        parts.append(html_escape(text[literal_start:]))
+        return "".join(parts), False, len(text)
+
+    rendered, _, _ = _render_until(0)
+    return rendered
 
 
 def md_to_html(text: str) -> str:
@@ -161,9 +248,7 @@ def md_to_html(text: str) -> str:
 
     rendered = _MD_FENCED_CODE.sub(_fenced, text)
     rendered = _MD_INLINE_CODE.sub(_inline, rendered)
-    rendered = html_escape(rendered)
-    rendered = _MD_BOLD.sub(r"<b>\1</b>", rendered)
-    rendered = _MD_ITALIC.sub(r"<i>\1</i>", rendered)
+    rendered = _render_markdown_emphasis(rendered)
 
     def _restore(match: re.Match) -> str:
         return placeholders[int(match.group(1))]
