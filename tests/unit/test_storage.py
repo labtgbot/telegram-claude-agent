@@ -85,3 +85,65 @@ def test_cleanup_expired_removes_idle_history_and_settings():
     assert removed == 3
     assert storage.histories == {}
     assert storage.user_settings == {}
+
+
+def test_history_activity_keeps_user_settings_alive():
+    now = 0.0
+
+    def clock():
+        return now
+
+    storage = MemoryStorage(ttl_seconds=3600, cleanup_interval_seconds=0, clock=clock)
+    chat_id = 100
+    user_id = 7
+
+    storage.set_setting(user_id, "model", "claude-3-opus")
+    storage.add_message(chat_id, user_id, "user", "hi")
+    storage.add_message(chat_id, user_id, "assistant", "hello")
+
+    for minute in (20, 40, 60, 80, 100, 120):
+        now = minute * 60.0
+        assert storage.get_history(chat_id, user_id)
+
+    assert storage.get_setting(user_id, "model", default="DEFAULT") == "claude-3-opus"
+
+
+def test_clear_history_activity_keeps_user_settings_alive():
+    now = 0.0
+
+    def clock():
+        return now
+
+    storage = MemoryStorage(ttl_seconds=3600, cleanup_interval_seconds=0, clock=clock)
+    chat_id = 100
+    user_id = 7
+
+    storage.set_setting(user_id, "model", "claude-3-opus")
+
+    for minute in (20, 40, 60, 80, 100, 120):
+        now = minute * 60.0
+        storage.clear_history(chat_id, user_id)
+
+    assert storage.get_setting(user_id, "model", default="DEFAULT") == "claude-3-opus"
+
+
+def test_setting_activity_keeps_user_history_alive():
+    now = 0.0
+
+    def clock():
+        return now
+
+    storage = MemoryStorage(ttl_seconds=3600, cleanup_interval_seconds=0, clock=clock)
+    chat_id = 100
+    user_id = 7
+
+    storage.set_setting(user_id, "model", "claude-3-opus")
+    storage.add_message(chat_id, user_id, "user", "hi")
+
+    for minute in (20, 40, 60, 80, 100, 120):
+        now = minute * 60.0
+        assert storage.get_setting(user_id, "model") == "claude-3-opus"
+
+    assert storage.get_history(chat_id, user_id) == [
+        {"role": "user", "content": "hi"},
+    ]
