@@ -45,7 +45,7 @@ async def extract_document_text(mime_type: str, data: bytes) -> str:
 def _extract_sync(mime_type: str, data: bytes) -> str:
     if not data:
         return ""
-    normalized = (mime_type or "").strip().lower()
+    normalized = (mime_type or "").split(";", 1)[0].strip().lower()
     try:
         if normalized == "application/pdf":
             import io
