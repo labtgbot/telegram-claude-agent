@@ -397,6 +397,7 @@ async def send_final_reply(
                 message.bot,
                 guest_query_id=guest_query_id,
                 text=text[:TELEGRAM_MESSAGE_LIMIT],
+                parse_mode=parse_mode,
             )
             return
         except AnswerGuestQueryError as exc:

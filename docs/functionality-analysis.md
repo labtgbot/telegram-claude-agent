@@ -254,8 +254,9 @@ https://core.telegram.org/bots/api. На этот момент актуальн�
 прикладывается к запросу в proxy. Официальный Telegram Guest Mode из Bot API
 10.0 также поддержан на уровне ответа: когда входящее сообщение содержит
 `Message.guest_query_id`, финальный ответ Claude отправляется через raw
-`answerGuestQuery`, что позволяет отвечать на guest query без членства бота в
-целевом чате.
+`answerGuestQuery` как `InlineQueryResultArticle` с
+`InputTextMessageContent.parse_mode=HTML`, что позволяет отвечать на guest query
+без членства бота в целевом чате и сохранять форматирование ответа.
 
 ### Что не интегрировано для максимальных возможностей
 
@@ -3233,8 +3234,10 @@ Telegram отображает подпись альбома. Тип провер
 в proxy отправляется только текущий запрос. Это снижает риск утечки контекста
 между участниками группы. Если Telegram присылает официальный Guest Mode update
 с `Message.guest_query_id`, финальный ответ отправляется через
-`answerGuestQuery`, поэтому бот может вернуть ответ на `guest_message`, не
-являясь полноценным участником чата.
+`answerGuestQuery` как `InlineQueryResultArticle` с
+`InputTextMessageContent.parse_mode=HTML`, поэтому бот может вернуть
+форматированный ответ на `guest_message`, не являясь полноценным участником
+чата.
 
 ### Изображения
 
