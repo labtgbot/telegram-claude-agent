@@ -286,7 +286,15 @@ async def send_reply_safely(message: Message, text: str, parse_mode: str | None 
             await message.answer(chunk, parse_mode=parse_mode)
         except Exception as exc:
             logger.warning("send_failed_falling_back_to_plain", error=str(exc))
-            await message.answer(chunk)
+            # The bot's default parse_mode is HTML, so the fallback must pass
+            # ``parse_mode=None`` explicitly; otherwise the retry re-applies HTML
+            # and fails the same way, losing the message entirely (see #410).
+            try:
+                await message.answer(chunk, parse_mode=None)
+            except Exception as fallback_exc:
+                logger.warning(
+                    "send_plain_fallback_failed", error=str(fallback_exc)
+                )
 
 
 def _guest_query_id(message: Message) -> str | None:
@@ -320,7 +328,10 @@ async def _try_edit_stream_preview(
     sent_msg, text: str, *, error_logged: bool
 ) -> tuple[bool, bool]:
     try:
-        await sent_msg.edit_text(text[:TELEGRAM_MESSAGE_LIMIT])
+        # The live preview shows raw streamed text (not rendered HTML), so it
+        # must be sent with ``parse_mode=None``; the bot default is HTML and any
+        # stray ``<``/``>``/``&`` would otherwise freeze the preview (see #410).
+        await sent_msg.edit_text(text[:TELEGRAM_MESSAGE_LIMIT], parse_mode=None)
         return True, error_logged
     except Exception as exc:
         if error_logged:
@@ -388,12 +399,32 @@ async def handle_streaming(
         await sent_msg.edit_text(chunks[0], parse_mode="HTML")
     except Exception as exc:
         logger.warning("streaming_final_edit_failed_falling_back_to_plain", error=str(exc))
-        await sent_msg.edit_text(chunks[0][:TELEGRAM_MESSAGE_LIMIT])
+        # ``parse_mode=None`` is required: the bot default is HTML, so without it
+        # the truncated retry re-applies HTML and fails the same way (see #410).
+        try:
+            await sent_msg.edit_text(
+                chunks[0][:TELEGRAM_MESSAGE_LIMIT], parse_mode=None
+            )
+        except Exception as fallback_exc:
+            logger.warning(
+                "streaming_final_edit_plain_fallback_failed",
+                error=str(fallback_exc),
+            )
     for extra in chunks[1:]:
         try:
             await message.answer(extra, parse_mode="HTML")
-        except Exception:
-            await message.answer(extra)
+        except Exception as exc:
+            logger.warning(
+                "streaming_extra_chunk_failed_falling_back_to_plain",
+                error=str(exc),
+            )
+            try:
+                await message.answer(extra, parse_mode=None)
+            except Exception as fallback_exc:
+                logger.warning(
+                    "streaming_extra_chunk_plain_fallback_failed",
+                    error=str(fallback_exc),
+                )
 
     return reply_text
 
