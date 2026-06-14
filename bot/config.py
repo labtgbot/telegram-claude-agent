@@ -1,9 +1,10 @@
 import re
+from pathlib import Path
 from typing import List, Optional
 
-from pydantic import AnyHttpUrl, ConfigDict, TypeAdapter, ValidationError, ValidationInfo
+from pydantic import AnyHttpUrl, TypeAdapter, ValidationError, ValidationInfo
 from pydantic import field_validator, model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Telegram's allowed alphabet for the webhook secret token: 1-256 characters
 # from A-Z, a-z, 0-9, underscore and hyphen.
@@ -20,6 +21,7 @@ _ID_LIST_ENV_NAMES = {
 }
 LOG_LEVEL_NAMES = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 _LOG_LEVEL_NAME_SET = set(LOG_LEVEL_NAMES)
+_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 
 def _parse_id_list(raw: str, source_name: str = "chat id list") -> List[int]:
@@ -43,7 +45,7 @@ def _parse_id_list(raw: str, source_name: str = "chat id list") -> List[int]:
 
 
 class Settings(BaseSettings):
-    model_config = ConfigDict(env_file=".env", case_sensitive=False)
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, case_sensitive=False)
 
     free_claude_base_url: str
     free_claude_auth_token: str

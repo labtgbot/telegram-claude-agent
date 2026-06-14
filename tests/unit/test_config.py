@@ -1,5 +1,11 @@
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
+import bot.config as config_module
 from bot.config import DEFAULT_TELEGRAM_MEDIA_DOWNLOAD_MAX_BYTES, Settings
 
 
@@ -142,6 +148,60 @@ def test_rate_limit_requests_per_minute_from_env(monkeypatch):
     settings = Settings()
 
     assert settings.rate_limit_requests_per_minute == 42
+
+
+def test_settings_reads_repo_dotenv_when_process_cwd_differs(tmp_path):
+    repo_root = Path(config_module.__file__).resolve().parents[1]
+    dotenv_path = repo_root / ".env"
+    original_dotenv = dotenv_path.read_bytes() if dotenv_path.exists() else None
+    other_cwd = tmp_path / "other-cwd"
+    other_cwd.mkdir()
+    env = os.environ.copy()
+    for name in (
+        "FREE_CLAUDE_BASE_URL",
+        "FREE_CLAUDE_AUTH_TOKEN",
+        "FREE_CLAUDE_DEFAULT_MODEL",
+        "TELEGRAM_BOT_TOKEN",
+        "RATE_LIMIT_REQUESTS_PER_MINUTE",
+    ):
+        env.pop(name, None)
+    env["PYTHONPATH"] = str(repo_root)
+    child_code = (
+        "from bot.config import settings;"
+        "print(settings.free_claude_base_url);"
+        "print(settings.rate_limit_requests_per_minute)"
+    )
+
+    try:
+        dotenv_path.write_text(
+            "\n".join(
+                [
+                    "FREE_CLAUDE_BASE_URL=http://dotenv-root.example",
+                    "FREE_CLAUDE_AUTH_TOKEN=dotenv-token",
+                    "FREE_CLAUDE_DEFAULT_MODEL=dotenv-model",
+                    "TELEGRAM_BOT_TOKEN=123:ABC",
+                    "RATE_LIMIT_REQUESTS_PER_MINUTE=17",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            [sys.executable, "-c", child_code],
+            cwd=other_cwd,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        if original_dotenv is None:
+            dotenv_path.unlink(missing_ok=True)
+        else:
+            dotenv_path.write_bytes(original_dotenv)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == ["http://dotenv-root.example", "17"]
 
 
 @pytest.mark.parametrize("value", ["0", "-1"])
